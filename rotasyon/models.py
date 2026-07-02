@@ -110,6 +110,15 @@ class Unit:
     active: bool = True  # listeden çıkarmak yerine pasifleştirme
     id: str = field(default_factory=_new_id)
 
+    @property
+    def display_name(self) -> str:
+        """Kullanıcıya/Excel'e gösterilen ad: cinsiyet kısıtı ekiyle."""
+        if self.gender_restriction == "K":
+            return f"{self.name} k"
+        if self.gender_restriction == "E":
+            return f"{self.name} e"
+        return self.name
+
     def to_dict(self) -> dict:
         return asdict(self)
 
@@ -142,6 +151,9 @@ DEFAULT_MONTHS = [
 
 DEFAULT_SETTINGS: dict = {
     "months": DEFAULT_MONTHS,
+    # Tek-ay görünümünde grup başlığında gösterilen haftalık gün etiketi
+    # (madde 15, ÖRN.TEK AY HALİ formatı) — JSON anahtarları str tutulur
+    "day_labels": {"1": "Pazartesi-Salı-Çarşamba", "2": "Çarşamba-Perşembe-Cuma"},
     # FTR kuralı (madde 17) solver'da birim adına değil bu bayrağa göre çalışır:
     # gender_restriction'lı iki ayrı FTR birimi (k/e) tanımlanır, ikisinin de
     # dolu olması sağlanır. Bu ayar sadece uyarı eşiği vb. için yer tutucu.

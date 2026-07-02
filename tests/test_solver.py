@@ -235,6 +235,24 @@ def test_locked_assignments_respected(small_world, settings):
     assert r.assignments[kiz2.id] == dis.id
 
 
+def test_infeasible_prefeasibility_names_the_unit(settings):
+    """Ön-kontrol: dolması zorunlu birime uygun öğrenci kalmadıysa
+    birimin adıyla, beklemeden raporlanır."""
+    s1 = Student(full_name="A", gender=FEMALE, group=1)
+    s2 = Student(full_name="B", gender=FEMALE, group=1)
+    dis = Unit(name="DİŞ", group=1, quota=1)
+    lab = Unit(name="LAB", group=1, quota=1)
+    # toplam kontenjan == öğrenci sayısı → her birim dolmalı; ama ikisi de
+    # DİŞ'e daha önce gitmiş
+    history = [
+        make_assignment(s1, dis, "EYLÜL"),
+        make_assignment(s2, dis, "EKİM"),
+    ]
+    r = solve_month([s1, s2], [dis, lab], "KASIM", history=history, settings=settings)
+    assert r.status == "INFEASIBLE"
+    assert any("DİŞ" in reason for reason in r.infeasible_reasons)
+
+
 def test_infeasible_reports_turkish_reason(settings):
     """Çözümsüzlük sessiz geçilmez, kural tahmini raporlanır."""
     girls = [Student(full_name=f"K{i}", gender=FEMALE, group=1) for i in range(2)]

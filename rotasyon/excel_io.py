@@ -253,3 +253,159 @@ def read_rotation_workbook(path: str | Path) -> ImportResult:
             "Dosyada ay başlıkları içeren rotasyon sayfası bulunamadı."
         )
     return result
+
+
+# ======================= DIŞA AKTARIM =======================
+
+from io import BytesIO  # noqa: E402
+
+from openpyxl import Workbook  # noqa: E402
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side  # noqa: E402
+
+from .models import Assignment, ClassGroup, Student, Unit  # noqa: E402
+
+_THIN = Side(style="thin", color="999999")
+_BORDER = Border(left=_THIN, right=_THIN, top=_THIN, bottom=_THIN)
+_BOLD = Font(bold=True)
+_RED_FONT = Font(color="FF0000")
+_CENTER = Alignment(horizontal="center", vertical="center")
+
+
+def _cell_value_for(unit: Unit, day_note: str) -> str:
+    value = unit.display_name
+    if day_note:
+        value += f"({day_note})"
+    return value
+
+
+def export_yearly_workbook(
+    students: list[Student],
+    units: list[Unit],
+    classes: list[ClassGroup],
+    assignments: list[Assignment],
+    months: list[str],
+) -> bytes:
+    """Yıllık grup görünümü (madde 14): her grup bir sayfa, öğrenci adı
+    hücresi sınıf rengiyle dolu, cinsiyet kısıtlı birimler kırmızı + k/e ekli.
+    """
+    units_by_id = {u.id: u for u in units}
+    class_colors = {c.name: c.color_hex.lstrip("#") for c in classes if c.color_hex}
+    cell_map: dict[tuple[str, str], Assignment] = {
+        (a.student_id, a.month): a for a in assignments
+    }
+
+    wb = Workbook()
+    wb.remove(wb.active)
+    groups = sorted({s.group for s in students})
+    for group in groups:
+        ws = wb.create_sheet(f"{group}. GRUP")
+        group_students = sorted(
+            [s for s in students if s.group == group],
+            key=lambda s: s.full_name,
+        )
+        # başlık
+        ws.cell(1, 2, "ADI-SOYADI").font = _BOLD
+        for j, m in enumerate(months, start=3):
+            c = ws.cell(1, j, m)
+            c.font = _BOLD
+            c.alignment = _CENTER
+        quota_col = 3 + len(months) + 1
+        ws.cell(1, quota_col, "BÖLÜMLER VE SAYILARI").font = _BOLD
+
+        for i, s in enumerate(group_students, start=2):
+            ws.cell(i, 1, i - 1)  # sıra no
+            name_cell = ws.cell(i, 2, s.full_name)
+            color = class_colors.get(s.class_name)
+            if color:
+                name_cell.fill = PatternFill(
+                    start_color=color, end_color=color, fill_type="solid"
+                )
+            name_cell.border = _BORDER
+            for j, m in enumerate(months, start=3):
+                a = cell_map.get((s.id, m))
+                cell = ws.cell(i, j)
+                cell.border = _BORDER
+                if a and a.unit_id in units_by_id:
+                    u = units_by_id[a.unit_id]
+                    cell.value = _cell_value_for(u, a.day_note)
+                    if u.gender_restriction:
+                        cell.font = _RED_FONT
+
+        # kontenjan listesi: aktif birimler, kontenjan kadar tekrar
+        row = 2
+        for u in sorted(
+            [u for u in units if u.active and u.group in (0, group) and u.quota],
+            key=lambda u: u.name,
+        ):
+            for _ in range(u.quota):
+                c = ws.cell(row, quota_col, u.display_name)
+                if u.gender_restriction:
+                    c.font = _RED_FONT
+                row += 1
+
+        ws.column_dimensions["B"].width = 24
+        for j in range(3, 3 + len(months)):
+            ws.column_dimensions[ws.cell(1, j).column_letter].width = 20
+        ws.column_dimensions[ws.cell(1, quota_col).column_letter].width = 26
+
+    buf = BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+def export_single_month_workbook(
+    students: list[Student],
+    units: list[Unit],
+    assignments: list[Assignment],
+    month: str,
+    day_labels: dict[str, str] | None = None,
+) -> bytes:
+    """Tek ay görünümü (madde 15): gruplar yan yana, RENKSİZ sade tablo.
+
+    Başlıkta grubun sınıfları ve haftalık gün etiketi yer alır
+    (örn. "B-C Pazartesi-Salı-Çarşamba").
+    """
+    day_labels = day_labels or {}
+    units_by_id = {u.id: u for u in units}
+    month_assignments = {
+        a.student_id: a for a in assignments if a.month == month
+    }
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = month
+    groups = sorted({s.group for s in students})
+    col = 1
+    for group in groups:
+        group_students = [
+            s for s in sorted(students, key=lambda s: s.full_name)
+            if s.group == group and s.id in month_assignments
+        ]
+        # birim adına göre sırala (referans format böyle)
+        group_students.sort(
+            key=lambda s: units_by_id[month_assignments[s.id].unit_id].display_name
+            if month_assignments[s.id].unit_id in units_by_id
+            else ""
+        )
+        class_names = "-".join(
+            sorted({s.class_name for s in group_students if s.class_name})
+        )
+        header = f"{class_names} {day_labels.get(str(group), '')}".strip()
+        ws.cell(1, col, header).font = _BOLD
+        ws.cell(2, col, "ADI-SOYADI").font = _BOLD
+        ws.cell(2, col + 1, month).font = _BOLD
+        for i, s in enumerate(group_students, start=3):
+            a = month_assignments[s.id]
+            ws.cell(i, col, s.full_name).border = _BORDER
+            u = units_by_id.get(a.unit_id)
+            cell = ws.cell(
+                i, col + 1, _cell_value_for(u, a.day_note) if u else ""
+            )
+            cell.border = _BORDER  # renk yok: madde 15
+        ws.column_dimensions[ws.cell(2, col).column_letter].width = 24
+        ws.column_dimensions[ws.cell(2, col + 1).column_letter].width = 24
+        col += 3  # aradaki boş sütunla birlikte
+
+    buf = BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
