@@ -167,6 +167,58 @@ def test_rule18_warning_when_ebelik_idle(small_world):
     assert hits and hits[0].severity == WARNING
 
 
+def test_rule18_silent_when_gender_blocks_ebelik(small_world):
+    """Yalnız erkek alan öncelikli birime, tüm ebelik öğrencileri kızken
+    erkek (ebelik-dışı) atanması uyarı ÜRETMEZ — çözücünün tek seçeneğidir."""
+    from rotasyon.models import Unit, MALE
+
+    students, units, _ = small_world
+    cocuk_e = Unit(
+        name="2.KAT ÇOCUK ve DOĞUM",
+        group=1,
+        quota=1,
+        gender_restriction=MALE,
+        ebelik_priority=True,
+        must_fill=True,
+    )
+    dis = by_name(units, "DİŞ")
+    erkek = students[4]
+    ebe = students[-1]  # kız
+    v = check_all(
+        students,
+        units + [cocuk_e],
+        [
+            make_assignment(erkek, cocuk_e, "EYLÜL"),
+            make_assignment(ebe, dis, "EYLÜL"),
+        ],
+        DEFAULT_MONTHS,
+    )
+    assert 18 not in rules_hit(v)
+
+
+def test_rule18_silent_when_ebelik_already_visited(small_world):
+    """Öncelikli birimi geçmişte görmüş ebelik öğrencisi 'uygun' sayılmaz
+    (madde 1 tekrar yasağı oraya atanmasını zaten engeller)."""
+    students, units, _ = small_world
+    dogum = by_name(units, "DOĞ.SAL-Y.DOĞ")
+    dis = by_name(units, "DİŞ")
+    cerr = by_name(units, "1.KAT CERR.")
+    ebe = students[-1]
+    kiz = students[0]
+    v = check_all(
+        students,
+        units,
+        [
+            make_assignment(ebe, dogum, "EYLÜL"),   # ebelik önce görmüş
+            make_assignment(kiz, cerr, "EYLÜL"),
+            make_assignment(kiz, dogum, "EKİM"),    # sonra ebelik-dışı
+            make_assignment(ebe, dis, "EKİM"),
+        ],
+        DEFAULT_MONTHS,
+    )
+    assert 18 not in rules_hit(v)
+
+
 def test_rule19_warning_for_repeated_pair(small_world):
     students, units, _ = small_world
     cerr = by_name(units, "1.KAT CERR.")  # quota 2

@@ -508,24 +508,62 @@ def _check_rule17_must_fill(assignments, students_by_id, units_by_id):
 
 
 def _check_rule18_ebelik_priority(assignments, students_by_id, units_by_id, months):
-    """Madde 18: öncelikli birimde ebelik-dışı öğrenci varken o ay boşta
-    (o birimi henüz görmemiş) ebelik öğrencisi kalmışsa uyarı."""
+    """Madde 18: öncelikli birimde ebelik-dışı öğrenci varken, o birime
+    GERÇEKTEN atanabilecek boşta ebelik öğrencisi kalmışsa uyarı.
+
+    "Atanabilir" tanımı çözücüyle aynı: cinsiyet kısıtı, tekrar yasağı
+    (madde 1, ad bazında), yasaklı birimler, diş muafiyeti ve komşu ay
+    yoğunluk yasağı (madde 20) sağlanmalı. Aksi halde çözücünün zorunlu
+    bıraktığı atamalar (örn. yalnız erkek alan birime tüm ebelikler kızken)
+    yanlış uyarı üretir.
+    """
     out = []
     ebelik_ids = {
         sid for sid, s in students_by_id.items() if s.program == PROGRAM_EBELIK
     }
     if not ebelik_ids:
         return out
+    order = {m: i for i, m in enumerate(months)}
     by_month: dict[str, list] = defaultdict(list)
+    visited_keys: dict[str, set[tuple[str, str]]] = defaultdict(set)
+    unit_by_student_month: dict[tuple[str, str], Unit] = {}
     for a in assignments:
         by_month[a.month].append(a)
+        visited_keys[a.student_id].add(
+            (a.month, normalize_key(units_by_id[a.unit_id].name))
+        )
+        unit_by_student_month[(a.student_id, a.month)] = units_by_id[a.unit_id]
+
+    def eligible(sid: str, u: Unit, month: str) -> bool:
+        s = students_by_id[sid]
+        if u.gender_restriction and s.gender and s.gender != u.gender_restriction:
+            return False
+        if u.id in s.banned_unit_ids:
+            return False
+        if s.dis_exempt and "DİŞ" in normalize_key(u.name):
+            return False
+        # tekrar yasağı: bu ay dışındaki aylarda aynı bölümü görmüş mü?
+        key = normalize_key(u.name)
+        if any(m != month and k == key for m, k in visited_keys[sid]):
+            return False
+        # komşu ay yoğunluk yasağı (madde 20)
+        if u.intensity and month in order:
+            idx = order[month]
+            for i in (idx - 1, idx + 1):
+                if 0 <= i < len(months):
+                    prev = unit_by_student_month.get((sid, months[i]))
+                    if prev is not None and prev.intensity == u.intensity:
+                        return False
+        return True
+
     for month, items in by_month.items():
         for a in items:
             u = units_by_id[a.unit_id]
             s = students_by_id[a.student_id]
             if not u.ebelik_priority or s.id in ebelik_ids:
                 continue
-            # Aynı ay aynı grupta öncelikli birime atanmamış ebelik öğrencisi var mı?
+            # Aynı ay aynı grupta öncelikli birime atanmamış ve bu birime
+            # atanabilir durumda ebelik öğrencisi var mı?
             assigned_here = {
                 b.student_id for b in items if b.unit_id == a.unit_id
             }
@@ -539,6 +577,7 @@ def _check_rule18_ebelik_priority(assignments, students_by_id, units_by_id, mont
                     and units_by_id[b.unit_id].ebelik_priority
                     for b in items
                 )
+                and eligible(sid, u, month)
             ]
             if idle_ebelik:
                 out.append(

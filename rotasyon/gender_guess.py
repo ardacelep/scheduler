@@ -78,6 +78,40 @@ _SUPPLEMENT_K = {
     "hanife", "fadime", "döndü", "dilek", "derya", "burcu", "aybike",
     "ırmak", "irmak", "gülzade", "safura", "reyhan", "sevcan", "nurcan",
     "gülcan", "irem", "nurhan", "gülhan", "neslişah",
+    # gerçek listelerden eklenenler
+    "hira", "kader", "maria", "nurseza", "sahra", "selinay", "duygu",
+    # klasik (genişletme)
+    "ayşe", "fatma", "zeynep", "hacer", "huriye", "şerife", "cemile",
+    "naciye", "nazife", "nuriye", "sabriye", "safiye", "sakine", "satı",
+    "selvi", "semiha", "sevim", "suna", "süheyla", "şadiye", "şenay",
+    "şengül", "şermin", "türkan", "ümmühan", "vesile", "yeter", "zarife",
+    "zekiye", "zübeyde", "zülal", "gülay", "gülbahar", "gülçin", "gülden",
+    "güler", "gülfidan", "gülizar", "gülseren", "gülsen", "gülsün",
+    "gülten", "gonca", "hale", "halide", "hamide", "hamiyet", "hazan",
+    "hediye", "hicran", "inci", "kadriye", "kamile", "kevser", "kezban",
+    "lale", "latife", "leman", "lütfiye", "makbule", "mediha", "melahat",
+    "melda", "melike", "meral", "mesude", "muazzez", "mukaddes",
+    "mübeccel", "müge", "münevver", "münire", "müzeyyen", "nadide",
+    "nadire", "nagihan", "nalan", "naile", "nazan", "nazmiye", "nebahat",
+    "necla", "necmiye", "nergis", "neriman", "nermin", "nevin", "nezahat",
+    "nezaket", "nezihe", "nigar", "nihal", "nilgün", "nilüfer", "nimet",
+    "nur", "nuran", "nuray", "nurdan", "nurhayat", "nursel", "nursen",
+    "nurten", "oya", "perihan", "pembe", "pervin", "rahime", "raziye",
+    "refika", "remziye", "rukiye", "saadet", "sabahat", "sabiha", "saime",
+    "sanem", "saniye", "seçil", "seher", "selma", "sema", "semra",
+    "serap", "serpil", "sevda", "sevinç", "sıdıka", "suzan", "sümeyye",
+    "sümeyra", "şaziye", "şükriye", "tülay", "tülin", "ulviye", "vahide",
+    "vildan", "yeliz", "yeşim", "yonca", "zahide", "zerrin", "zuhal",
+    "zümrüt", "şirin", "berna", "belgin", "bengü", "berrin", "binnaz",
+    "birsen", "buket", "canan", "çiçek", "çiğdem", "didem", "dilan",
+    "dilay", "ebru", "elmas", "emel", "esin", "esma", "fahriye",
+    "fatoş", "fazilet", "feride", "feriha", "fidan", "figen", "fikriye",
+    "filiz", "firdevs", "fulya", "funda", "gaye", "güzide", "hülya",
+    "işıl", "jale", "kıymet", "mine", "nazire", "özlem",
+    # modern (genişletme)
+    "cemre", "çisem", "ece", "efsun", "melisa", "melissa", "neva",
+    "nefes", "umay", "yağmur", "asya", "almila", "elis", "karya",
+    "lidya", "mislina", "talia", "yüsra", "zilan",
 }
 
 _SUPPLEMENT_E = {
@@ -107,11 +141,51 @@ _SUPPLEMENT_E = {
     "ünal", "efe", "ege", "umut", "tuna", "batu", "koray", "serhat",
     "sercan", "gökhan", "gürkan", "hayati", "muhsin", "nurettin",
     "osama", "usame", "gültekin",
+    # gerçek listelerden eklenenler
+    "seymen", "keremcem",
+    # klasik (genişletme)
+    "adnan", "akif", "altan", "asım", "aslan", "ata", "atalay", "atilla",
+    "aydın", "aziz", "bahadır", "bahri", "bayram", "behçet", "beytullah",
+    "bora", "bülent", "burhan", "cafer", "cahit", "celal", "cemil",
+    "cevdet", "cevat", "cihangir", "coşkun", "cumali", "çağatay",
+    "çağlar", "çetin", "derviş", "doğan", "dursun", "ediz", "ekrem",
+    "emrah", "emrullah", "engin", "enver", "ercan", "erdal", "erdinç",
+    "erkan", "erkin", "erman", "ersin", "ertan", "ertuğrul", "esat",
+    "eşref", "eyüp", "faruk", "fazıl", "fehmi", "ferdi", "feridun",
+    "ferit", "fevzi", "fırat", "fikret", "fuat", "galip", "gazi",
+    "göktürk", "gündüz", "güven", "habil", "hakkı", "halim", "halit",
+    "haluk", "hamdi", "hamit", "haşim", "hayrettin", "haydar", "hayri",
+    "hızır", "hilmi", "hüsamettin", "hüsnü", "ilhan", "ilhami", "irfan",
+    "isa", "ishak", "izzet", "kamil", "kasım", "kenan", "kerim",
+    "kubilay", "latif", "lokman", "lütfi", "mazlum", "mecit", "mesut",
+    "mete", "mithat", "muammer", "muharrem", "muhittin", "murtaza",
+    "musab", "mücahit", "müslüm", "naci", "nadir", "namık", "nazım",
+    "necdet", "necip", "nedim", "nevzat", "niyazi", "numan", "nurullah",
+    "oktay", "orçun", "öner", "özcan", "özkan", "polat", "rafet",
+    "rahim", "rahmi", "ramiz", "rasim", "rauf", "refik", "remzi",
+    "resul", "rıdvan", "rıfat", "rıza", "ruhi", "rüştü", "sabahattin",
+    "sabri", "sadettin", "saffet", "sait", "salim", "savaş", "sedat",
+    "selahattin", "selami", "semih", "seyfettin", "seyfi", "seyit",
+    "sezai", "sıtkı", "suat", "şaban", "şakir", "şamil", "şenol",
+    "şeref", "şevki", "şükrü", "tacettin", "tahir", "tahsin", "talat",
+    "talip", "tamer", "tanju", "tarkan", "tayfun", "tekin", "temel",
+    "tevfik", "tuncay", "tuncer", "turgay", "turgut", "uğur", "ulaş",
+    "vedat", "vehbi", "veysel", "veysi", "yalçın", "yaman", "yılmaz",
+    "zekeriya", "zeki", "ziya", "zübeyir", "adil", "akın", "bedri",
+    "birol", "cemalettin", "ercüment", "erdi", "habib",
+    # modern (genişletme)
+    "alaz", "altay", "batıkan", "bertuğ", "çağan", "çağrı", "kutay",
+    "onat", "taner", "timur", "tuğrul", "yamaç",
 }
 
 # Türkiye'de iki cinste de yaygın kullanılan isimler: tahmin verilmez,
 # kesinlik 0.5 ile kullanıcıya bırakılır.
-_AMBIGUOUS = {"deniz", "kayra", "derin", "doğa", "evren", "özgür", "iraz"}
+_AMBIGUOUS = {
+    "deniz", "kayra", "derin", "doğa", "evren", "özgür", "iraz",
+    "ezel", "ömür", "ilkay", "olcay", "günay", "hikmet", "yücel",
+    "bilge", "gökçe", "esen", "devrim", "şafak",
+    "aytaç", "beyhan", "göksel", "servet", "yüksel",
+}
 
 _GG_CONFIDENCE = {
     "female": ("K", 0.90),
