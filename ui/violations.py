@@ -20,5 +20,8 @@ def render(store) -> None:
     if not assignments:
         st.info("Henüz kayıtlı atama yok.")
         return
-    violations = check_all(students, units, assignments, months)
+    custom_rules = store.load_custom_rules()
+    violations = check_all(
+        students, units, assignments, months, custom_rules=custom_rules
+    )
     show_violations(violations, empty_message="Tüm atamalar kurallara uygun. ✅")

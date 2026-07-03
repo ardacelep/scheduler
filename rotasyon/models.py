@@ -154,6 +154,37 @@ class Assignment:
         return cls(**d)
 
 
+# ---- Kullanıcı tanımlı (özel) kurallar ----
+# Yerleşik 19 kuralın dışında, arayüzden eklenebilen parametrik kurallar.
+RULE_AYRI_TUT = "ayri_tut"  # seçilen öğrenciler aynı ay aynı birimde olamaz
+RULE_BIRLIKTE_TUT = "birlikte_tut"  # seçilen öğrenciler her ay aynı birimde olur
+RULE_SABIT_ATAMA = "sabit_atama"  # öğrenci X, ay Y'de birim Z'ye atanır
+CUSTOM_RULE_TYPES = (RULE_AYRI_TUT, RULE_BIRLIKTE_TUT, RULE_SABIT_ATAMA)
+CUSTOM_RULE_LABELS = {
+    RULE_AYRI_TUT: "Ayrı tut — seçilen öğrenciler aynı birime düşmesin",
+    RULE_BIRLIKTE_TUT: "Birlikte tut — seçilen öğrenciler hep aynı birimde olsun",
+    RULE_SABIT_ATAMA: "Sabit atama — öğrenci belirli ayda belirli birime gitsin",
+}
+
+
+@dataclass
+class CustomRule:
+    type: str  # CUSTOM_RULE_TYPES
+    student_ids: list[str] = field(default_factory=list)  # ayrı/birlikte: ≥2, sabit: 1
+    unit_id: str = ""  # sabit_atama için
+    month: str = ""  # sabit_atama için
+    note: str = ""
+    active: bool = True
+    id: str = field(default_factory=_new_id)
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "CustomRule":
+        return cls(**d)
+
+
 DEFAULT_MONTHS = [
     "EYLÜL", "EKİM", "KASIM", "ARALIK", "OCAK",
     "ŞUBAT", "MART", "NİSAN", "MAYIS", "HAZİRAN",

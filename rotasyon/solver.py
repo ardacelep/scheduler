@@ -18,11 +18,15 @@ from ortools.sat.python import cp_model
 
 from .models import (
     Assignment,
+    CustomRule,
     Student,
     Unit,
     CORE_BRANCHES,
     BRANCH_DOGUM_SALONU,
     PROGRAM_EBELIK,
+    RULE_AYRI_TUT,
+    RULE_BIRLIKTE_TUT,
+    RULE_SABIT_ATAMA,
     DEFAULT_SETTINGS,
 )
 from .normalize import normalize_key
@@ -59,6 +63,8 @@ _REASON_LABELS = {
     "deadline_dogum": "Madde 7 (ebelik öğrencileri doğum salonu görme): doğum "
                       "salonu kontenjanı ebelik öğrencilerine yetmiyor.",
     "locked": "Elle sabitlenen atamalar diğer kurallarla çelişiyor.",
+    "custom": "Özel kurallar (Veri Yönetimi → Kurallar): ayrı/birlikte tutma "
+              "veya sabit atamalar diğer kurallarla çelişiyor olabilir.",
 }
 
 
@@ -171,6 +177,7 @@ def solve_month(
     settings: dict | None = None,
     locked: dict[str, str] | None = None,
     random_seed: int | None = None,
+    custom_rules: list[CustomRule] | None = None,
     _diagnostic: bool = False,
 ) -> SolveResult:
     """`students` (tek grup) için `month` ayının atamasını çözer.
@@ -185,7 +192,15 @@ def solve_month(
     settings = settings or DEFAULT_SETTINGS
     months: list[str] = settings["months"]
     weights: dict = settings["solver"]["weights"]
-    locked = locked or {}
+    locked = dict(locked or {})
+    custom_rules = [r for r in (custom_rules or []) if r.active]
+
+    # Sabit atama kuralları bu ayın kilitli hücreleri gibi işlenir;
+    # elle kilitlenen hücre (locked parametresi) öncelik taşır.
+    for rule in custom_rules:
+        if rule.type == RULE_SABIT_ATAMA and rule.month == month:
+            for sid in rule.student_ids:
+                locked.setdefault(sid, rule.unit_id)
 
     catalog_by_id = {u.id: u for u in units}  # geçmiş yorumu için tam katalog
     all_units = units
@@ -283,6 +298,25 @@ def solve_month(
     for sid, uid in locked.items():
         if (sid, uid) in x:
             model.Add(x[(sid, uid)] == 1).OnlyEnforceIf(assumptions["locked"])
+
+    # Özel kurallar: ayrı tut / birlikte tut (sabit atama yukarıda locked'a girdi)
+    student_id_set = {s.id for s in students}
+    for rule in custom_rules:
+        ids = [sid for sid in rule.student_ids if sid in student_id_set]
+        if len(ids) < 2:
+            continue
+        if rule.type == RULE_AYRI_TUT:
+            for u in units:
+                model.Add(
+                    sum(x[(sid, u.id)] for sid in ids) <= 1
+                ).OnlyEnforceIf(assumptions["custom"])
+        elif rule.type == RULE_BIRLIKTE_TUT:
+            first = ids[0]
+            for other in ids[1:]:
+                for u in units:
+                    model.Add(
+                        x[(first, u.id)] == x[(other, u.id)]
+                    ).OnlyEnforceIf(assumptions["custom"])
 
     # ---- Madde 6/7: Haziran'a kadar zorunluluklar ----
     # Kalan ay sayısı 0 ise (son ay) sert kısıt; öncesinde objective bonusu.
@@ -405,6 +439,7 @@ def solve_month(
                 history,
                 settings=settings,
                 locked=locked,
+                custom_rules=custom_rules,
                 _diagnostic=True,
             )
         core = solver.SufficientAssumptionsForInfeasibility()

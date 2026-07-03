@@ -15,17 +15,24 @@ from dataclasses import dataclass
 
 from .models import (
     Assignment,
+    CustomRule,
     Student,
     Unit,
     CORE_BRANCHES,
     BRANCH_DOGUM_SALONU,
     GENDER_LABELS,
     PROGRAM_EBELIK,
+    RULE_AYRI_TUT,
+    RULE_BIRLIKTE_TUT,
+    RULE_SABIT_ATAMA,
 )
 from .normalize import normalize_key
 
 ERROR = "hata"
 WARNING = "uyarı"
+
+# Özel (kullanıcı tanımlı) kural ihlalleri bu numarayla raporlanır
+CUSTOM_RULE_NO = -1
 
 
 @dataclass
@@ -43,6 +50,7 @@ def check_all(
     units: list[Unit],
     assignments: list[Assignment],
     months: list[str],
+    custom_rules: list[CustomRule] | None = None,
 ) -> list[Violation]:
     """Tüm denetimleri çalıştırır; ihlal yoksa boş liste döner."""
     v: list[Violation] = []
@@ -93,7 +101,94 @@ def check_all(
     v += _check_rule17_must_fill(valid, students_by_id, units_by_id)
     v += _check_rule18_ebelik_priority(valid, students_by_id, units_by_id, months)
     v += _check_rule19_repeat_pairs(valid, students_by_id, units_by_id)
+    v += _check_custom_rules(
+        valid, students_by_id, units_by_id, custom_rules or []
+    )
     return v
+
+
+def _check_custom_rules(assignments, students_by_id, units_by_id, custom_rules):
+    """Kullanıcı tanımlı kurallar: ayrı tut / birlikte tut / sabit atama."""
+    out = []
+    by_student_month: dict[tuple[str, str], str] = {
+        (a.student_id, a.month): a.unit_id for a in assignments
+    }
+    months_assigned: dict[str, set[str]] = defaultdict(set)
+    for a in assignments:
+        months_assigned[a.student_id].add(a.month)
+
+    def _name(sid):
+        return students_by_id[sid].full_name if sid in students_by_id else "?"
+
+    for rule in custom_rules:
+        if not rule.active:
+            continue
+        ids = [sid for sid in rule.student_ids if sid in students_by_id]
+        if rule.type == RULE_AYRI_TUT and len(ids) >= 2:
+            months = set().union(*(months_assigned[sid] for sid in ids)) \
+                if ids else set()
+            for month in months:
+                units_used = defaultdict(list)
+                for sid in ids:
+                    uid = by_student_month.get((sid, month))
+                    if uid:
+                        units_used[uid].append(sid)
+                for uid, together in units_used.items():
+                    if len(together) > 1:
+                        out.append(
+                            Violation(
+                                rule_no=CUSTOM_RULE_NO,
+                                severity=ERROR,
+                                message=(
+                                    "Özel kural (ayrı tut) ihlali: "
+                                    + " ile ".join(_name(s) for s in together)
+                                    + f" {month} ayında aynı birimde: "
+                                    + units_by_id[uid].name + "."
+                                ),
+                                month=month,
+                                unit_id=uid,
+                            )
+                        )
+        elif rule.type == RULE_BIRLIKTE_TUT and len(ids) >= 2:
+            common_months = set.intersection(
+                *(months_assigned[sid] for sid in ids)
+            ) if all(months_assigned[sid] for sid in ids) else set()
+            for month in common_months:
+                units_used = {by_student_month.get((sid, month)) for sid in ids}
+                if len(units_used) > 1:
+                    out.append(
+                        Violation(
+                            rule_no=CUSTOM_RULE_NO,
+                            severity=ERROR,
+                            message=(
+                                "Özel kural (birlikte tut) ihlali: "
+                                + ", ".join(_name(s) for s in ids)
+                                + f" {month} ayında farklı birimlerde."
+                            ),
+                            month=month,
+                        )
+                    )
+        elif rule.type == RULE_SABIT_ATAMA and ids and rule.unit_id:
+            for sid in ids:
+                assigned = by_student_month.get((sid, rule.month))
+                if assigned is not None and assigned != rule.unit_id:
+                    expected = units_by_id.get(rule.unit_id)
+                    out.append(
+                        Violation(
+                            rule_no=CUSTOM_RULE_NO,
+                            severity=ERROR,
+                            message=(
+                                f"Özel kural (sabit atama) ihlali: {_name(sid)} "
+                                f"{rule.month} ayında "
+                                f"{expected.name if expected else '?'} biriminde "
+                                "olmalıydı."
+                            ),
+                            student_id=sid,
+                            month=rule.month,
+                            unit_id=rule.unit_id,
+                        )
+                    )
+    return out
 
 
 def _check_rule1_no_repeat(assignments, students_by_id, units_by_id):

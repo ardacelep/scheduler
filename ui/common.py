@@ -105,11 +105,16 @@ def replace_month_assignments(
 def violations_dataframe(violations):
     import pandas as pd
 
+    def _rule_label(rule_no: int) -> str:
+        if rule_no == -1:
+            return "Özel Kural"
+        return f"Madde {rule_no}" if rule_no else "Veri"
+
     return pd.DataFrame(
         [
             {
                 "Düzey": "❌ Hata" if v.severity == "hata" else "⚠️ Uyarı",
-                "Kural": f"Madde {v.rule_no}" if v.rule_no else "Veri",
+                "Kural": _rule_label(v.rule_no),
                 "Açıklama": v.message,
             }
             for v in violations

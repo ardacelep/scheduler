@@ -15,6 +15,7 @@ from typing import Callable, TypeVar
 from .models import (
     Assignment,
     ClassGroup,
+    CustomRule,
     Student,
     Unit,
     DEFAULT_SETTINGS,
@@ -81,6 +82,13 @@ class Store:
 
     def save_assignments(self, assignments: list[Assignment]) -> None:
         self._save_list("assignments", assignments)
+
+    # ---- özel kurallar ----
+    def load_custom_rules(self) -> list[CustomRule]:
+        return self._load_list("rules", CustomRule.from_dict)
+
+    def save_custom_rules(self, rules: list[CustomRule]) -> None:
+        self._save_list("rules", rules)
 
     # ---- ayarlar ----
     def load_settings(self) -> dict:

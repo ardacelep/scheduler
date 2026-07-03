@@ -56,7 +56,7 @@ def _import_tab(store) -> None:
     if kind == "rotation":
         _rotation_import_flow(store, data)
     elif kind == "student_list":
-        _roster_import_flow(data)
+        roster_import_flow(data)
     else:
         st.error(
             "Dosya türü anlaşılamadı: ne ay sütunlu bir rotasyon tablosu ne de "
@@ -123,7 +123,7 @@ def _rotation_import_flow(store, data: bytes) -> None:
         st.balloons()
 
 
-def _roster_import_flow(data: bytes) -> None:
+def roster_import_flow(data: bytes) -> None:
     st.subheader("Öğrenci listesi algılandı (sezon başı)")
     try:
         roster, warns = read_student_list_workbook(BytesIO(data))

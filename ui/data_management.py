@@ -1,26 +1,46 @@
-"""Veri Yönetimi ekranı: öğrenci / birim / sınıf CRUD."""
+"""Veri Yönetimi — uygulamanın esneklik merkezi.
+
+Dört sekme: Öğrenciler (toplu düzenleme + Excel'den içe aktarma),
+Birimler (toplu düzenleme + ekleme), Sınıflar, Kurallar (kullanıcı tanımlı
+ayrı tut / birlikte tut / sabit atama kuralları).
+
+Toplu düzenlemeler st.data_editor ile yapılır: 70 öğrencinin cinsiyetini
+tek tek form açmadan, tabloda hücre hücre girmek mümkündür.
+"""
 from __future__ import annotations
 
+import pandas as pd
 import streamlit as st
 
 from rotasyon.models import (
     BRANCH_CATEGORIES,
     BRANCH_LABELS,
     ClassGroup,
-    GENDERS,
+    CustomRule,
+    CUSTOM_RULE_LABELS,
+    CUSTOM_RULE_TYPES,
     GENDER_LABELS,
-    PROGRAMS,
     PROGRAM_LABELS,
+    PROGRAMS,
+    RULE_SABIT_ATAMA,
     Student,
     Unit,
 )
 from .common import gender_label, unit_label
 
+_GENDER_OPTIONS = ["", "Kız", "Erkek"]
+_GENDER_TO_CODE = {"": "", "Kız": "K", "Erkek": "E"}
+_BRANCH_TO_CODE = {v: k for k, v in BRANCH_LABELS.items()}
+_PROGRAM_TO_CODE = {v: k for k, v in PROGRAM_LABELS.items()}
+_GROUP_OPTIONS = ["1. grup", "2. grup", "Her ikisi"]
+_GROUP_TO_CODE = {"1. grup": 1, "2. grup": 2, "Her ikisi": 0}
+_CODE_TO_GROUP = {v: k for k, v in _GROUP_TO_CODE.items()}
+
 
 def render(store) -> None:
     st.header("📋 Veri Yönetimi")
-    tab_students, tab_units, tab_classes = st.tabs(
-        ["Öğrenciler", "Birimler", "Sınıflar"]
+    tab_students, tab_units, tab_classes, tab_rules = st.tabs(
+        ["👤 Öğrenciler", "🏥 Birimler", "🎨 Sınıflar", "📏 Kurallar"]
     )
     with tab_students:
         _students_tab(store)
@@ -28,9 +48,11 @@ def render(store) -> None:
         _units_tab(store)
     with tab_classes:
         _classes_tab(store)
+    with tab_rules:
+        _rules_tab(store)
 
 
-# ---------- Öğrenciler ----------
+# ======================= ÖĞRENCİLER =======================
 
 def _students_tab(store) -> None:
     students = store.load_students()
@@ -38,284 +60,311 @@ def _students_tab(store) -> None:
     classes = store.load_classes()
     class_names = [c.name for c in classes]
 
-    if students:
-        import pandas as pd
-
-        unit_names = {u.id: unit_label(u) for u in units}
-        df = pd.DataFrame(
-            [
-                {
-                    "Ad Soyad": s.full_name,
-                    "Okul No": s.student_no,
-                    "Cinsiyet": gender_label(s.gender),
-                    "Grup": s.group,
-                    "Sınıf": s.class_name,
-                    "Bölüm": PROGRAM_LABELS.get(s.program, s.program),
-                    "Diş Muaf": "✓" if s.dis_exempt else "",
-                    "Yasaklı Birimler": ", ".join(
-                        unit_names.get(uid, "?") for uid in s.banned_unit_ids
-                    ),
-                    "Not": s.note,
-                }
-                for s in sorted(students, key=lambda s: (s.group, s.full_name))
-            ]
+    col_imp, col_new = st.columns(2)
+    with col_imp, st.expander("📥 Excel listesinden içe aktar", expanded=not students):
+        st.caption(
+            "Sezon başı öğrenci listesini (SML) buradan da yükleyebilirsiniz; "
+            "tür otomatik algılanır."
         )
-        st.dataframe(df, use_container_width=True, hide_index=True, height=350)
-        missing = [s.full_name for s in students if not s.gender]
-        if missing:
-            st.warning(
-                "Cinsiyeti girilmemiş öğrenciler var (kurallar için gerekli): "
-                + ", ".join(missing)
-            )
-    else:
-        st.info("Henüz öğrenci yok. Aşağıdan ekleyin veya Excel'den içe aktarın.")
+        file = st.file_uploader(
+            "Öğrenci listesi (xlsx)", type=["xlsx"], key="dm_roster_upload"
+        )
+        if file is not None:
+            from .excel_screen import roster_import_flow
 
-    st.divider()
-    col_new, col_edit = st.columns(2)
+            roster_import_flow(file.read())
+    with col_new, st.expander("➕ Yeni öğrenci ekle"):
+        _new_student_form(store, students, class_names)
 
-    with col_new, st.expander("➕ Yeni öğrenci ekle", expanded=not students):
-        with st.form("new_student", clear_on_submit=True):
-            name = st.text_input("Ad Soyad")
-            student_no = st.text_input("Okul / föy no")
-            gender = st.selectbox(
-                "Cinsiyet", GENDERS, format_func=GENDER_LABELS.get
-            )
-            group = st.selectbox("Grup", [1, 2])
-            class_name = st.selectbox("Sınıf", class_names or [""])
-            program = st.selectbox(
-                "Bölüm Türü", PROGRAMS, format_func=PROGRAM_LABELS.get
-            )
-            dis_exempt = st.checkbox("Diş Poliklinik muafiyeti (madde 9)")
-            note = st.text_input("Özel not (madde 10)")
-            if st.form_submit_button("Ekle") and name.strip():
-                students.append(
-                    Student(
-                        full_name=name.strip(),
-                        gender=gender,
-                        group=group,
-                        class_name=class_name,
-                        program=program,
-                        student_no=student_no.strip(),
-                        dis_exempt=dis_exempt,
-                        note=note.strip(),
-                    )
-                )
-                store.save_students(students)
-                st.rerun()
+    if not students:
+        st.info("Henüz öğrenci yok. Excel'den içe aktarın veya elle ekleyin.")
+        return
 
-    with col_edit, st.expander("✏️ Öğrenci düzenle / sil", expanded=False):
-        if not students:
-            st.caption("Öğrenci yok.")
-            return
+    missing = sum(1 for s in students if not s.gender)
+    if missing:
+        st.warning(
+            f"⚠️ {missing} öğrencinin cinsiyeti eksik — rotasyon için gerekli. "
+            "Aşağıdaki tabloda 'Cinsiyet' sütununu doldurup kaydedin."
+        )
+
+    st.caption(
+        "Hücrelere tıklayarak doğrudan düzenleyin, sonra **Kaydet**'e basın. "
+        "Yasaklı birimler ve silme işlemi alttaki bölümde."
+    )
+    ordered = sorted(students, key=lambda s: (s.group, s.class_name, s.full_name))
+    df = pd.DataFrame(
+        [
+            {
+                "Ad Soyad": s.full_name,
+                "Okul No": s.student_no,
+                "Cinsiyet": gender_label(s.gender) if s.gender else "",
+                "Grup": s.group,
+                "Sınıf": s.class_name,
+                "Bölüm": PROGRAM_LABELS.get(s.program, s.program),
+                "Diş Muaf": s.dis_exempt,
+                "Not": s.note,
+            }
+            for s in ordered
+        ]
+    )
+    edited = st.data_editor(
+        df,
+        column_config={
+            "Ad Soyad": st.column_config.TextColumn(required=True),
+            "Okul No": st.column_config.TextColumn(width="small"),
+            "Cinsiyet": st.column_config.SelectboxColumn(
+                options=_GENDER_OPTIONS, width="small"
+            ),
+            "Grup": st.column_config.SelectboxColumn(
+                options=[1, 2], width="small"
+            ),
+            "Sınıf": st.column_config.SelectboxColumn(options=class_names),
+            "Bölüm": st.column_config.SelectboxColumn(
+                options=list(PROGRAM_LABELS.values())
+            ),
+            "Diş Muaf": st.column_config.CheckboxColumn(
+                help="Madde 9: bu öğrenci Diş Poliklinik'e verilmez"
+            ),
+            "Not": st.column_config.TextColumn(
+                help="Madde 10: özel durum notu"
+            ),
+        },
+        num_rows="fixed",
+        use_container_width=True,
+        hide_index=True,
+        height=420,
+        key="students_editor",
+    )
+    if st.button("💾 Tablodaki değişiklikleri kaydet", type="primary", key="save_students"):
+        for s, (_, row) in zip(ordered, edited.iterrows()):
+            s.full_name = str(row["Ad Soyad"]).strip() or s.full_name
+            s.student_no = str(row["Okul No"] or "").strip()
+            s.gender = _GENDER_TO_CODE.get(row["Cinsiyet"] or "", s.gender)
+            s.group = int(row["Grup"])
+            s.class_name = row["Sınıf"] or s.class_name
+            s.program = _PROGRAM_TO_CODE.get(row["Bölüm"], s.program)
+            s.dis_exempt = bool(row["Diş Muaf"])
+            s.note = str(row["Not"] or "").strip()
+        store.save_students(students)
+        st.success("Öğrenciler kaydedildi. ✅")
+        st.rerun()
+
+    with st.expander("🔧 Yasaklı birimler / öğrenci silme"):
         options = {
             f"{s.full_name} ({s.group}. grup)": s
             for s in sorted(students, key=lambda s: (s.group, s.full_name))
         }
-        pick = st.selectbox("Öğrenci seç", list(options))
+        pick = st.selectbox("Öğrenci seç", list(options), key="student_detail_pick")
         s = options[pick]
         group_units = [u for u in units if u.active and u.group in (0, s.group)]
-        with st.form(f"edit_student_{s.id}"):
-            name = st.text_input("Ad Soyad", value=s.full_name)
-            student_no = st.text_input("Okul / föy no", value=s.student_no)
-            gender = st.selectbox(
-                "Cinsiyet",
-                GENDERS,
-                index=GENDERS.index(s.gender) if s.gender in GENDERS else 0,
-                format_func=GENDER_LABELS.get,
-            )
-            group = st.selectbox("Grup", [1, 2], index=s.group - 1)
-            class_name = st.selectbox(
-                "Sınıf",
-                class_names or [""],
-                index=class_names.index(s.class_name)
-                if s.class_name in class_names
-                else 0,
-            )
-            program = st.selectbox(
-                "Bölüm Türü",
-                PROGRAMS,
-                index=PROGRAMS.index(s.program) if s.program in PROGRAMS else 0,
-                format_func=PROGRAM_LABELS.get,
-            )
-            banned = st.multiselect(
-                "Yasaklı birimler (madde 8)",
-                [u.id for u in group_units],
-                default=[
-                    uid for uid in s.banned_unit_ids
-                    if any(u.id == uid for u in group_units)
-                ],
-                format_func=lambda uid: unit_label(
-                    next(u for u in group_units if u.id == uid)
-                ),
-            )
-            dis_exempt = st.checkbox(
-                "Diş Poliklinik muafiyeti (madde 9)", value=s.dis_exempt
-            )
-            note = st.text_input("Özel not (madde 10)", value=s.note)
-            c1, c2 = st.columns(2)
-            if c1.form_submit_button("💾 Kaydet", type="primary"):
-                s.full_name = name.strip() or s.full_name
-                s.student_no = student_no.strip()
-                s.gender = gender
-                s.group = group
-                s.class_name = class_name
-                s.program = program
-                s.banned_unit_ids = banned
-                s.dis_exempt = dis_exempt
-                s.note = note.strip()
-                store.save_students(students)
-                st.rerun()
-            if c2.form_submit_button("🗑️ Sil"):
-                store.save_students([x for x in students if x.id != s.id])
-                st.rerun()
+        banned = st.multiselect(
+            "Yasaklı birimler (madde 8) — bu öğrenci bu birimlere asla atanmaz",
+            [u.id for u in group_units],
+            default=[
+                uid for uid in s.banned_unit_ids
+                if any(u.id == uid for u in group_units)
+            ],
+            format_func=lambda uid: unit_label(
+                next(u for u in group_units if u.id == uid)
+            ),
+            key=f"banned_{s.id}",
+        )
+        c1, c2 = st.columns(2)
+        if c1.button("💾 Yasakları kaydet", key=f"save_banned_{s.id}"):
+            s.banned_unit_ids = banned
+            store.save_students(students)
+            st.success("Kaydedildi. ✅")
+        if c2.button("🗑️ Öğrenciyi sil", key=f"del_student_{s.id}"):
+            store.save_students([x for x in students if x.id != s.id])
+            st.rerun()
 
 
-# ---------- Birimler ----------
+def _new_student_form(store, students, class_names) -> None:
+    from rotasyon.models import GENDERS
+
+    with st.form("new_student", clear_on_submit=True):
+        name = st.text_input("Ad Soyad")
+        student_no = st.text_input("Okul / föy no")
+        gender = st.selectbox("Cinsiyet", GENDERS, format_func=GENDER_LABELS.get)
+        group = st.selectbox("Grup", [1, 2])
+        class_name = st.selectbox("Sınıf", class_names or [""])
+        program = st.selectbox(
+            "Bölüm Türü", PROGRAMS, format_func=PROGRAM_LABELS.get
+        )
+        if st.form_submit_button("Ekle") and name.strip():
+            students.append(
+                Student(
+                    full_name=name.strip(),
+                    gender=gender,
+                    group=group,
+                    class_name=class_name,
+                    program=program,
+                    student_no=student_no.strip(),
+                )
+            )
+            store.save_students(students)
+            st.rerun()
+
+
+# ======================= BİRİMLER =======================
 
 def _units_tab(store) -> None:
     units = store.load_units()
 
-    if units:
-        import pandas as pd
+    with st.expander("➕ Yeni birim ekle", expanded=not units):
+        _new_unit_form(store, units)
 
-        df = pd.DataFrame(
-            [
-                {
-                    "Birim": u.name,
-                    "Grup": "Her ikisi" if u.group == 0 else f"{u.group}. grup",
-                    "Kontenjan": u.quota,
-                    "Cinsiyet": gender_label(u.gender_restriction)
-                    if u.gender_restriction
-                    else "-",
-                    "Branş": BRANCH_LABELS.get(u.branch_category, "-"),
-                    "Tekli": "✓" if u.single_slot else "",
-                    "Havuz": "✓" if u.pool else "",
-                    "Ebelik Önc.": "✓" if u.ebelik_priority else "",
-                    "Tam Dolar": "✓" if u.must_fill else "",
-                    "Aktif": "✓" if u.active else "✗",
-                }
-                for u in sorted(units, key=lambda u: (u.group, u.name))
-            ]
-        )
-        st.dataframe(df, use_container_width=True, hide_index=True, height=350)
-    else:
+    if not units:
         st.info("Henüz birim yok.")
+        return
 
-    st.divider()
-    col_new, col_edit = st.columns(2)
-    gender_opts = ["", "K", "E"]
-    gender_fmt = lambda g: "Kısıt yok" if not g else GENDER_LABELS[g]  # noqa: E731
+    st.caption(
+        "Kontenjan, cinsiyet kısıtı, branş kategorisi ve bayraklar tabloda "
+        "doğrudan düzenlenir. Pasif birimler solver'a girmez ama geçmişi korur."
+    )
+    ordered = sorted(units, key=lambda u: (u.group, not u.active, u.name))
+    df = pd.DataFrame(
+        [
+            {
+                "Birim": u.name,
+                "Grup": _CODE_TO_GROUP.get(u.group, "1. grup"),
+                "Kontenjan": u.quota,
+                "Cinsiyet": gender_label(u.gender_restriction)
+                if u.gender_restriction else "",
+                "Branş": BRANCH_LABELS.get(u.branch_category, "Diğer"),
+                "Tekli": u.single_slot,
+                "Havuz": u.pool,
+                "Ebelik Önc.": u.ebelik_priority,
+                "Tam Dolar": u.must_fill,
+                "Aktif": u.active,
+            }
+            for u in ordered
+        ]
+    )
+    edited = st.data_editor(
+        df,
+        column_config={
+            "Birim": st.column_config.TextColumn(required=True),
+            "Grup": st.column_config.SelectboxColumn(options=_GROUP_OPTIONS, width="small"),
+            "Kontenjan": st.column_config.NumberColumn(
+                min_value=0, max_value=50, step=1, width="small",
+                help="Madde 12: aylık kaç öğrenci alır",
+            ),
+            "Cinsiyet": st.column_config.SelectboxColumn(
+                options=_GENDER_OPTIONS, width="small",
+                help="Madde 2/3: yalnız bu cinsiyetten öğrenci atanır",
+            ),
+            "Branş": st.column_config.SelectboxColumn(
+                options=list(BRANCH_LABELS.values()),
+                help="Madde 6/7: dönem sonu zorunlulukları bu kategoriye bakar",
+            ),
+            "Tekli": st.column_config.CheckboxColumn(
+                help="Madde 4: önce doldurulan tekli birim"
+            ),
+            "Havuz": st.column_config.CheckboxColumn(
+                help="Madde 4: kat/YB/FTR/acil eşit dağıtım havuzu"
+            ),
+            "Ebelik Önc.": st.column_config.CheckboxColumn(
+                help="Madde 18: ebelik öğrencisi öncelikli"
+            ),
+            "Tam Dolar": st.column_config.CheckboxColumn(
+                help="Madde 17: kontenjan her ay tam dolmak zorunda"
+            ),
+            "Aktif": st.column_config.CheckboxColumn(),
+        },
+        num_rows="fixed",
+        use_container_width=True,
+        hide_index=True,
+        height=420,
+        key="units_editor",
+    )
+    if st.button("💾 Tablodaki değişiklikleri kaydet", type="primary", key="save_units"):
+        for u, (_, row) in zip(ordered, edited.iterrows()):
+            u.name = str(row["Birim"]).strip() or u.name
+            u.group = _GROUP_TO_CODE.get(row["Grup"], u.group)
+            u.quota = int(row["Kontenjan"])
+            u.gender_restriction = _GENDER_TO_CODE.get(row["Cinsiyet"] or "", "")
+            u.branch_category = _BRANCH_TO_CODE.get(row["Branş"], u.branch_category)
+            u.single_slot = bool(row["Tekli"])
+            u.pool = bool(row["Havuz"])
+            u.ebelik_priority = bool(row["Ebelik Önc."])
+            u.must_fill = bool(row["Tam Dolar"])
+            u.active = bool(row["Aktif"])
+        store.save_units(units)
+        st.success("Birimler kaydedildi. ✅")
+        st.rerun()
 
-    with col_new, st.expander("➕ Yeni birim ekle", expanded=not units):
-        with st.form("new_unit", clear_on_submit=True):
-            name = st.text_input("Birim adı")
-            group = st.selectbox(
-                "Grup", [1, 2, 0],
-                format_func=lambda g: "Her ikisi" if g == 0 else f"{g}. grup",
-            )
-            quota = st.number_input("Aylık kontenjan", 1, 50, 1)
-            gender = st.selectbox(
-                "Cinsiyet kısıtı (madde 2/3)", gender_opts, format_func=gender_fmt
-            )
-            branch = st.selectbox(
-                "Branş kategorisi (madde 6/7)",
-                BRANCH_CATEGORIES,
-                format_func=BRANCH_LABELS.get,
-            )
-            single = st.checkbox("Tekli birim — önce doldurulur (madde 4)")
-            pool = st.checkbox("Havuz birimi — eşit dağıtım (madde 4)")
-            ebelik = st.checkbox("Ebelik öncelikli (madde 18)")
-            must_fill = st.checkbox("Kontenjan tam dolmak zorunda (madde 17)")
-            if st.form_submit_button("Ekle") and name.strip():
-                units.append(
-                    Unit(
-                        name=name.strip(),
-                        group=group,
-                        quota=int(quota),
-                        gender_restriction=gender,
-                        branch_category=branch,
-                        single_slot=single,
-                        pool=pool,
-                        ebelik_priority=ebelik,
-                        must_fill=must_fill,
-                    )
-                )
-                store.save_units(units)
-                st.rerun()
-
-    with col_edit, st.expander("✏️ Birim düzenle / sil", expanded=False):
-        if not units:
-            st.caption("Birim yok.")
-            return
+    with st.expander("🗑️ Birim silme"):
         options = {
-            f"{unit_label(u)} ({'her ikisi' if u.group == 0 else str(u.group) + '. grup'})"
+            f"{unit_label(u)} ({_CODE_TO_GROUP.get(u.group)})"
             + ("" if u.active else " [pasif]"): u
-            for u in sorted(units, key=lambda u: (u.group, u.name))
+            for u in ordered
         }
-        pick = st.selectbox("Birim seç", list(options))
+        pick = st.selectbox("Birim seç", list(options), key="unit_del_pick")
         u = options[pick]
-        with st.form(f"edit_unit_{u.id}"):
-            name = st.text_input("Birim adı", value=u.name)
-            group = st.selectbox(
-                "Grup", [1, 2, 0], index=[1, 2, 0].index(u.group),
-                format_func=lambda g: "Her ikisi" if g == 0 else f"{g}. grup",
-            )
-            quota = st.number_input("Aylık kontenjan", 0, 50, u.quota)
-            gender = st.selectbox(
-                "Cinsiyet kısıtı (madde 2/3)",
-                gender_opts,
-                index=gender_opts.index(u.gender_restriction),
-                format_func=gender_fmt,
-            )
-            branch = st.selectbox(
-                "Branş kategorisi (madde 6/7)",
-                BRANCH_CATEGORIES,
-                index=BRANCH_CATEGORIES.index(u.branch_category),
-                format_func=BRANCH_LABELS.get,
-            )
-            single = st.checkbox("Tekli birim (madde 4)", value=u.single_slot)
-            pool = st.checkbox("Havuz birimi (madde 4)", value=u.pool)
-            ebelik = st.checkbox("Ebelik öncelikli (madde 18)", value=u.ebelik_priority)
-            must_fill = st.checkbox("Tam dolmak zorunda (madde 17)", value=u.must_fill)
-            active = st.checkbox("Aktif", value=u.active)
-            c1, c2 = st.columns(2)
-            if c1.form_submit_button("💾 Kaydet", type="primary"):
-                u.name = name.strip() or u.name
-                u.group = group
-                u.quota = int(quota)
-                u.gender_restriction = gender
-                u.branch_category = branch
-                u.single_slot = single
-                u.pool = pool
-                u.ebelik_priority = ebelik
-                u.must_fill = must_fill
-                u.active = active
-                store.save_units(units)
+        if st.button("🗑️ Sil", key=f"del_unit_{u.id}"):
+            assignments = store.load_assignments()
+            if any(a.unit_id == u.id for a in assignments):
+                st.error(
+                    "Bu birime ait atama geçmişi var; silmek yerine tabloda "
+                    "'Aktif' işaretini kaldırın (geçmiş korunur)."
+                )
+            else:
+                store.save_units([x for x in units if x.id != u.id])
                 st.rerun()
-            if c2.form_submit_button("🗑️ Sil"):
-                assignments = store.load_assignments()
-                if any(a.unit_id == u.id for a in assignments):
-                    st.error(
-                        "Bu birime ait atama geçmişi var; silmek yerine "
-                        "'Aktif' işaretini kaldırın (geçmiş korunur)."
-                    )
-                else:
-                    store.save_units([x for x in units if x.id != u.id])
-                    st.rerun()
 
 
-# ---------- Sınıflar ----------
+def _new_unit_form(store, units) -> None:
+    with st.form("new_unit", clear_on_submit=True):
+        name = st.text_input("Birim adı")
+        c1, c2 = st.columns(2)
+        group = c1.selectbox(
+            "Grup", [1, 2, 0],
+            format_func=lambda g: _CODE_TO_GROUP[g],
+        )
+        quota = c2.number_input("Aylık kontenjan", 1, 50, 1)
+        c3, c4 = st.columns(2)
+        gender = c3.selectbox(
+            "Cinsiyet kısıtı", _GENDER_OPTIONS,
+            format_func=lambda g: g or "Kısıt yok",
+        )
+        branch = c4.selectbox(
+            "Branş kategorisi", BRANCH_CATEGORIES, format_func=BRANCH_LABELS.get
+        )
+        single = st.checkbox("Tekli birim — önce doldurulur (madde 4)")
+        pool = st.checkbox("Havuz birimi — eşit dağıtım (madde 4)")
+        ebelik = st.checkbox("Ebelik öncelikli (madde 18)")
+        must_fill = st.checkbox("Kontenjan tam dolmak zorunda (madde 17)")
+        if st.form_submit_button("Ekle") and name.strip():
+            units.append(
+                Unit(
+                    name=name.strip(),
+                    group=group,
+                    quota=int(quota),
+                    gender_restriction=_GENDER_TO_CODE.get(gender, ""),
+                    branch_category=branch,
+                    single_slot=single,
+                    pool=pool,
+                    ebelik_priority=ebelik,
+                    must_fill=must_fill,
+                )
+            )
+            store.save_units(units)
+            st.rerun()
+
+
+# ======================= SINIFLAR =======================
 
 def _classes_tab(store) -> None:
     classes = store.load_classes()
     st.caption(
-        "Sınıf sayısı ve adları serbesttir (madde 13); rengi yıllık görünümde "
-        "öğrenci adını vurgular (madde 14)."
+        "Sınıf sayısı ve adları serbesttir (madde 13); renk, yıllık Excel "
+        "görünümünde öğrenci adını vurgular (madde 14)."
     )
     for c in classes:
         col1, col2, col3 = st.columns([3, 1, 1])
         col1.markdown(
-            f"<span style='background:{c.color_hex or '#eee'};"
+            f"<span style='background:{c.color_hex or '#eee'};color:#111;"
             f"padding:2px 12px;border-radius:4px'>{c.name}</span>",
             unsafe_allow_html=True,
         )
@@ -332,7 +381,7 @@ def _classes_tab(store) -> None:
 
     with st.form("new_class", clear_on_submit=True):
         c1, c2, c3 = st.columns([3, 1, 1])
-        name = c1.text_input("Sınıf adı", placeholder="örn. A")
+        name = c1.text_input("Sınıf adı", placeholder="örn. 11/A")
         color = c2.color_picker("Renk", "#FFFF00")
         if c3.form_submit_button("Ekle") and name.strip():
             if any(c.name == name.strip() for c in classes):
@@ -341,3 +390,141 @@ def _classes_tab(store) -> None:
                 classes.append(ClassGroup(name=name.strip(), color_hex=color))
                 store.save_classes(classes)
                 st.rerun()
+
+
+# ======================= KURALLAR =======================
+
+_BUILTIN_RULES_SUMMARY = """
+1. Aynı bölüme ikinci kez gidilmez • 2-3. Kırmızı **k/e** birimlere yalnız o
+cinsiyet • 4. Tekli birimler önce dolar, kalanlar havuza eşit dağılır •
+5. Gruplar bağımsız • 6. Haziran'a kadar herkes dahili/cerrahi/YB/palyatif
+görür • 7. Ebelik öğrencileri doğum salonu görür • 8. Yasaklı birimler •
+9. Diş muafiyeti • 10. Özel not • 11. Gün bazlı görevlendirme notu •
+12. Kontenjanlar düzenlenebilir • 13-14. Sınıflar ve renkleri • 15. Tek ay
+görünümü renksiz • 16. Öğrenci geçmişi • 17. FTR'ye 1 kız 1 erkek •
+18. Doğum birimlerinde ebelik önceliği • 19. Aynı ikili tekrar aynı birimde
+olmaz.
+
+Bu kurallar öğrenci/birim tanımlarındaki alanlarla (cinsiyet kısıtı, branş
+kategorisi, yasaklı birimler...) beslenir ve her zaman uygulanır.
+"""
+
+
+def _describe_rule(rule, students_by_id, units_by_id, months) -> str:
+    names = [
+        students_by_id[sid].full_name
+        for sid in rule.student_ids
+        if sid in students_by_id
+    ]
+    who = ", ".join(names) if names else "(öğrenci silinmiş)"
+    if rule.type == RULE_SABIT_ATAMA:
+        unit = units_by_id.get(rule.unit_id)
+        return (
+            f"📌 **Sabit atama:** {who} → {rule.month} ayında "
+            f"**{unit.name if unit else '(silinmiş birim)'}**"
+        )
+    if rule.type == "ayri_tut":
+        return f"↔️ **Ayrı tut:** {who} aynı birime düşmesin"
+    return f"🤝 **Birlikte tut:** {who} hep aynı birimde olsun"
+
+
+def _rules_tab(store) -> None:
+    students = store.load_students()
+    units = store.load_units()
+    months = store.load_settings()["months"]
+    rules = store.load_custom_rules()
+    students_by_id = {s.id: s for s in students}
+    units_by_id = {u.id: u for u in units}
+
+    st.caption(
+        "Yerleşik 19 kural her zaman uygulanır. Buraya eklediğiniz özel "
+        "kurallar hem rotasyon oluştururken hem kural denetiminde dikkate alınır."
+    )
+    with st.expander("ℹ️ Yerleşik kurallar (özet)"):
+        st.markdown(_BUILTIN_RULES_SUMMARY)
+
+    if rules:
+        st.subheader("Tanımlı özel kurallar")
+        for rule in rules:
+            c1, c2, c3 = st.columns([6, 1, 1])
+            desc = _describe_rule(rule, students_by_id, units_by_id, months)
+            if rule.note:
+                desc += f" — _{rule.note}_"
+            c1.markdown(desc)
+            new_active = c2.toggle(
+                "Aktif", value=rule.active, key=f"rule_active_{rule.id}"
+            )
+            if new_active != rule.active:
+                rule.active = new_active
+                store.save_custom_rules(rules)
+            if c3.button("🗑️", key=f"rule_del_{rule.id}", help="Kuralı sil"):
+                store.save_custom_rules([r for r in rules if r.id != rule.id])
+                st.rerun()
+        st.divider()
+
+    st.subheader("➕ Yeni kural ekle")
+    if not students:
+        st.info("Kural tanımlamak için önce öğrenci ekleyin.")
+        return
+    rtype = st.selectbox(
+        "Kural türü",
+        CUSTOM_RULE_TYPES,
+        format_func=CUSTOM_RULE_LABELS.get,
+        key="new_rule_type",
+    )
+    student_options = {
+        f"{s.full_name} ({s.group}. grup)": s.id
+        for s in sorted(students, key=lambda s: (s.group, s.full_name))
+    }
+    note = ""
+    if rtype == RULE_SABIT_ATAMA:
+        c1, c2, c3 = st.columns(3)
+        who = c1.selectbox("Öğrenci", list(student_options), key="rule_student")
+        month = c2.selectbox("Ay", months, key="rule_month")
+        sid = student_options[who]
+        student = students_by_id[sid]
+        unit_opts = {
+            unit_label(u): u.id
+            for u in sorted(units, key=lambda u: u.name)
+            if u.active and u.quota > 0 and u.group in (0, student.group)
+        }
+        unit_pick = c3.selectbox("Birim", list(unit_opts), key="rule_unit")
+        note = st.text_input("Not (isteğe bağlı)", key="rule_note_sabit")
+        if st.button("Kuralı ekle", type="primary", key="add_rule_sabit"):
+            rules.append(
+                CustomRule(
+                    type=RULE_SABIT_ATAMA,
+                    student_ids=[sid],
+                    unit_id=unit_opts[unit_pick],
+                    month=month,
+                    note=note.strip(),
+                )
+            )
+            store.save_custom_rules(rules)
+            st.success("Kural eklendi. ✅")
+            st.rerun()
+    else:
+        picks = st.multiselect(
+            "Öğrenciler (en az 2)", list(student_options), key="rule_students"
+        )
+        note = st.text_input("Not (isteğe bağlı)", key="rule_note_pair")
+        groups = {students_by_id[student_options[p]].group for p in picks}
+        if len(groups) > 1:
+            st.warning(
+                "Seçilen öğrenciler farklı gruplarda — gruplar zaten ayrı "
+                "planlandığı için bu kural etkisiz olur."
+            )
+        if st.button(
+            "Kuralı ekle", type="primary",
+            disabled=len(picks) < 2, key="add_rule_pair",
+        ):
+            rules.append(
+                CustomRule(
+                    type=rtype,
+                    student_ids=[student_options[p] for p in picks],
+                    note=note.strip(),
+                )
+            )
+            store.save_custom_rules(rules)
+            st.success("Kural eklendi. ✅")
+            st.rerun()

@@ -62,6 +62,18 @@ def render(store) -> None:
         )
         return
 
+    custom_rules = [r for r in store.load_custom_rules() if r.active]
+    month_pins = [
+        r for r in custom_rules
+        if r.type == "sabit_atama" and r.month == month
+        and any(sid in group_ids for sid in r.student_ids)
+    ]
+    if month_pins:
+        st.info(
+            f"📏 Bu ay için {len(month_pins)} sabit atama kuralı uygulanacak "
+            "(Veri Yönetimi → Kurallar)."
+        )
+
     tab_auto, tab_semi, tab_wizard = st.tabs(
         ["⚡ Tam Otomatik", "✏️ Yarı Otomatik", "🧭 Adım Adım Sihirbaz"]
     )
@@ -76,6 +88,7 @@ def render(store) -> None:
         history=history,
         existing=existing,
         group_ids=group_ids,
+        custom_rules=custom_rules,
     )
     with tab_auto:
         _auto_mode(ctx)
@@ -106,6 +119,7 @@ def _solve(ctx, locked=None, reroll=False):
             settings=ctx["settings"],
             locked=locked,
             random_seed=seed,
+            custom_rules=ctx["custom_rules"],
         )
 
 
@@ -132,7 +146,11 @@ def _check_proposal(ctx, mapping: dict[str, str]):
         for sid, uid in mapping.items()
     ]
     return check_all(
-        ctx["students"], ctx["units"], ctx["history"] + proposed, ctx["months"]
+        ctx["students"],
+        ctx["units"],
+        ctx["history"] + proposed,
+        ctx["months"],
+        custom_rules=ctx["custom_rules"],
     )
 
 
