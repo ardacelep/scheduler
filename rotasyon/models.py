@@ -39,7 +39,16 @@ BRANCH_LABELS = {
     BRANCH_DIGER: "Diğer",
 }
 # Madde 6: Haziran'a kadar her öğrenci bu kategorilerden en az birini görmüş olmalı.
+# (Eski birleşik kural; yeni ayrıntılı zorunluluklar DEFAULT_SETTINGS
+# "season_requirements" listesinde branş bazında tanımlanır.)
 CORE_BRANCHES = (BRANCH_DAHILI, BRANCH_CERRAHI, BRANCH_YOGUN_BAKIM, BRANCH_PALYATIF)
+
+# Birim yoğunluğu ("BÖLÜMLER VE ÖZELLİKLERİ" belgesi): bir öğrenci peş peşe
+# iki ay yoğun bölüme ya da peş peşe iki ay hafif bölüme verilmez.
+INTENSITY_YOGUN = "yogun"
+INTENSITY_HAFIF = "hafif"
+INTENSITIES = ("", INTENSITY_YOGUN, INTENSITY_HAFIF)
+INTENSITY_LABELS = {"": "—", INTENSITY_YOGUN: "Yoğun", INTENSITY_HAFIF: "Hafif"}
 
 # Öğrenci bölüm türü (madde 7, 18). SML listelerindeki ALAN/DAL karşılıkları:
 # "Hemşire Yardımcılığı" → hemsirelik, "Ebe Yardımcılığı" → ebelik,
@@ -118,6 +127,8 @@ class Unit:
     ebelik_priority: bool = False  # madde 18: ebelik öğrencisi öncelikli
     must_fill: bool = False  # madde 17: kontenjan tam dolmak zorunda (FTR k/e çifti)
     active: bool = True  # listeden çıkarmak yerine pasifleştirme
+    intensity: str = ""  # "yogun"/"hafif"/"" — peş peşe yasağı (madde 20)
+    reserve: bool = False  # gri/yedek birim: yalnız ihtiyaç olursa öğrenci verilir
     id: str = field(default_factory=_new_id)
 
     @property
@@ -198,6 +209,16 @@ DEFAULT_SETTINGS: dict = {
     # FTR kuralı (madde 17) solver'da birim adına değil bu bayrağa göre çalışır:
     # gender_restriction'lı iki ayrı FTR birimi (k/e) tanımlanır, ikisinin de
     # dolu olması sağlanır. Bu ayar sadece uyarı eşiği vb. için yer tutucu.
+    # Sezon sonuna kadar HER öğrencinin görmüş olması gereken branşlar
+    # ("BÖLÜMLER VE ÖZELLİKLERİ" belgesi): bir cerrahi, bir dahili, bir
+    # yoğun bakım (YB/B-C-D) ve bir palyatif. Liste serbestçe düzenlenebilir;
+    # ebelik→doğum salonu zorunluluğu (madde 7) ayrıca her zaman uygulanır.
+    "season_requirements": [
+        {"branch": BRANCH_CERRAHI},
+        {"branch": BRANCH_DAHILI},
+        {"branch": BRANCH_YOGUN_BAKIM},
+        {"branch": BRANCH_PALYATIF},
+    ],
     "solver": {
         # Ölçüm: en iyi çözüm ilk 1-2 saniyede bulunuyor, kalan süre yalnız
         # optimallik kanıtına gidiyor (skor 60 sn'de bile değişmedi).
@@ -213,6 +234,8 @@ DEFAULT_SETTINGS: dict = {
             "ebelik_priority": 20,    # madde 18
             "core_branch_early": 2,   # madde 6/7'yi erken aylarda karşılama bonusu
             "single_slot_fill": 50,   # madde 4: tekli birimler boş kalmasın
+            "reserve_use": 15,        # gri/yedek birim yalnız ihtiyaç olursa
+            "gender_balance": 2,      # havuz birimlerinde kız/erkek dengesi
         },
     },
 }

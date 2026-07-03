@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+from datetime import datetime
 from pathlib import Path
 from typing import Callable, TypeVar
 
@@ -219,6 +220,29 @@ class SeasonManager:
             store.save_settings(source.load_settings())
         self.set_active(dir_name)
         return store
+
+    def delete(self, name: str) -> None:
+        """Sezonu siler — kalıcı silme yerine data/trash/ altına taşır.
+
+        Yanlışlıkla silmede veri kurtarılabilsin diye klasör çöpe taşınır;
+        aktif sezon silinirse kalan son sezon aktif yapılır.
+        """
+        if name not in self.list_seasons():
+            raise ValueError(f"Sezon bulunamadı: {name}")
+        trash = self.root / "trash"
+        trash.mkdir(parents=True, exist_ok=True)
+        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        shutil.move(
+            str(self.seasons_dir / name), trash / f"{name}_{stamp}"
+        )
+        app = self._read_app()
+        if app.get("active_season") == name:
+            seasons = self.list_seasons()
+            if seasons:
+                app["active_season"] = seasons[-1]
+            else:
+                app.pop("active_season", None)
+            self._write_app(app)
 
     def store(self, name: str | None = None) -> Store:
         """Verilen (veya aktif) sezonun Store'unu döndürür."""

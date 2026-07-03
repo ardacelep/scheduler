@@ -236,6 +236,7 @@ def _check_proposal(ctx, mapping: dict[str, str]):
         ctx["history"] + proposed,
         ctx["months"],
         custom_rules=ctx["custom_rules"],
+        settings=ctx["settings"],
     )
 
 

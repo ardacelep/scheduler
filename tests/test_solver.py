@@ -96,7 +96,11 @@ def test_rule4_single_slot_filled_first(settings):
     assert sum(1 for uid in r.assignments.values() if uid == single.id) == 1
 
 
-def test_rule6_core_branch_deadline_on_last_month(settings):
+def test_rule6_branch_deadline_on_last_month(settings):
+    """Sezon zorunluluğu: dahili görmemiş öğrenci son ayda dahiliye
+    zorlanır. Senaryo izole kalsın diye yalnız 'dahili' zorunluluğu
+    tanımlanır; geçmişteki PASİF birimin kategorisi yine de sayılmalı."""
+    settings["season_requirements"] = [{"branch": BRANCH_DAHILI}]
     students = [
         Student(full_name="Görmüş", gender=FEMALE, group=1),
         Student(full_name="Görmemiş", gender=FEMALE, group=1),
@@ -104,21 +108,55 @@ def test_rule6_core_branch_deadline_on_last_month(settings):
     dah = Unit(name="4.KAT DAH.", group=1, quota=1, branch_category=BRANCH_DAHILI)
     dis = Unit(name="DİŞ", group=1, quota=1, branch_category=BRANCH_DIGER)
     # geçmişteki birim artık pasif — kategori geçmişi yine de sayılmalı
-    cerr = Unit(
-        name="1.KAT CERR.", group=1, quota=2,
-        branch_category=BRANCH_CERRAHI, active=False,
+    dah_old = Unit(
+        name="ZEMİN DAH.", group=1, quota=2,
+        branch_category=BRANCH_DAHILI, active=False,
     )
-    # "Görmüş" geçmişte cerrahi görmüş; "Görmemiş" hiç core görmemiş
+    # "Görmüş" geçmişte dahili görmüş; "Görmemiş" hiç görmemiş
     history = [
-        make_assignment(students[0], cerr, "EYLÜL"),
+        make_assignment(students[0], dah_old, "EYLÜL"),
         make_assignment(students[1], dis, "EYLÜL"),
     ]
     dis2 = Unit(name="EVRAK KAYIT", group=1, quota=1, branch_category=BRANCH_DIGER)
     r = solve_month(
-        students, [dah, dis2, cerr], "HAZİRAN", history=history, settings=settings
+        students, [dah, dis2, dah_old], "HAZİRAN", history=history, settings=settings
     )
     assert r.ok
     assert r.assignments[students[1].id] == dah.id
+
+
+def test_rule6_required_branches_counted_separately(settings):
+    """Yeni belge: cerrahi VE dahili AYRI AYRI görülmeli. Cerrahi görmüş
+    ama dahili görmemiş iki öğrenci son ayda tek dahili kontenjanına
+    sığamaz → net Türkçe nedenle infeasible."""
+    settings["season_requirements"] = [
+        {"branch": BRANCH_CERRAHI},
+        {"branch": BRANCH_DAHILI},
+    ]
+    students = [
+        Student(full_name="A", gender=FEMALE, group=1),
+        Student(full_name="B", gender=FEMALE, group=1),
+    ]
+    cerr = Unit(name="1.KAT CERR.", group=1, quota=2, branch_category=BRANCH_CERRAHI)
+    dah = Unit(name="4.KAT DAH.", group=1, quota=1, branch_category=BRANCH_DAHILI)
+    history = [
+        make_assignment(students[0], cerr, "EYLÜL"),
+        make_assignment(students[1], cerr, "EYLÜL"),
+    ]
+    r = solve_month(
+        students, [cerr, dah], "HAZİRAN", history=history, settings=settings
+    )
+    assert not r.ok
+    assert any("Dahili" in reason for reason in r.infeasible_reasons)
+
+
+def test_requirement_skipped_if_branch_has_no_units(settings):
+    """Grupta hiç palyatif birimi yoksa palyatif zorunluluğu uygulanmaz —
+    zorunluluk listesi çözümü kilitleyemez."""
+    students = [Student(full_name="A", gender=FEMALE, group=1)]
+    dis = Unit(name="DİŞ", group=1, quota=1)
+    r = solve_month(students, [dis], "HAZİRAN", history=[], settings=settings)
+    assert r.ok
 
 
 def test_rule7_ebelik_dogum_salonu_deadline(settings):

@@ -21,8 +21,8 @@ from .models import (
     CustomRule,
     Student,
     Unit,
-    CORE_BRANCHES,
     BRANCH_DOGUM_SALONU,
+    BRANCH_LABELS,
     PROGRAM_EBELIK,
     RULE_AYRI_TUT,
     RULE_BIRLIKTE_TUT,
@@ -59,10 +59,14 @@ _REASON_LABELS = {
            "öğrencilerle doldurulamıyor olabilir.",
     "must_fill": "Madde 17 (FTR'ye 1 kız 1 erkek): FTR çifti için uygun kız/erkek "
                  "öğrenci kalmamış olabilir.",
-    "deadline_core": "Madde 6 (Haziran'a kadar dahili/cerrahi/YB/palyatif görme): "
-                     "son aylarda bu birimlerde yeterli kontenjan yok.",
+    "deadline_core": "Sezon zorunlulukları (her öğrenci sezon boyunca cerrahi/"
+                     "dahili/yoğun bakım/palyatif görmeli): kalan aylarda bu "
+                     "birimlerde yeterli kontenjan yok.",
     "deadline_dogum": "Madde 7 (ebelik öğrencileri doğum salonu görme): doğum "
                       "salonu kontenjanı ebelik öğrencilerine yetmiyor.",
+    "intensity": "Peş peşe yoğun/hafif yasağı: önceki (veya sonraki) ayın "
+                 "yoğunluğu bu ayda aynı türden birimleri kapatıyor, uygun "
+                 "birim kalmıyor olabilir.",
     "locked": "Elle sabitlenen atamalar diğer kurallarla çelişiyor.",
     "custom": "Özel kurallar (Veri Yönetimi → Kurallar): ayrı/birlikte tutma "
               "veya sabit atamalar diğer kurallarla çelişiyor olabilir.",
@@ -91,7 +95,12 @@ def _remaining_months(month: str, months: list[str]) -> int:
     return len(months) - months.index(month) - 1
 
 
-def _is_eligible(s: Student, u: Unit, visited_keys: set[str]) -> bool:
+def _is_eligible(
+    s: Student,
+    u: Unit,
+    visited_keys: set[str],
+    blocked_intensities: set[str] = frozenset(),
+) -> bool:
     if u.gender_restriction and s.gender and s.gender != u.gender_restriction:
         return False
     if normalize_key(u.name) in visited_keys:
@@ -99,6 +108,8 @@ def _is_eligible(s: Student, u: Unit, visited_keys: set[str]) -> bool:
     if u.id in s.banned_unit_ids:
         return False
     if s.dis_exempt and "DİŞ" in normalize_key(u.name):
+        return False
+    if u.intensity and u.intensity in blocked_intensities:
         return False
     return True
 
@@ -108,14 +119,17 @@ def _prefeasibility_reasons(
     units: list[Unit],
     visited: dict[str, set[str]],
     remaining: int,
-    core_needed: list[Student],
-    dogum_needed: list[Student],
+    unmet: dict[str, list[str]],
+    blocked_intensity: dict[str, set[str]],
 ) -> list[str]:
     """CP-SAT'tan önce ucuz, kesin çelişki kontrolleri.
 
     Buradan dönen her madde tek başına çözümsüzlüğü kanıtlar; kullanıcıya
     unsat core'dan çok daha somut bir açıklama verir ("DİŞ için uygun
     öğrenci kalmadı" gibi).
+
+    `unmet`: öğrenci başına, sezon sonuna kadar hâlâ görülmesi gereken
+    branşlar (settings.season_requirements + madde 7 doğum salonu).
     """
     reasons: list[str] = []
     total_quota = sum(u.quota for u in units)
@@ -131,7 +145,11 @@ def _prefeasibility_reasons(
         need = u.quota if (exact_fill or u.must_fill) else 0
         if not need:
             continue
-        eligible = sum(1 for s in students if _is_eligible(s, u, visited[s.id]))
+        eligible = sum(
+            1
+            for s in students
+            if _is_eligible(s, u, visited[s.id], blocked_intensity[s.id])
+        )
         if eligible < need:
             why = "tam dolmak zorunda (madde 17)" if u.must_fill and not exact_fill \
                 else "toplam kontenjan öğrenci sayısına eşit olduğundan her birim dolmalı"
@@ -142,31 +160,40 @@ def _prefeasibility_reasons(
             )
 
     for s in students:
-        if not any(_is_eligible(s, u, visited[s.id]) for u in units):
+        if not any(
+            _is_eligible(s, u, visited[s.id], blocked_intensity[s.id])
+            for u in units
+        ):
             reasons.append(
-                f"{s.full_name} için atanabilecek birim kalmadı (tekrar yasağı "
-                "ve kısıtlar tüm birimleri eliyor)."
+                f"{s.full_name} için atanabilecek birim kalmadı (tekrar yasağı, "
+                "peş peşe yoğun/hafif yasağı ve kısıtlar tüm birimleri eliyor)."
+            )
+
+    # Sezon zorunlulukları: ayda en çok 1 branş karşılanabilir → kalan ay
+    # sayısı, karşılanmamış zorunluluk sayısını taşımıyorsa çözüm yoktur.
+    for s in students:
+        if len(unmet[s.id]) > remaining + 1:
+            labels = ", ".join(BRANCH_LABELS.get(b, b) for b in unmet[s.id])
+            reasons.append(
+                f"{s.full_name}: kalan {remaining + 1} ayda karşılanması "
+                f"gereken {len(unmet[s.id])} sezon zorunluluğu var ({labels}) "
+                "— ayda en fazla biri karşılanabilir, yetişmez."
             )
 
     if remaining == 0:
-        core_quota = sum(
-            u.quota for u in units if u.branch_category in CORE_BRANCHES
-        )
-        if len(core_needed) > core_quota:
-            reasons.append(
-                f"Madde 6: son ayda dahili/cerrahi/YB/palyatif görmesi gereken "
-                f"{len(core_needed)} öğrenci var ama bu birimlerin toplam "
-                f"kontenjanı {core_quota}."
-            )
-        dogum_quota = sum(
-            u.quota for u in units if u.branch_category == BRANCH_DOGUM_SALONU
-        )
-        if len(dogum_needed) > dogum_quota:
-            reasons.append(
-                f"Madde 7: son ayda doğum salonu görmesi gereken "
-                f"{len(dogum_needed)} ebelik öğrencisi var ama doğum salonu "
-                f"kontenjanı {dogum_quota}."
-            )
+        # Son ay: her branş için, o branşı görmek zorunda olanlar kontenjana sığmalı
+        need_by_branch: dict[str, int] = defaultdict(int)
+        for s in students:
+            for b in unmet[s.id]:
+                need_by_branch[b] += 1
+        for b, count in need_by_branch.items():
+            quota = sum(u.quota for u in units if u.branch_category == b)
+            if count > quota:
+                reasons.append(
+                    f"Son ayda {BRANCH_LABELS.get(b, b)} görmesi gereken "
+                    f"{count} öğrenci var ama bu branştaki birimlerin toplam "
+                    f"kontenjanı {quota}."
+                )
     return reasons
 
 
@@ -232,34 +259,57 @@ def solve_month(
     }
     # Aynı ayda başka gruba/aya ait çakışan atama olmadığı varsayılır (UI temizler).
 
-    def _has_core_history(s: Student) -> bool:
-        cats = {
+    # ---- sezon zorunlulukları: her öğrenci sezon boyunca hangi branşları
+    # görmüş olmalı? (settings.season_requirements; yalnız bu grupta o
+    # branştan aktif birim varsa uygulanır — palyatifsiz bir hastanede
+    # palyatif zorunluluğu çözümü kilitlemesin.) Madde 7 (ebelik → doğum
+    # salonu) her zaman ayrıca eklenir.
+    seen_branches: dict[str, set[str]] = {}
+    for s in students:
+        seen_branches[s.id] = {
             catalog_by_id[a.unit_id].branch_category
             for a in history
             if a.student_id == s.id and a.unit_id in catalog_by_id
         }
-        return bool(cats & set(CORE_BRANCHES))
-
-    def _has_dogum_history(s: Student) -> bool:
-        return any(
-            a.student_id == s.id
-            and a.unit_id in catalog_by_id
-            and catalog_by_id[a.unit_id].branch_category == BRANCH_DOGUM_SALONU
-            for a in history
-        )
-
-    core_needed = [s for s in students if not _has_core_history(s)]
-    dogum_needed = [
-        s
-        for s in students
-        if s.program == PROGRAM_EBELIK and not _has_dogum_history(s)
+    available_branches = {u.branch_category for u in units}
+    req_branches = [
+        r["branch"]
+        for r in settings.get("season_requirements", [])
+        if r.get("branch") and r["branch"] in available_branches
     ]
+    unmet: dict[str, list[str]] = {}
+    for s in students:
+        needs = [b for b in req_branches if b not in seen_branches[s.id]]
+        if (
+            s.program == PROGRAM_EBELIK
+            and BRANCH_DOGUM_SALONU not in seen_branches[s.id]
+        ):
+            needs.append(BRANCH_DOGUM_SALONU)
+        unmet[s.id] = needs
+
+    # ---- peş peşe yoğun/hafif yasağı: komşu ayların yoğunluğu bu ayda
+    # aynı türden birimleri kapatır (araya ay eklenirken iki yön de denetlenir)
+    blocked_intensity: dict[str, set[str]] = {s.id: set() for s in students}
+    if month in months:
+        idx = months.index(month)
+        neighbors = {
+            months[i] for i in (idx - 1, idx + 1) if 0 <= i < len(months)
+        }
+        for a in history:
+            if (
+                a.month in neighbors
+                and a.student_id in blocked_intensity
+                and a.unit_id in catalog_by_id
+            ):
+                inten = catalog_by_id[a.unit_id].intensity
+                if inten:
+                    blocked_intensity[a.student_id].add(inten)
 
     # CP-SAT'tan önce ucuz kesin kontroller: çelişki buradan yakalanırsa
     # somut Türkçe açıklamayla hemen dönülür (solver'ın kanıt araması gereksiz).
     if not _diagnostic:
         pre = _prefeasibility_reasons(
-            students, units, visited, remaining, core_needed, dogum_needed
+            students, units, visited, remaining, unmet, blocked_intensity
         )
         if pre:
             return SolveResult(status="INFEASIBLE", infeasible_reasons=pre)
@@ -281,6 +331,9 @@ def solve_month(
                 model.Add(var == 0).OnlyEnforceIf(assumptions["banned"])
             if s.dis_exempt and "DİŞ" in normalize_key(u.name):
                 model.Add(var == 0).OnlyEnforceIf(assumptions["dis"])
+            if u.intensity and u.intensity in blocked_intensity[s.id]:
+                # peş peşe yoğun ya da peş peşe hafif bölüm yasak
+                model.Add(var == 0).OnlyEnforceIf(assumptions["intensity"])
 
     # Her öğrenciye tam bir birim (grubun tanımı — assumption'sız, gevşetilemez)
     for s in students:
@@ -319,20 +372,28 @@ def solve_month(
                         x[(first, u.id)] == x[(other, u.id)]
                     ).OnlyEnforceIf(assumptions["custom"])
 
-    # ---- Madde 6/7: Haziran'a kadar zorunluluklar ----
-    # Kalan ay sayısı 0 ise (son ay) sert kısıt; öncesinde objective bonusu.
-    core_unit_ids = [u.id for u in units if u.branch_category in CORE_BRANCHES]
-    dogum_unit_ids = [u.id for u in units if u.branch_category == BRANCH_DOGUM_SALONU]
+    # ---- Sezon zorunlulukları (madde 6/7 + branş bazlı liste) ----
+    # Öğrencinin karşılanmamış zorunluluk sayısı kalan ay sayısını aşarsa
+    # bu ayda mutlaka bir zorunlu branşa gitmeli (sert kısıt); daha erkense
+    # objective bonusuyla yönlendirilir.
+    branch_unit_ids: dict[str, list[str]] = defaultdict(list)
+    for u in units:
+        branch_unit_ids[u.branch_category].append(u.id)
 
-    if remaining == 0:
-        for s in core_needed:
+    for s in students:
+        need_now = len(unmet[s.id]) - remaining
+        if need_now >= 1:
+            uids = [
+                uid for b in unmet[s.id] for uid in branch_unit_ids.get(b, [])
+            ]
+            label = (
+                "deadline_dogum"
+                if unmet[s.id] == [BRANCH_DOGUM_SALONU]
+                else "deadline_core"
+            )
             model.Add(
-                sum(x[(s.id, uid)] for uid in core_unit_ids) >= 1
-            ).OnlyEnforceIf(assumptions["deadline_core"])
-        for s in dogum_needed:
-            model.Add(
-                sum(x[(s.id, uid)] for uid in dogum_unit_ids) >= 1
-            ).OnlyEnforceIf(assumptions["deadline_dogum"])
+                sum(x[(s.id, uid)] for uid in uids) >= 1
+            ).OnlyEnforceIf(assumptions[label])
 
     # ---- Objective (Minimize) ----
     penalties: list[cp_model.LinearExpr] = []
@@ -385,19 +446,40 @@ def solve_month(
                         weights["ebelik_priority"] * x[(s.id, u.id)]
                     )
 
-    # Madde 6/7'yi erken aylarda karşılama bonusu (negatif ceza).
-    # Aciliyet kalan ay azaldıkça artar.
+    # Sezon zorunluluklarını erken aylarda karşılama bonusu (negatif ceza).
+    # Aciliyet kalan ay azaldıkça artar; doğum salonu (madde 7) daha ağır.
     urgency = max(1, len(months) - remaining)
-    for s in core_needed:
-        for uid in core_unit_ids:
-            penalties.append(
-                -weights["core_branch_early"] * urgency * x[(s.id, uid)]
+    for s in students:
+        for b in unmet[s.id]:
+            mult = 3 if b == BRANCH_DOGUM_SALONU else 1
+            for uid in branch_unit_ids.get(b, []):
+                penalties.append(
+                    -weights["core_branch_early"] * urgency * mult
+                    * x[(s.id, uid)]
+                )
+
+    # Gri/yedek birimler: yalnız gerektiğinde kullanılsın (her yerleştirme cezalı)
+    for u in units:
+        if u.reserve:
+            for s in students:
+                penalties.append(weights.get("reserve_use", 15) * x[(s.id, u.id)])
+
+    # Havuz birimlerinde kız/erkek dengesi ("kız ve erkek sayısı dengeli olacak")
+    genders_present = {s.gender for s in students if s.gender}
+    if len(genders_present) == 2:
+        w_gender = weights.get("gender_balance", 2)
+        for u in pool_units:
+            if u.gender_restriction:
+                continue
+            diff = model.NewIntVar(-len(students), len(students), f"gd_{u.id}")
+            model.Add(
+                diff
+                == sum(x[(s.id, u.id)] for s in students if s.gender == "K")
+                - sum(x[(s.id, u.id)] for s in students if s.gender == "E")
             )
-    for s in dogum_needed:
-        for uid in dogum_unit_ids:
-            penalties.append(
-                -weights["core_branch_early"] * urgency * 3 * x[(s.id, uid)]
-            )
+            gap = model.NewIntVar(0, len(students), f"ga_{u.id}")
+            model.AddAbsEquality(gap, diff)
+            penalties.append(w_gender * gap)
 
     # Teşhis turunda amaç fonksiyonu kapatılır: yalnız fizibilite aranır,
     # unsat core çıkarımı hızlanır.

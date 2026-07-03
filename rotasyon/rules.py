@@ -18,9 +18,11 @@ from .models import (
     CustomRule,
     Student,
     Unit,
-    CORE_BRANCHES,
     BRANCH_DOGUM_SALONU,
+    BRANCH_LABELS,
+    DEFAULT_SETTINGS,
     GENDER_LABELS,
+    INTENSITY_LABELS,
     PROGRAM_EBELIK,
     RULE_AYRI_TUT,
     RULE_BIRLIKTE_TUT,
@@ -51,8 +53,13 @@ def check_all(
     assignments: list[Assignment],
     months: list[str],
     custom_rules: list[CustomRule] | None = None,
+    settings: dict | None = None,
 ) -> list[Violation]:
-    """Tüm denetimleri çalıştırır; ihlal yoksa boş liste döner."""
+    """Tüm denetimleri çalıştırır; ihlal yoksa boş liste döner.
+
+    settings verilmezse sezon zorunlulukları (season_requirements)
+    varsayılan listeden okunur.
+    """
     v: list[Violation] = []
     students_by_id = {s.id: s for s in students}
     units_by_id = {u.id: u for u in units}
@@ -94,7 +101,11 @@ def check_all(
     v += _check_rule1_no_repeat(valid, students_by_id, units_by_id)
     v += _check_rule23_gender(valid, students_by_id, units_by_id)
     v += _check_rule5_group(valid, students_by_id, units_by_id)
-    v += _check_rule67_deadlines(valid, students_by_id, units_by_id, months)
+    v += _check_rule67_deadlines(
+        valid, students_by_id, units_by_id, months, settings
+    )
+    v += _check_rule20_intensity(valid, students_by_id, units_by_id, months)
+    v += _check_rule21_gender_balance(valid, students_by_id, units_by_id)
     v += _check_rule8_banned(valid, students_by_id, units_by_id)
     v += _check_rule9_dis(valid, students_by_id, units_by_id)
     v += _check_rule12_quota(valid, students_by_id, units_by_id)
@@ -269,16 +280,29 @@ def _check_rule5_group(assignments, students_by_id, units_by_id):
     return out
 
 
-def _check_rule67_deadlines(assignments, students_by_id, units_by_id, months):
-    """Madde 6/7: dönem sonuna kadar zorunlu kategori ziyaretleri.
+def _check_rule67_deadlines(
+    assignments, students_by_id, units_by_id, months, settings=None
+):
+    """Madde 6/7: dönem sonuna kadar zorunlu branş ziyaretleri.
 
-    İhlal ancak dönemin son ayı da atandığı halde zorunluluk karşılanmadıysa
-    "hata"; dönem bitmemişse rapor üretilmez (solver erken aylarda bonusla
-    yönlendirir).
+    Sezon zorunlulukları (settings.season_requirements — örn. bir cerrahi,
+    bir dahili, bir yoğun bakım, bir palyatif) branş bazında AYRI AYRI
+    denetlenir; ebelik → doğum salonu (madde 7) her zaman eklidir.
+    Bir zorunluluk yalnız o branştan birim tanımlıysa uygulanır.
+    İhlal ancak dönemin son ayı da atandığı halde zorunluluk
+    karşılanmadıysa "hata"; dönem bitmemişse rapor üretilmez (solver erken
+    aylarda bonusla yönlendirir).
     """
     out = []
     if not months:
         return out
+    requirements = (settings or DEFAULT_SETTINGS).get("season_requirements", [])
+    available = {u.branch_category for u in units_by_id.values()}
+    req_branches = [
+        r["branch"]
+        for r in requirements
+        if r.get("branch") and r["branch"] in available
+    ]
     last_month = months[-1]
     by_student: dict[str, list] = defaultdict(list)
     for a in assignments:
@@ -288,18 +312,20 @@ def _check_rule67_deadlines(assignments, students_by_id, units_by_id, months):
         if not any(a.month == last_month for a in items):
             continue  # dönem henüz tamamlanmamış
         cats = {units_by_id[a.unit_id].branch_category for a in items}
-        if not cats & set(CORE_BRANCHES):
-            out.append(
-                Violation(
-                    rule_no=6,
-                    severity=ERROR,
-                    message=(
-                        f"{s.full_name} dönem boyunca dahili/cerrahi/yoğun bakım/"
-                        f"palyatif kategorilerinden hiçbirini görmemiş."
-                    ),
-                    student_id=sid,
+        for b in req_branches:
+            if b not in cats:
+                out.append(
+                    Violation(
+                        rule_no=6,
+                        severity=ERROR,
+                        message=(
+                            f"{s.full_name} dönem boyunca hiç "
+                            f"{BRANCH_LABELS.get(b, b)} birimi görmemiş "
+                            "(sezon zorunluluğu)."
+                        ),
+                        student_id=sid,
+                    )
                 )
-            )
         if s.program == PROGRAM_EBELIK and BRANCH_DOGUM_SALONU not in cats:
             out.append(
                 Violation(
@@ -310,6 +336,70 @@ def _check_rule67_deadlines(assignments, students_by_id, units_by_id, months):
                         f"görmemiş."
                     ),
                     student_id=sid,
+                )
+            )
+    return out
+
+
+def _check_rule20_intensity(assignments, students_by_id, units_by_id, months):
+    """Madde 20 (BÖLÜMLER VE ÖZELLİKLERİ): bir öğrenci peş peşe iki ay
+    yoğun bölüme ya da peş peşe iki ay hafif bölüme verilmez."""
+    out = []
+    order = {m: i for i, m in enumerate(months)}
+    by_student: dict[str, dict[int, Unit]] = defaultdict(dict)
+    for a in assignments:
+        if a.month in order:
+            by_student[a.student_id][order[a.month]] = units_by_id[a.unit_id]
+    for sid, by_idx in by_student.items():
+        s = students_by_id[sid]
+        for i in sorted(by_idx):
+            u1, u2 = by_idx.get(i), by_idx.get(i + 1)
+            if u1 is None or u2 is None:
+                continue
+            if u1.intensity and u1.intensity == u2.intensity:
+                label = INTENSITY_LABELS.get(u1.intensity, u1.intensity)
+                out.append(
+                    Violation(
+                        rule_no=20,
+                        severity=ERROR,
+                        message=(
+                            f"{s.full_name}: {months[i]} ve {months[i + 1]} "
+                            f"aylarında peş peşe {label.lower()} bölüme "
+                            f"verilmiş ({u1.name} → {u2.name})."
+                        ),
+                        student_id=sid,
+                        month=months[i + 1],
+                        unit_id=u2.id,
+                    )
+                )
+    return out
+
+
+def _check_rule21_gender_balance(assignments, students_by_id, units_by_id):
+    """Madde 21 (BÖLÜMLER VE ÖZELLİKLERİ): havuz birimlerinde kız/erkek
+    sayısı dengeli olmalı — belirgin dengesizlik uyarı üretir."""
+    out = []
+    per_unit_month: dict[tuple[str, str], list[str]] = defaultdict(list)
+    for a in assignments:
+        u = units_by_id[a.unit_id]
+        if u.pool and not u.gender_restriction:
+            g = students_by_id[a.student_id].gender
+            if g:
+                per_unit_month[(a.unit_id, a.month)].append(g)
+    for (uid, month), genders in per_unit_month.items():
+        k, e = genders.count("K"), genders.count("E")
+        if abs(k - e) >= 3:
+            u = units_by_id[uid]
+            out.append(
+                Violation(
+                    rule_no=21,
+                    severity=WARNING,
+                    message=(
+                        f"{u.name} ({month}): kız/erkek dağılımı dengesiz "
+                        f"({k} kız, {e} erkek)."
+                    ),
+                    month=month,
+                    unit_id=uid,
                 )
             )
     return out

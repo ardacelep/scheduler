@@ -247,7 +247,30 @@ def build_dataset(result: ImportResult) -> Dataset:
             "Cinsiyeti atamalardan çıkarılamayan öğrenciler (elle girilmeli): "
             + ", ".join(missing_gender)
         )
+    _enrich_from_catalog(ds.units)
     return ds
+
+
+def _enrich_from_catalog(units) -> None:
+    """İçe aktarılan birimlere katalogdan yoğunluk/yedek/branş bilgisi taşır.
+
+    Rotasyon dosyaları yoğunluk (yoğun/hafif) ve yedeklik bilgisi içermez;
+    'BÖLÜMLER VE ÖZELLİKLERİ' kataloğuyla isim eşleşmesi bu boşluğu doldurur.
+    Dosyadan çıkan bilgi (branş tahmini vb.) katalogla ÇELİŞİYORSA dosya
+    kazanır; yalnız boş/diger alanlar doldurulur.
+    """
+    from .catalog import catalog_attributes
+
+    attrs = catalog_attributes()
+    for u in units:
+        a = attrs.get(normalize_key(u.name))
+        if not a:
+            continue
+        u.intensity = u.intensity or a["intensity"]
+        u.reserve = u.reserve or a["reserve"]
+        if u.branch_category == BRANCH_DIGER and a["branch_category"] != BRANCH_DIGER:
+            u.branch_category = a["branch_category"]
+        u.ebelik_priority = u.ebelik_priority or a["ebelik_priority"]
 
 
 def build_roster_dataset(roster: list[RosterStudent]) -> Dataset:

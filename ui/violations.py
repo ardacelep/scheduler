@@ -16,12 +16,14 @@ def render(store) -> None:
     students = store.load_students()
     units = store.load_units()
     assignments = store.load_assignments()
-    months = store.load_settings()["months"]
+    settings = store.load_settings()
+    months = settings["months"]
     if not assignments:
         st.info("Henüz kayıtlı atama yok.")
         return
     custom_rules = store.load_custom_rules()
     violations = check_all(
-        students, units, assignments, months, custom_rules=custom_rules
+        students, units, assignments, months,
+        custom_rules=custom_rules, settings=settings,
     )
     show_violations(violations, empty_message="Tüm atamalar kurallara uygun. ✅")

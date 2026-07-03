@@ -175,6 +175,10 @@ def violations_dataframe(violations):
     def _rule_label(rule_no: int) -> str:
         if rule_no == -1:
             return "Özel Kural"
+        if rule_no == 20:
+            return "Peş peşe yoğun/hafif"
+        if rule_no == 21:
+            return "K/E dengesi"
         return f"Madde {rule_no}" if rule_no else "Veri"
 
     return pd.DataFrame(

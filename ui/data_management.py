@@ -20,6 +20,8 @@ from rotasyon.models import (
     CUSTOM_RULE_LABELS,
     CUSTOM_RULE_TYPES,
     GENDER_LABELS,
+    INTENSITIES,
+    INTENSITY_LABELS,
     PROGRAM_LABELS,
     PROGRAMS,
     RULE_SABIT_ATAMA,
@@ -35,6 +37,7 @@ _PROGRAM_TO_CODE = {v: k for k, v in PROGRAM_LABELS.items()}
 _GROUP_OPTIONS = ["1. grup", "2. grup", "Her ikisi"]
 _GROUP_TO_CODE = {"1. grup": 1, "2. grup": 2, "Her ikisi": 0}
 _CODE_TO_GROUP = {v: k for k, v in _GROUP_TO_CODE.items()}
+_INTENSITY_TO_CODE = {v: k for k, v in INTENSITY_LABELS.items()}
 
 
 def render(store) -> None:
@@ -277,8 +280,10 @@ def _units_tab(store) -> None:
                 "Cinsiyet": gender_label(u.gender_restriction)
                 if u.gender_restriction else "",
                 "Branş": BRANCH_LABELS.get(u.branch_category, "Diğer"),
+                "Yoğunluk": INTENSITY_LABELS.get(u.intensity, "—"),
                 "Tekli": u.single_slot,
                 "Havuz": u.pool,
+                "Yedek": u.reserve,
                 "Ebelik Önc.": u.ebelik_priority,
                 "Tam Dolar": u.must_fill,
                 "Aktif": u.active,
@@ -303,11 +308,18 @@ def _units_tab(store) -> None:
                 options=list(BRANCH_LABELS.values()),
                 help="Madde 6/7: dönem sonu zorunlulukları bu kategoriye bakar",
             ),
+            "Yoğunluk": st.column_config.SelectboxColumn(
+                options=list(INTENSITY_LABELS.values()), width="small",
+                help="Peş peşe iki ay yoğun (veya hafif) bölüme öğrenci verilmez",
+            ),
             "Tekli": st.column_config.CheckboxColumn(
                 help="Madde 4: önce doldurulan tekli birim"
             ),
             "Havuz": st.column_config.CheckboxColumn(
                 help="Madde 4: kat/YB/FTR/acil eşit dağıtım havuzu"
+            ),
+            "Yedek": st.column_config.CheckboxColumn(
+                help="Gri birim: yalnız ihtiyaç olursa öğrenci verilir"
             ),
             "Ebelik Önc.": st.column_config.CheckboxColumn(
                 help="Madde 18: ebelik öğrencisi öncelikli"
@@ -331,8 +343,10 @@ def _units_tab(store) -> None:
             u.quota = int(row["Kontenjan"])
             u.gender_restriction = _GENDER_TO_CODE.get(row["Cinsiyet"] or "", "")
             u.branch_category = _BRANCH_TO_CODE.get(row["Branş"], u.branch_category)
+            u.intensity = _INTENSITY_TO_CODE.get(row["Yoğunluk"] or "—", u.intensity)
             u.single_slot = bool(row["Tekli"])
             u.pool = bool(row["Havuz"])
+            u.reserve = bool(row["Yedek"])
             u.ebelik_priority = bool(row["Ebelik Önc."])
             u.must_fill = bool(row["Tam Dolar"])
             u.active = bool(row["Aktif"])
@@ -415,8 +429,13 @@ def _new_unit_form(store, units) -> None:
         branch = c4.selectbox(
             "Branş kategorisi", BRANCH_CATEGORIES, format_func=BRANCH_LABELS.get
         )
+        intensity = st.selectbox(
+            "Yoğunluk", INTENSITIES, format_func=INTENSITY_LABELS.get,
+            help="Peş peşe iki ay yoğun (veya hafif) bölüme öğrenci verilmez",
+        )
         single = st.checkbox("Tekli birim — önce doldurulur (madde 4)")
         pool = st.checkbox("Havuz birimi — eşit dağıtım (madde 4)")
+        reserve = st.checkbox("Yedek birim — yalnız ihtiyaç olursa kullanılır")
         ebelik = st.checkbox("Ebelik öncelikli (madde 18)")
         must_fill = st.checkbox("Kontenjan tam dolmak zorunda (madde 17)")
         if st.form_submit_button("Ekle") and name.strip():
@@ -427,8 +446,10 @@ def _new_unit_form(store, units) -> None:
                     quota=int(quota),
                     gender_restriction=_GENDER_TO_CODE.get(gender, ""),
                     branch_category=branch,
+                    intensity=intensity,
                     single_slot=single,
                     pool=pool,
+                    reserve=reserve,
                     ebelik_priority=ebelik,
                     must_fill=must_fill,
                 )
@@ -481,16 +502,20 @@ def _classes_tab(store) -> None:
 _BUILTIN_RULES_SUMMARY = """
 1. Aynı bölüme ikinci kez gidilmez • 2-3. Kırmızı **k/e** birimlere yalnız o
 cinsiyet • 4. Tekli birimler önce dolar, kalanlar havuza eşit dağılır •
-5. Gruplar bağımsız • 6. Haziran'a kadar herkes dahili/cerrahi/YB/palyatif
-görür • 7. Ebelik öğrencileri doğum salonu görür • 8. Yasaklı birimler •
+5. Gruplar bağımsız • 6. Sezon boyunca herkes **bir cerrahi, bir dahili,
+bir yoğun bakım ve bir palyatif** görür (branş bazlı zorunluluklar) •
+7. Ebelik öğrencileri doğum salonu görür • 8. Yasaklı birimler •
 9. Diş muafiyeti • 10. Özel not • 11. Gün bazlı görevlendirme notu •
 12. Kontenjanlar düzenlenebilir • 13-14. Sınıflar ve renkleri • 15. Tek ay
-görünümü renksiz • 16. Öğrenci geçmişi • 17. FTR'ye 1 kız 1 erkek •
-18. Doğum birimlerinde ebelik önceliği • 19. Aynı ikili tekrar aynı birimde
-olmaz.
+görünümü renksiz • 16. Öğrenci geçmişi • 17. FTR ve 2.KAT ÇOCUK-DOĞUM'a
+1 kız 1 erkek • 18. Doğum birimlerinde ebelik önceliği • 19. Aynı ikili
+tekrar aynı birimde olmaz • 20. Peş peşe iki ay **yoğun** (veya **hafif**)
+bölüme verilmez • 21. Havuz birimlerinde kız/erkek dengesi gözetilir •
+**Yedek (gri) birimlere** yalnız ihtiyaç olursa öğrenci verilir.
 
 Bu kurallar öğrenci/birim tanımlarındaki alanlarla (cinsiyet kısıtı, branş
-kategorisi, yasaklı birimler...) beslenir ve her zaman uygulanır.
+kategorisi, yoğunluk, yedeklik, yasaklı birimler...) beslenir ve her zaman
+uygulanır.
 """
 
 

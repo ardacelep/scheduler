@@ -70,6 +70,20 @@ def _season_sidebar(manager) -> None:
                     st.rerun()
                 except ValueError as exc:
                     st.error(str(exc))
+    if seasons:
+        with st.sidebar.expander("🗑️ Sezon sil"):
+            victim = st.selectbox("Silinecek sezon", seasons, key="del_season_pick")
+            st.caption(
+                "Sezon kalıcı silinmez; `data/trash/` klasörüne taşınır, "
+                "gerekirse oradan geri alınabilir."
+            )
+            sure = st.checkbox(
+                f"'{victim}' sezonunu ve TÜM verilerini silmek istiyorum",
+                key="del_season_confirm",
+            )
+            if st.button("🗑️ Sil", disabled=not sure, key="del_season_btn"):
+                manager.delete(victim)
+                st.rerun()
     st.sidebar.caption(
         "Veriler `data/` klasöründe sezon bazında saklanır; her kayıtta "
         "otomatik yedek alınır."

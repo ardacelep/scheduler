@@ -18,6 +18,8 @@ def test_plan_full_from_scratch(small_world, settings):
     students, units, _ = small_world
     settings["months"] = ["EYLÜL", "EKİM", "KASIM"]
     settings["solver"]["time_limit_seconds"] = 5
+    # küçük dünya 3 ayda 4 branş zorunluluğunu taşıyamaz; test sıralamayı ölçer
+    settings["season_requirements"] = []
     new, solved, failed = plan_remaining(
         students, units, settings["months"], [], settings=settings
     )
@@ -26,7 +28,9 @@ def test_plan_full_from_scratch(small_world, settings):
     assert len(new) == len(students) * 3
     errors = [
         v
-        for v in check_all(students, units, new, settings["months"])
+        for v in check_all(
+            students, units, new, settings["months"], settings=settings
+        )
         if v.severity == ERROR
     ]
     assert errors == [], [e.message for e in errors]
@@ -41,6 +45,7 @@ def test_plan_continues_mid_season(small_world, settings):
     students, units, _ = small_world
     settings["months"] = ["EYLÜL", "EKİM"]
     settings["solver"]["time_limit_seconds"] = 5
+    settings["season_requirements"] = []  # sıralama testi; zorunluluklar ayrı test edilir
     r = solve_month(students, units, "EYLÜL", history=[], settings=settings)
     assert r.ok
     eylul = [

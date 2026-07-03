@@ -76,3 +76,34 @@ def test_store_creates_first_season_when_empty(tmp_path):
     assert m.active_season() is not None
     store.save_students([Student(full_name="İlk", gender="K", group=1)])
     assert len(m.store().load_students()) == 1
+
+
+def test_delete_season_moves_to_trash(tmp_path):
+    m = SeasonManager(tmp_path)
+    a = m.create("2024-2025")
+    a.save_students([Student(full_name="X", gender="K", group=1)])
+    m.create("2025-2026")
+    m.delete("2024-2025")
+    assert m.list_seasons() == ["2025-2026"]
+    # kalıcı silinmedi: çöp klasörüne taşındı, veri kurtarılabilir
+    trashed = list((tmp_path / "trash").iterdir())
+    assert len(trashed) == 1 and trashed[0].name.startswith("2024-2025_")
+    assert (trashed[0] / "students.json").exists()
+
+
+def test_delete_active_season_switches_active(tmp_path):
+    m = SeasonManager(tmp_path)
+    m.create("2024-2025")
+    m.create("2025-2026")
+    assert m.active_season() == "2025-2026"
+    m.delete("2025-2026")
+    assert m.active_season() == "2024-2025"
+
+
+def test_delete_unknown_season_raises(tmp_path):
+    import pytest
+
+    m = SeasonManager(tmp_path)
+    m.create("2024-2025")
+    with pytest.raises(ValueError):
+        m.delete("yok-boyle-sezon")
