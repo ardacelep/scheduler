@@ -173,13 +173,12 @@ def _bump_gen(g, m) -> None:
     st.session_state[k] = st.session_state.get(k, 0) + 1
 
 
-def _solve(ctx, locked=None, reroll=False):
-    seed = None
-    if reroll:
-        counter_key = f"reroll_{ctx['group']}_{ctx['month']}"
-        st.session_state[counter_key] = st.session_state.get(counter_key, 0) + 1
-        seed = st.session_state[counter_key]
-    with st.spinner("Çözücü çalışıyor..."):
+def _solve(ctx, locked=None, reroll=False, avoid=None):
+    """Ayı çözer. reroll: farklı tohumla; avoid: bu eşlemenin aynısı
+    gelirse (eş-maliyetli çözümlerde olabilir) tohum ilerletilip bir kez
+    daha denenir — 'Farklı çözüm' butonu boşa basılmış gibi olmasın."""
+
+    def run(seed):
         return solve_month(
             ctx["students"],
             ctx["units"],
@@ -190,6 +189,23 @@ def _solve(ctx, locked=None, reroll=False):
             random_seed=seed,
             custom_rules=ctx["custom_rules"],
         )
+
+    counter_key = f"reroll_{ctx['group']}_{ctx['month']}"
+    seed = None
+    if reroll:
+        st.session_state[counter_key] = st.session_state.get(counter_key, 0) + 1
+        seed = st.session_state[counter_key]
+    with st.spinner("Çözücü çalışıyor..."):
+        result = run(seed)
+        if (
+            reroll
+            and avoid is not None
+            and result.ok
+            and result.assignments == avoid
+        ):
+            st.session_state[counter_key] += 1
+            result = run(st.session_state[counter_key])
+    return result
 
 
 def _proposal_df(ctx, mapping: dict[str, str]) -> pd.DataFrame:
@@ -389,7 +405,7 @@ def _draft_view(ctx, draft: dict[str, str]) -> None:
         "🎲 Farklı çözüm", key=f"dreroll_{g}_{m}",
         help="Aynı kurallarla eş değerde başka bir dağılım üretir.",
     ):
-        result = _solve(ctx, reroll=True)
+        result = _solve(ctx, reroll=True, avoid=mapping)
         if result.ok:
             st.session_state[_pkey(ctx)] = result.assignments
             _bump_gen(g, m)
@@ -441,7 +457,7 @@ def _saved_view(ctx) -> None:
         help="Mevcut kayıt bozulmaz; yeni öneri taslak olarak gelir, "
         "siz kaydedince yerine geçer.",
     ):
-        result = _solve(ctx, reroll=True)
+        result = _solve(ctx, reroll=True, avoid=dict(ctx["existing"]))
         if result.ok:
             st.session_state[_pkey(ctx)] = result.assignments
             _bump_gen(g, m)

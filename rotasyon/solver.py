@@ -416,10 +416,20 @@ def solve_month(
     # gerekirse sezon settings.json'ından artırılabilir.
     solver.parameters.num_workers = int(settings["solver"].get("num_workers", 1))
     if random_seed is not None:
-        # "Yeniden oluştur": eş-maliyetli çözümler arasında farklı sonuç üretir
-        solver.parameters.random_seed = random_seed % (2**31)
+        # "Yeniden oluştur": eş-maliyetli çözümler arasında farklı sonuç üretir.
+        # Küçük tohumlar (1, 2...) CP-SAT'ın varsayılan aramasına çok yakın
+        # sonuç verebiliyor (ölçüldü: seed=1, tohumsuz çözümle birebir aynı
+        # çıktı); Knuth karması ile tohum uzayına saçılır.
+        solver.parameters.random_seed = (
+            random_seed * 2654435761 + 101
+        ) % (2**31)
         solver.parameters.randomize_search = True
     status = solver.Solve(model)
+    if status == cp_model.UNKNOWN and not _diagnostic:
+        # Eski/yavaş makine sigortası: süre içinde hiç çözüm bulunamadıysa
+        # limiti 4 katına çıkarıp bir kez daha dene.
+        solver.parameters.max_time_in_seconds *= 4
+        status = solver.Solve(model)
 
     if status in (cp_model.OPTIMAL, cp_model.FEASIBLE):
         result = SolveResult(
