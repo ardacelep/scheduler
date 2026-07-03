@@ -23,6 +23,18 @@ from .common import (
 _DRAFT_PREFIXES = ("proposal_", "wizard_", "semi_editor_", "reroll_", "semi_force")
 
 
+def month_options(months: list[str], done: set[str]) -> tuple[list[str], str | None]:
+    """Seçilebilir aylar: oluşturulmuş aylar + sıradaki İLK boş ay.
+
+    Rotasyonlar EYLÜL'den başlayarak sırayla planlanır; ay atlanamaz.
+    İçe aktarılan veride boşluk varsa (örn. EYLÜL ve KASIM dolu, EKİM boş)
+    sıradaki ay boşluğu kapatır. Dönüş: (seçenekler, sıradaki boş ay).
+    """
+    next_month = next((m for m in months if m not in done), None)
+    allowed = [m for m in months if m in done or m == next_month]
+    return allowed, next_month
+
+
 def render(store) -> None:
     st.header("🔄 Rotasyon Oluştur")
     students = store.load_students()
@@ -37,14 +49,28 @@ def render(store) -> None:
     group = c1.selectbox(
         "Grup", groups_in(students), format_func=lambda g: f"{g}. Grup"
     )
-    month = c2.selectbox("Ay", months)
-
     group_students = sorted(
         [s for s in students if s.group == group], key=lambda s: s.full_name
     )
-    group_units = [u for u in units if u.group in (0, group)]
-    all_assignments = store.load_assignments()
     group_ids = {s.id for s in group_students}
+    all_assignments = store.load_assignments()
+    months_done = {
+        a.month for a in all_assignments if a.student_id in group_ids
+    }
+    allowed_months, next_month = month_options(months, months_done)
+    month = c2.selectbox(
+        "Ay",
+        allowed_months,
+        index=allowed_months.index(next_month)
+        if next_month in allowed_months
+        else len(allowed_months) - 1,
+        help="Rotasyonlar sezon başından itibaren SIRAYLA oluşturulur; "
+        "ay atlanamaz. Oluşturulmuş ayları yeniden açabilirsiniz.",
+    )
+    if next_month:
+        st.caption(f"📆 Bu grup için sıradaki ay: **{next_month}**")
+
+    group_units = [u for u in units if u.group in (0, group)]
     history = [
         a
         for a in all_assignments
@@ -310,11 +336,27 @@ def _semi_mode(ctx) -> None:
 @st.fragment
 def _wizard_mode(ctx) -> None:
     """Önce tekli birimler, sonra cinsiyet kısıtlı/tam dolan birimler,
-    en son kalan öğrenciler havuza otomatik dağıtılır."""
+    en son kalan öğrenciler havuza otomatik dağıtılır.
+
+    Çözücü YALNIZ kullanıcı sihirbazı başlattıktan sonra çalışır; sekme
+    arka planda dururken sayfa yüklenişini yavaşlatmaz.
+    """
     wkey = f"wizard_{ctx['group']}_{ctx['month']}"
-    state = st.session_state.setdefault(wkey, {"step": 1, "locks": {}})
+    state = st.session_state.setdefault(wkey, {"step": 0, "locks": {}})
     units_by_id = {u.id: u for u in ctx["units"]}
     active_units = [u for u in ctx["units"] if u.active and u.quota > 0]
+
+    if state["step"] == 0:
+        st.caption(
+            "Sihirbaz üç adımda ilerler: önce tekli birimler, sonra cinsiyet "
+            "kısıtlı / tam dolan birimler, en son kalan öğrenciler otomatik "
+            "dağıtılır. Her adımda önerilen öğrenciyi onaylar veya "
+            "değiştirirsiniz."
+        )
+        if st.button("🧭 Sihirbazı başlat", type="primary", key=f"{wkey}_start"):
+            state["step"] = 1
+            st.rerun(scope="fragment")
+        return
 
     steps = {
         1: ("Tekli birimler", [u for u in active_units if u.single_slot]),
