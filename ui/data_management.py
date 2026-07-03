@@ -46,6 +46,7 @@ def _students_tab(store) -> None:
             [
                 {
                     "Ad Soyad": s.full_name,
+                    "Okul No": s.student_no,
                     "Cinsiyet": gender_label(s.gender),
                     "Grup": s.group,
                     "Sınıf": s.class_name,
@@ -75,6 +76,7 @@ def _students_tab(store) -> None:
     with col_new, st.expander("➕ Yeni öğrenci ekle", expanded=not students):
         with st.form("new_student", clear_on_submit=True):
             name = st.text_input("Ad Soyad")
+            student_no = st.text_input("Okul / föy no")
             gender = st.selectbox(
                 "Cinsiyet", GENDERS, format_func=GENDER_LABELS.get
             )
@@ -93,6 +95,7 @@ def _students_tab(store) -> None:
                         group=group,
                         class_name=class_name,
                         program=program,
+                        student_no=student_no.strip(),
                         dis_exempt=dis_exempt,
                         note=note.strip(),
                     )
@@ -113,6 +116,7 @@ def _students_tab(store) -> None:
         group_units = [u for u in units if u.active and u.group in (0, s.group)]
         with st.form(f"edit_student_{s.id}"):
             name = st.text_input("Ad Soyad", value=s.full_name)
+            student_no = st.text_input("Okul / föy no", value=s.student_no)
             gender = st.selectbox(
                 "Cinsiyet",
                 GENDERS,
@@ -151,6 +155,7 @@ def _students_tab(store) -> None:
             c1, c2 = st.columns(2)
             if c1.form_submit_button("💾 Kaydet", type="primary"):
                 s.full_name = name.strip() or s.full_name
+                s.student_no = student_no.strip()
                 s.gender = gender
                 s.group = group
                 s.class_name = class_name

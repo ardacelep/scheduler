@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from .excel_io import ImportResult
+from .excel_io import ImportResult, RosterStudent
 from .models import (
     Assignment,
     ClassGroup,
@@ -22,8 +22,30 @@ from .models import (
     BRANCH_YOGUN_BAKIM,
     FEMALE,
     MALE,
+    PROGRAM_DIGER,
+    PROGRAM_EBELIK,
+    PROGRAM_HEMSIRELIK,
+    PROGRAM_SAGLIK_BAKIM,
 )
 from .normalize import normalize_key, tr_upper
+
+# Otomatik sınıf renkleri (metin sınıf sütunundan içe aktarımda sırayla atanır)
+DEFAULT_CLASS_PALETTE = [
+    "#FFFF00", "#C6DEB5", "#FF00FF", "#00B0F0",
+    "#FFC000", "#92D050", "#FF7C80", "#B1A0C7",
+]
+
+
+def program_from_field(field_text: str) -> str:
+    """SML listesindeki ALAN/DAL metnini program enum'una çevirir."""
+    key = tr_upper(field_text)
+    if "EBE" in key:
+        return PROGRAM_EBELIK
+    if "HEMŞİRE" in key or "HEMSIRE" in key:
+        return PROGRAM_HEMSIRELIK
+    if "SAĞLIK BAKIM" in key or "SAGLIK BAKIM" in key:
+        return PROGRAM_SAGLIK_BAKIM
+    return PROGRAM_DIGER
 
 
 def guess_branch_category(unit_name: str) -> str:
@@ -79,18 +101,40 @@ DEFAULT_CLASS_NAMES = {1: ["B", "C"], 2: ["A", "D"], 3: ["E", "F"], 4: ["G", "H"
 def build_dataset(result: ImportResult) -> Dataset:
     ds = Dataset(warnings=list(result.warnings))
 
-    # --- Sınıflar: her grubun renkleri ---
+    # --- Sınıflar ---
+    # Yeni format: sınıf metin sütunuyla geliyorsa ("12/A") doğrudan onu
+    # kullan; renkler paletten atanır. Eski format: renk = sınıf.
+    text_mode = any(ist.class_text for ist in result.students)
     color_to_class: dict[tuple[int, str], str] = {}
-    used_names: set[str] = set()
-    for group, colors in sorted(result.class_colors.items()):
-        candidates = DEFAULT_CLASS_NAMES.get(group, [])
-        for i, color in enumerate(colors):
-            name = candidates[i] if i < len(candidates) else f"G{group}-S{i + 1}"
-            while name in used_names:
-                name += "'"
-            used_names.add(name)
-            ds.classes.append(ClassGroup(name=name, color_hex=color))
-            color_to_class[(group, color)] = name
+    if text_mode:
+        class_counts: dict[str, int] = {}
+        for ist in result.students:
+            if ist.class_text:
+                class_counts[ist.class_text] = class_counts.get(ist.class_text, 0) + 1
+        for i, name in enumerate(sorted(class_counts)):
+            ds.classes.append(
+                ClassGroup(
+                    name=name,
+                    color_hex=DEFAULT_CLASS_PALETTE[i % len(DEFAULT_CLASS_PALETTE)],
+                )
+            )
+        lonely = [n for n, c in class_counts.items() if c == 1]
+        if lonely:
+            ds.warnings.append(
+                "Tek öğrencili sınıf adları bulundu (kaynak dosyada yazım "
+                "hatası olabilir): " + ", ".join(sorted(lonely))
+            )
+    else:
+        used_names: set[str] = set()
+        for group, colors in sorted(result.class_colors.items()):
+            candidates = DEFAULT_CLASS_NAMES.get(group, [])
+            for i, color in enumerate(colors):
+                name = candidates[i] if i < len(candidates) else f"G{group}-S{i + 1}"
+                while name in used_names:
+                    name += "'"
+                used_names.add(name)
+                ds.classes.append(ClassGroup(name=name, color_hex=color))
+                color_to_class[(group, color)] = name
 
     # --- Birimler: kontenjan sütunundan ---
     # kimlik: (grup, normalize ad, cinsiyet kısıtı)
@@ -124,7 +168,10 @@ def build_dataset(result: ImportResult) -> Dataset:
             full_name=ist.name,
             gender="",  # aşağıda atamalardan çıkarılır, kalanı kullanıcı doldurur
             group=ist.group,
-            class_name=color_to_class.get((ist.group, ist.class_color), ""),
+            class_name=ist.class_text
+            if text_mode
+            else color_to_class.get((ist.group, ist.class_color), ""),
+            student_no=ist.student_no,
             dis_exempt="DİŞ" in side,
             # "diş" tek başına muafiyet bayrağına dönüşür; "diş-geç" gibi
             # ek bilgi içeren notlar ayrıca not alanında saklanır
@@ -200,4 +247,45 @@ def build_dataset(result: ImportResult) -> Dataset:
             "Cinsiyeti atamalardan çıkarılamayan öğrenciler (elle girilmeli): "
             + ", ".join(missing_gender)
         )
+    return ds
+
+
+def build_roster_dataset(roster: list[RosterStudent]) -> Dataset:
+    """Sezon başı öğrenci listesinden yeni sezon verisi kurar.
+
+    Öğrenci + sınıf üretir (birim/atama üretmez — birimler önceki sezondan
+    kopyalanır veya elle girilir). Gruplar, gerçek kullanıma uygun biçimde
+    sınıflar üzerinden dönüşümlü dağıtılır (A-C-E → 1. grup, B-D-F → 2. grup);
+    kullanıcı Veri Yönetimi'nden değiştirebilir.
+    """
+    ds = Dataset()
+    class_names = sorted({r.class_text for r in roster if r.class_text})
+    class_group: dict[str, int] = {}
+    for i, name in enumerate(class_names):
+        ds.classes.append(
+            ClassGroup(
+                name=name,
+                color_hex=DEFAULT_CLASS_PALETTE[i % len(DEFAULT_CLASS_PALETTE)],
+            )
+        )
+        class_group[name] = 1 if i % 2 == 0 else 2
+
+    for r in roster:
+        ds.students.append(
+            Student(
+                full_name=r.name,
+                gender="",  # listede yok; kullanıcı tamamlar
+                group=class_group.get(r.class_text, 1),
+                class_name=r.class_text,
+                program=program_from_field(r.field_text),
+                student_no=r.student_no,
+            )
+        )
+
+    ebelik = sum(1 for s in ds.students if s.program == PROGRAM_EBELIK)
+    ds.warnings.append(
+        f"{len(ds.students)} öğrenci aktarıldı ({ebelik} ebe yardımcılığı). "
+        "Cinsiyet bilgisi listede bulunmadığından Veri Yönetimi ekranından "
+        "girilmelidir; grup dağılımını da kontrol edin."
+    )
     return ds

@@ -13,6 +13,24 @@ def test_gender_suffix_e_with_space():
     assert p.base_name == "ALÇI ODASI"
 
 
+def test_gender_word_kiz():
+    p = parse_cell("EFOR kız")
+    assert p.gender_suffix == "K"
+    assert p.base_name == "EFOR"
+
+
+def test_gender_word_erkek_with_dot():
+    p = parse_cell("ÜROLOJİ POL.erkek")
+    assert p.gender_suffix == "E"
+    assert p.base_name == "ÜROLOJİ POL"
+
+
+def test_gender_word_uppercase():
+    p = parse_cell("DOĞUM SERV KIZ")
+    assert p.gender_suffix == "K"
+    assert p.base_name == "DOĞUM SERV"
+
+
 def test_uppercase_letter_is_not_gender_suffix():
     # "YB/E" gibi büyük harfler cinsiyet eki değildir
     p = parse_cell("EKG")

@@ -41,14 +41,23 @@ BRANCH_LABELS = {
 # Madde 6: Haziran'a kadar her öğrenci bu kategorilerden en az birini görmüş olmalı.
 CORE_BRANCHES = (BRANCH_DAHILI, BRANCH_CERRAHI, BRANCH_YOGUN_BAKIM, BRANCH_PALYATIF)
 
-# Öğrenci bölüm türü (madde 7, 18)
+# Öğrenci bölüm türü (madde 7, 18). SML listelerindeki ALAN/DAL karşılıkları:
+# "Hemşire Yardımcılığı" → hemsirelik, "Ebe Yardımcılığı" → ebelik,
+# "Sağlık Bakım Teknisyenliği" → saglik_bakim.
 PROGRAM_HEMSIRELIK = "hemsirelik"
 PROGRAM_EBELIK = "ebelik"
+PROGRAM_SAGLIK_BAKIM = "saglik_bakim"
 PROGRAM_DIGER = "diger"
-PROGRAMS = (PROGRAM_HEMSIRELIK, PROGRAM_EBELIK, PROGRAM_DIGER)
+PROGRAMS = (
+    PROGRAM_HEMSIRELIK,
+    PROGRAM_EBELIK,
+    PROGRAM_SAGLIK_BAKIM,
+    PROGRAM_DIGER,
+)
 PROGRAM_LABELS = {
-    PROGRAM_HEMSIRELIK: "Hemşirelik",
-    PROGRAM_EBELIK: "Ebelik",
+    PROGRAM_HEMSIRELIK: "Hemşire Yardımcılığı",
+    PROGRAM_EBELIK: "Ebe Yardımcılığı",
+    PROGRAM_SAGLIK_BAKIM: "Sağlık Bakım Teknisyenliği",
     PROGRAM_DIGER: "Diğer",
 }
 
@@ -83,6 +92,7 @@ class Student:
     group: int  # 1 veya 2 (madde 5: gruplar bağımsız)
     class_name: str = ""  # ClassGroup.name referansı
     program: str = PROGRAM_HEMSIRELIK
+    student_no: str = ""  # föy no / okul numarası (gerçek belgelerde var)
     banned_unit_ids: list[str] = field(default_factory=list)  # madde 8
     dis_exempt: bool = False  # madde 9: Diş Pol'e verilmez
     note: str = ""  # madde 10: özel durum, kural motorunu etkilemez

@@ -102,3 +102,120 @@ def _deep_update(base: dict, override: dict) -> None:
             _deep_update(base[k], v)
         else:
             base[k] = v
+
+
+# ======================= SEZON YÖNETİMİ =======================
+
+_LEGACY_FILES = ("students", "units", "classes", "assignments", "settings")
+
+
+def _safe_dir_name(name: str) -> str:
+    """Sezon adını dosya sistemi için güvenli klasör adına çevirir."""
+    cleaned = "".join(c if c.isalnum() or c in "-_ ." else "_" for c in name)
+    return cleaned.strip() or "sezon"
+
+
+class SeasonManager:
+    """Birden fazla öğretim dönemi (sezon) yönetir.
+
+    Yerleşim:
+        data/app.json                  -> {"active_season": "2025-2026"}
+        data/seasons/<sezon adı>/*.json -> o sezonun Store verisi
+
+    Her sezonun öğrenci/birim/sınıf/atama verisi tamamen bağımsızdır;
+    yeni sezon açılırken birim ve sınıflar istenirse önceki sezondan
+    kopyalanır (öğrenci ve atamalar asla kopyalanmaz).
+    """
+
+    def __init__(self, root: str | Path = "data"):
+        self.root = Path(root)
+        self.seasons_dir = self.root / "seasons"
+        self.root.mkdir(parents=True, exist_ok=True)
+        self._migrate_legacy()
+
+    # ---- app.json ----
+    def _app_path(self) -> Path:
+        return self.root / "app.json"
+
+    def _read_app(self) -> dict:
+        if self._app_path().exists():
+            with open(self._app_path(), encoding="utf-8") as f:
+                return json.load(f)
+        return {}
+
+    def _write_app(self, payload: dict) -> None:
+        tmp = self._app_path().with_suffix(".json.tmp")
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False, indent=2)
+        os.replace(tmp, self._app_path())
+
+    # ---- migrasyon ----
+    def _migrate_legacy(self) -> None:
+        """Eski tek-sezon yerleşimini (data/*.json) sezon klasörüne taşır."""
+        legacy = [
+            self.root / f"{name}.json"
+            for name in _LEGACY_FILES
+            if (self.root / f"{name}.json").exists()
+        ]
+        if not legacy:
+            return
+        target = self.seasons_dir / "Önceki Dönem"
+        target.mkdir(parents=True, exist_ok=True)
+        for p in legacy:
+            shutil.move(str(p), target / p.name)
+            bak = p.with_suffix(".json.bak")
+            if bak.exists():
+                shutil.move(str(bak), target / bak.name)
+        app = self._read_app()
+        app.setdefault("active_season", "Önceki Dönem")
+        self._write_app(app)
+
+    # ---- sezonlar ----
+    def list_seasons(self) -> list[str]:
+        if not self.seasons_dir.exists():
+            return []
+        return sorted(
+            p.name for p in self.seasons_dir.iterdir() if p.is_dir()
+        )
+
+    def active_season(self) -> str | None:
+        name = self._read_app().get("active_season")
+        if name and (self.seasons_dir / name).is_dir():
+            return name
+        seasons = self.list_seasons()
+        return seasons[-1] if seasons else None
+
+    def set_active(self, name: str) -> None:
+        if name not in self.list_seasons():
+            raise ValueError(f"Sezon bulunamadı: {name}")
+        app = self._read_app()
+        app["active_season"] = name
+        self._write_app(app)
+
+    def create(
+        self,
+        name: str,
+        copy_units_from: str | None = None,
+    ) -> Store:
+        """Yeni sezon açar; istenirse birim + sınıf tanımlarını kopyalar."""
+        dir_name = _safe_dir_name(name)
+        target = self.seasons_dir / dir_name
+        if target.exists():
+            raise ValueError(f"Bu adla bir sezon zaten var: {dir_name}")
+        target.mkdir(parents=True)
+        store = Store(target)
+        if copy_units_from:
+            source = self.store(copy_units_from)
+            store.save_units(source.load_units())
+            store.save_classes(source.load_classes())
+            store.save_settings(source.load_settings())
+        self.set_active(dir_name)
+        return store
+
+    def store(self, name: str | None = None) -> Store:
+        """Verilen (veya aktif) sezonun Store'unu döndürür."""
+        name = name or self.active_season()
+        if name is None:
+            # hiç sezon yok: ilk sezonu aç
+            return self.create("Yeni Dönem")
+        return Store(self.seasons_dir / name)

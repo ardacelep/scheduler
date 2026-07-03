@@ -13,14 +13,19 @@ from rotasyon.models import (
     Unit,
     GENDER_LABELS,
 )
-from rotasyon.store import Store
+from rotasyon.store import SeasonManager, Store
 
 DATA_DIR = Path("data")
 SEED_DIR = Path("seed_data")
 
 
+def get_manager() -> SeasonManager:
+    return SeasonManager(DATA_DIR)
+
+
 def get_store() -> Store:
-    return Store(DATA_DIR)
+    """Aktif sezonun store'u."""
+    return get_manager().store()
 
 
 def has_data(store: Store) -> bool:

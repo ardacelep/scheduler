@@ -16,7 +16,10 @@ from rotasyon.importer import build_dataset
 
 
 def main() -> None:
-    xlsx = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("ARDA_ROTASYON.xlsx")
+    default = Path("example/ARDA_ROTASYON.xlsx")
+    if not default.exists():
+        default = Path("ARDA_ROTASYON.xlsx")
+    xlsx = Path(sys.argv[1]) if len(sys.argv) > 1 else default
     out_dir = Path(sys.argv[2]) if len(sys.argv) > 2 else Path("seed_data")
     out_dir.mkdir(parents=True, exist_ok=True)
 

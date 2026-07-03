@@ -36,41 +36,62 @@ def yearly_wb(seeded):
     return openpyxl.load_workbook(BytesIO(data))
 
 
+def _find_header(ws, title):
+    """Başlık hücresini (satır, sütun) olarak bulur."""
+    for r in range(1, 4):
+        for c in range(1, ws.max_column + 1):
+            if ws.cell(r, c).value == title:
+                return r, c
+    raise AssertionError(f"başlık bulunamadı: {title}")
+
+
 def test_rule14_yearly_export_has_class_colors(seeded, yearly_wb):
     assert set(yearly_wb.sheetnames) == {"1. GRUP", "2. GRUP"}
     ws = yearly_wb["1. GRUP"]
+    _, name_col = _find_header(ws, "ADI-SOYADI")
     class_colors = {
         c.color_hex.lstrip("#").upper() for c in seeded.classes if c.color_hex
     }
     found = set()
-    for row in ws.iter_rows(min_row=2, min_col=2, max_col=2):
+    for row in ws.iter_rows(min_row=3, min_col=name_col, max_col=name_col):
         cell = row[0]
         if cell.value and cell.fill.patternType == "solid":
             found.add(cell.fill.fgColor.rgb[-6:].upper())
     assert found and found <= class_colors
 
 
+def test_yearly_export_has_class_and_no_columns(seeded, yearly_wb):
+    """Gerçek belge düzeni: sınıf ve föy no sütunları."""
+    ws = yearly_wb["1. GRUP"]
+    _find_header(ws, "sınıf")
+    _find_header(ws, "föy no")
+    header_row, name_col = _find_header(ws, "ADI-SOYADI")
+    # ilk öğrenci satırında sınıf dolu
+    assert ws.cell(header_row + 1, 1).value  # sınıf metni
+
+
 def test_rule14_yearly_export_red_gendered_units(yearly_wb):
     ws = yearly_wb["1. GRUP"]
+    header_row, name_col = _find_header(ws, "ADI-SOYADI")
     red_k_e = []
-    for row in ws.iter_rows(min_row=2, min_col=3, max_col=12):
+    for row in ws.iter_rows(
+        min_row=header_row + 1, min_col=name_col + 1, max_col=name_col + 10
+    ):
         for cell in row:
             if isinstance(cell.value, str) and cell.value.endswith((" k", " e")):
-                red_k_e.append(cell.font.color and cell.font.color.rgb == "00FF0000"
-                               or cell.font.color.rgb == "FFFF0000")
+                red_k_e.append(
+                    cell.font.color is not None
+                    and cell.font.color.rgb in ("00FF0000", "FFFF0000")
+                )
     assert red_k_e and all(red_k_e)
 
 
 def test_yearly_export_quota_column(yearly_wb):
     ws = yearly_wb["1. GRUP"]
-    header_col = next(
-        c
-        for c in range(1, ws.max_column + 1)
-        if ws.cell(1, c).value == "BÖLÜMLER VE SAYILARI"
-    )
+    header_row, header_col = _find_header(ws, "BÖLÜMLER VE SAYILARI")
     values = [
         ws.cell(r, header_col).value
-        for r in range(2, ws.max_row + 1)
+        for r in range(header_row + 1, ws.max_row + 1)
         if ws.cell(r, header_col).value
     ]
     assert values.count("DİŞ") == 4  # kontenjan kadar tekrar
@@ -95,12 +116,17 @@ def test_rule15_single_month_export_is_colorless(seeded):
     for row in ws.iter_rows():
         for cell in row:
             assert cell.fill.patternType is None
-    # her iki grubun tüm öğrencileri listelenmiş
+    # her iki grup bloğunda ad sütunları dolu (blok düzeni: sınıf|no|ad|ay)
+    name_cols = [
+        c for c in range(1, ws.max_column + 1)
+        if ws.cell(3, c).value == "ADI-SOYADI"
+    ]
+    assert len(name_cols) == 2
     names = sum(
         1
-        for row in ws.iter_rows(min_row=3)
-        for i, cell in enumerate(row)
-        if i in (0, 3) and cell.value
+        for c in name_cols
+        for r in range(4, ws.max_row + 1)
+        if ws.cell(r, c).value
     )
     assert names == 70
 

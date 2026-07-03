@@ -22,7 +22,17 @@ from rotasyon.models import (
 )
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-REFERENCE_XLSX = PROJECT_ROOT / "ARDA_ROTASYON.xlsx"
+_REFERENCE_CANDIDATES = [
+    PROJECT_ROOT / "example" / "ARDA_ROTASYON.xlsx",
+    PROJECT_ROOT / "ARDA_ROTASYON.xlsx",
+]
+REFERENCE_XLSX = next(
+    (p for p in _REFERENCE_CANDIDATES if p.exists()), _REFERENCE_CANDIDATES[0]
+)
+# Gerçek dünyadan örnek belgeler (varsa ek testler koşar)
+EXAMPLE_DIR = PROJECT_ROOT / "example"
+GRUP_XLSX = EXAMPLE_DIR / "GRUP p.s.ç-ç.p.c (1).xlsx"
+ROSTER_XLSX = EXAMPLE_DIR / "2025-2026 SML ÖĞRENCİ LİSTESİ.xlsx"
 
 
 @pytest.fixture

@@ -45,8 +45,22 @@ class ParsedCell:
 
 
 _PAREN_RE = re.compile(r"\(([^)]*)\)\s*$")
-# " k" / " e" veya ".k" / ".e" son eki (küçük harf; kırmızı font ile birlikte kullanılıyor)
-_GENDER_RE = re.compile(r"[\s.]([keKE])\s*$")
+# Cinsiyet eki: " k"/".e" tek harfleri (yalnız küçük harf — "YB/E" gibi adlarla
+# karışmasın) veya "kız"/"erkek" kelimeleri (büyük/küçük fark etmez; gerçek
+# belgelerde "EFOR kız", "ÜROLOJİ POL.erkek" gibi geçiyor).
+_GENDER_TOKEN_RE = re.compile(r"[\s.]([A-Za-zçğıöşüÇĞIİÖŞÜ]+)\s*$")
+_GENDER_WORDS_K = {"kız", "kiz"}
+_GENDER_WORDS_E = {"erkek"}
+
+
+def _gender_from_token(token: str) -> str:
+    """Ek adayı tokenden cinsiyet çıkarır; ek değilse ''."""
+    low = tr_upper(token).lower()  # Türkçe I/İ tutarlılığı için çift çevrim
+    if low in _GENDER_WORDS_K or (token == "k"):
+        return "K"
+    if low in _GENDER_WORDS_E or (token == "e"):
+        return "E"
+    return ""
 
 
 def parse_cell(value: str) -> ParsedCell:
@@ -67,12 +81,13 @@ def parse_cell(value: str) -> ParsedCell:
         day_note = m.group(1).strip()
         text = text[: m.start()].strip()
 
-    # Cinsiyet eki: sadece küçük k/e kabul edilir; "EKG k" evet, "EKG" hayır.
+    # Cinsiyet eki: "EKG k", "ALÇI ODASI e", "EFOR kız", "ÜROLOJİ POL.erkek"
     gender_suffix = ""
-    m = _GENDER_RE.search(text)
-    if m and m.group(1) in ("k", "e"):
-        gender_suffix = "K" if m.group(1) == "k" else "E"
-        text = text[: m.start()].strip()
+    m = _GENDER_TOKEN_RE.search(text)
+    if m:
+        gender_suffix = _gender_from_token(m.group(1))
+        if gender_suffix:
+            text = text[: m.start()].strip()
 
     return ParsedCell(
         raw=raw,

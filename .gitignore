@@ -7,3 +7,6 @@ dist/
 build/
 *.spec.bak
 .DS_Store
+
+# Gerçek öğrenci verisi içeren örnek belgeler (T.C. no, isimler) — git dışı
+example/
