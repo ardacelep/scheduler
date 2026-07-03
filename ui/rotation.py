@@ -9,12 +9,18 @@ from rotasyon.rules import check_all
 from rotasyon.solver import solve_month, visited_unit_keys
 from rotasyon.normalize import normalize_key
 from .common import (
+    clear_stale_state,
+    data_fingerprint,
     gender_label,
     groups_in,
     replace_month_assignments,
     show_violations,
     unit_label,
 )
+
+# Taslak öneriler, sihirbaz adımları, düzenleyici durumu... — hepsi veriden
+# türetilir; veri değişince clear_stale_state ile silinirler.
+_DRAFT_PREFIXES = ("proposal_", "wizard_", "semi_editor_", "reroll_", "semi_force")
 
 
 def render(store) -> None:
@@ -62,7 +68,17 @@ def render(store) -> None:
         )
         return
 
+    # Veri (öğrenci/birim/atama/kural/ayar) başka bir ekranda değiştiyse
+    # buradaki taslak çözümler ve uyarılar bayattır: temizle ki kullanıcı
+    # her zaman güncel duruma göre sonuç görsün.
     custom_rules = [r for r in store.load_custom_rules() if r.active]
+    clear_stale_state(
+        "_rotation_fp",
+        data_fingerprint(
+            students, units, all_assignments, custom_rules, [settings]
+        ),
+        _DRAFT_PREFIXES,
+    )
     month_pins = [
         r for r in custom_rules
         if r.type == "sabit_atama" and r.month == month
@@ -132,7 +148,7 @@ def _proposal_df(ctx, mapping: dict[str, str]) -> pd.DataFrame:
                 "Sınıf": s.class_name,
                 "Cinsiyet": gender_label(s.gender),
                 "Birim": unit_label(units_by_id[mapping[s.id]])
-                if s.id in mapping
+                if mapping.get(s.id) in units_by_id
                 else "—",
             }
             for s in ctx["students"]
@@ -180,27 +196,20 @@ def _show_infeasible(result) -> None:
 def _auto_mode(ctx) -> None:
     key = _proposal_key(ctx)
     c1, c2 = st.columns(2)
+    result = None
     if c1.button("🚀 Rotasyonu Oluştur", type="primary", key="auto_solve"):
         result = _solve(ctx)
+    if c2.button("🎲 Yeniden Oluştur (farklı çözüm)", key="auto_reroll"):
+        result = _solve(ctx, reroll=True)
+    if result is not None:
         if result.ok:
             st.session_state[key] = result.assignments
         else:
             st.session_state.pop(key, None)
-            st.session_state["auto_infeasible"] = result.infeasible_reasons
-    if c2.button("🎲 Yeniden Oluştur (farklı çözüm)", key="auto_reroll"):
-        result = _solve(ctx, reroll=True)
-        if result.ok:
-            st.session_state[key] = result.assignments
-            st.session_state.pop("auto_infeasible", None)
-        else:
-            st.session_state["auto_infeasible"] = result.infeasible_reasons
-
-    if st.session_state.get("auto_infeasible") and key not in st.session_state:
-        class _R:  # sadece gösterim için
-            infeasible_reasons = st.session_state["auto_infeasible"]
-
-        _show_infeasible(_R)
-        return
+            # Uyarı kalıcı saklanmaz: yalnız bu koşuda gösterilir. Kullanıcı
+            # veriyi düzeltince (örn. kontenjan artırınca) bayat uyarı kalmaz.
+            _show_infeasible(result)
+            return
 
     mapping = st.session_state.get(key)
     if not mapping:

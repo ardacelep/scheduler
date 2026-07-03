@@ -26,7 +26,7 @@ from rotasyon.models import (
     Student,
     Unit,
 )
-from .common import gender_label, unit_label
+from .common import data_fingerprint, gender_label, unit_label
 
 _GENDER_OPTIONS = ["", "Kız", "Erkek"]
 _GENDER_TO_CODE = {"": "", "Kız": "K", "Erkek": "E"}
@@ -135,7 +135,9 @@ def _students_tab(store) -> None:
         use_container_width=True,
         hide_index=True,
         height=420,
-        key="students_editor",
+        # anahtar veri içeriğine bağlı: veri başka yerde değişirse düzenleyici
+        # sıfırlanır ve güncel hali gösterir (bayat hücre kalmaz)
+        key=f"students_editor_{data_fingerprint(ordered)}",
     )
     if st.button("💾 Tablodaki değişiklikleri kaydet", type="primary", key="save_students"):
         for s, (_, row) in zip(ordered, edited.iterrows()):
@@ -319,7 +321,8 @@ def _units_tab(store) -> None:
         use_container_width=True,
         hide_index=True,
         height=420,
-        key="units_editor",
+        # anahtar veri içeriğine bağlı: dışarıdan değişiklikte sıfırlanır
+        key=f"units_editor_{data_fingerprint(ordered)}",
     )
     if st.button("💾 Tablodaki değişiklikleri kaydet", type="primary", key="save_units"):
         for u, (_, row) in zip(ordered, edited.iterrows()):

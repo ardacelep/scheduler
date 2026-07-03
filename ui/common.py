@@ -1,6 +1,7 @@
 """Ekranların ortak yardımcıları: store erişimi, seed yükleme, etiketler."""
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -49,6 +50,42 @@ def load_seed(store: Store) -> None:
     store.save_classes([ClassGroup.from_dict(d) for d in read("classes")])
     # Örnek atamalar geçmiş olarak da yüklenir (madde 16 ekranı hemen dolu olur)
     store.save_assignments([Assignment.from_dict(d) for d in read("assignments")])
+
+
+def data_fingerprint(*collections) -> str:
+    """Verilen kayıt koleksiyonlarının içerik parmak izi.
+
+    Ekranlar bunu "veri değişti mi?" kontrolü için kullanır: başka bir
+    ekranda öğrenci/birim/atama düzenlendiyse, session_state'te bekleyen
+    taslak öneri, sihirbaz adımı, tablo düzenleyici durumu gibi türetilmiş
+    her şey geçersizdir ve temizlenmelidir — ekranda bayat uyarı/veri
+    kalmasın.
+    """
+    h = hashlib.md5()
+    for coll in collections:
+        for item in coll:
+            d = item.to_dict() if hasattr(item, "to_dict") else item
+            h.update(
+                json.dumps(
+                    d, sort_keys=True, ensure_ascii=False, default=str
+                ).encode()
+            )
+        h.update(b"|")
+    return h.hexdigest()[:12]
+
+
+def clear_stale_state(scope_key: str, fingerprint: str, prefixes) -> bool:
+    """Parmak izi değiştiyse verilen öneklerle başlayan durumları siler.
+
+    Dönüş: temizlik yapıldıysa True.
+    """
+    if st.session_state.get(scope_key) == fingerprint:
+        return False
+    st.session_state[scope_key] = fingerprint
+    for k in list(st.session_state):
+        if isinstance(k, str) and k.startswith(tuple(prefixes)):
+            del st.session_state[k]
+    return True
 
 
 # ---- yeni sezon için birim kaynağı seçenekleri ----
