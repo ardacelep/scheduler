@@ -33,6 +33,8 @@ REFERENCE_XLSX = next(
 EXAMPLE_DIR = PROJECT_ROOT / "example"
 GRUP_XLSX = EXAMPLE_DIR / "GRUP p.s.ç-ç.p.c (1).xlsx"
 ROSTER_XLSX = EXAMPLE_DIR / "2025-2026 SML ÖĞRENCİ LİSTESİ.xlsx"
+# Yarım kalmış sezon örneği: yalnız EYLÜL dolu
+GRUP_MID_XLSX = EXAMPLE_DIR / "GRUP p.s.ç-ç.p.c.xlsx"
 
 
 @pytest.fixture

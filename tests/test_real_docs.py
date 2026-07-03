@@ -11,7 +11,7 @@ from rotasyon.excel_io import (
 from rotasyon.importer import build_dataset, build_roster_dataset
 from rotasyon.models import PROGRAM_EBELIK, PROGRAM_HEMSIRELIK, PROGRAM_SAGLIK_BAKIM
 
-from conftest import GRUP_XLSX, ROSTER_XLSX
+from conftest import GRUP_MID_XLSX, GRUP_XLSX, ROSTER_XLSX
 
 
 # ---------- tür algılama ----------
@@ -132,6 +132,60 @@ class TestRealRotation:
     def test_gender_inferred_for_most_students(self, ds):
         inferred = sum(1 for s in ds.students if s.gender)
         assert inferred >= 100  # 135 öğrencinin büyük kısmı
+
+
+# ---------- kullanım senaryosu 2: yarım sezonu içe aktarıp devam etme ----------
+
+@pytest.mark.skipif(not GRUP_MID_XLSX.exists(), reason="örnek dosya yok")
+def test_mid_season_import_and_continue(settings):
+    """Belirli bir aya kadar elle yapılmış rotasyon içe aktarılır,
+    program kalınan yerden (geçmişi bilerek) devam eder."""
+    from rotasyon.models import Assignment
+    from rotasyon.normalize import normalize_key
+    from rotasyon.rules import ERROR, check_all
+    from rotasyon.solver import solve_month
+
+    ds = build_dataset(read_rotation_workbook(GRUP_MID_XLSX))
+    assert {a.month for a in ds.assignments} == {"EYLÜL"}  # yarım sezon
+
+    # kullanıcı düzeltmesi: eksik cinsiyetler doldurulur
+    for i, s in enumerate(ds.students):
+        if not s.gender:
+            s.gender = "K" if i % 2 == 0 else "E"
+
+    settings["solver"]["time_limit_seconds"] = 15
+    g1 = [s for s in ds.students if s.group == 1]
+    units1 = [u for u in ds.units if u.group in (0, 1)]
+    ids1 = {s.id for s in g1}
+    history = [a for a in ds.assignments if a.student_id in ids1]
+
+    r = solve_month(g1, units1, "EKİM", history=history, settings=settings)
+    assert r.ok, r.infeasible_reasons
+
+    # madde 1: kimse EYLÜL'de gittiği birime geri dönmez
+    units_by_id = {u.id: u for u in ds.units}
+    eylul = {
+        a.student_id: normalize_key(units_by_id[a.unit_id].name)
+        for a in history
+    }
+    for s in g1:
+        if s.id in eylul:
+            assert (
+                normalize_key(units_by_id[r.assignments[s.id]].name)
+                != eylul[s.id]
+            )
+
+    # tüm tablo (içe aktarılan EYLÜL + üretilen EKİM) denetimden geçer
+    new = [
+        Assignment(student_id=sid, month="EKİM", unit_id=uid)
+        for sid, uid in r.assignments.items()
+    ]
+    errors = [
+        v
+        for v in check_all(g1, units1, history + new, settings["months"])
+        if v.severity == ERROR
+    ]
+    assert errors == [], [e.message for e in errors]
 
 
 # ---------- uçtan uca: yeni sezon akışı ----------
