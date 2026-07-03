@@ -38,6 +38,7 @@ class SolveResult:
     assignments: dict[str, str] = field(default_factory=dict)  # student_id -> unit_id
     infeasible_reasons: list[str] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)  # kullanıcıya bilgi notları
+    objective: float | None = None  # amaç fonksiyonu (düşük = iyi); kıyas için
 
     @property
     def ok(self) -> bool:
@@ -407,12 +408,13 @@ def solve_month(
         model.AddAssumptions(list(set(assumptions.values())))
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = float(
-        settings["solver"].get("time_limit_seconds", 30)
+        settings["solver"].get("time_limit_seconds", 5)
     )
     # Tek worker: paralel modda OR-Tools'un absl senkronizasyonu, pandas'ın
     # yüklediği pyarrow'daki aynı absl sembolleriyle çakışıp deadlock
-    # yapabiliyor (macOS'ta gözlendi). Modeller küçük, tek worker yeterli.
-    solver.parameters.num_workers = 1
+    # yapabiliyor (macOS'ta gözlendi). Modeller küçük, tek worker yeterli;
+    # gerekirse sezon settings.json'ından artırılabilir.
+    solver.parameters.num_workers = int(settings["solver"].get("num_workers", 1))
     if random_seed is not None:
         # "Yeniden oluştur": eş-maliyetli çözümler arasında farklı sonuç üretir
         solver.parameters.random_seed = random_seed % (2**31)
@@ -421,7 +423,8 @@ def solve_month(
 
     if status in (cp_model.OPTIMAL, cp_model.FEASIBLE):
         result = SolveResult(
-            status="OPTIMAL" if status == cp_model.OPTIMAL else "FEASIBLE"
+            status="OPTIMAL" if status == cp_model.OPTIMAL else "FEASIBLE",
+            objective=solver.ObjectiveValue(),
         )
         for s in students:
             for u in units:

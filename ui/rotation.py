@@ -1,10 +1,25 @@
-"""Rotasyon Oluşturma ekranı — 3 mod: Tam Otomatik, Yarı Otomatik, Sihirbaz."""
+"""Rotasyon Oluştur — tek akışlı ekran.
+
+Seçili grup+ay için TEK görünüm vardır ve üç durumdan birindedir:
+  ⚪ oluşturulmadı → üretim seçenekleri (otomatik / sihirbaz)
+  🟡 taslak       → incele, elle düzenle, farklı çözüm dene, kaydet
+  🟢 kayıtlı      → incele, elle düzenle, yeniden oluştur (taslak üretir)
+
+Üretim yöntemi ne olursa olsun sonuç aynı taslağa akar; "elle düzenleme"
+ayrı bir mod değil, taslağın/kaydın üzerinde bir anahtardır. Böylece eski
+üç-sekme yapısının "iki kopya bağımsız yaşıyor" karışıklığı oluşmaz.
+
+Çözücü asla sayfa render'ında kendiliğinden koşmaz; yalnız butonla tetiklenir.
+Alt bölümdeki "Toplu oluşturma" kalan ayları sırayla çözer (sezon başı veya
+ortası fark etmez: dolu aylar geçmiş kabul edilir).
+"""
 from __future__ import annotations
 
 import pandas as pd
 import streamlit as st
 
 from rotasyon.models import Assignment
+from rotasyon.planner import plan_remaining, remaining_months
 from rotasyon.rules import check_all
 from rotasyon.solver import solve_month, visited_unit_keys
 from rotasyon.normalize import normalize_key
@@ -20,7 +35,10 @@ from .common import (
 
 # Taslak öneriler, sihirbaz adımları, düzenleyici durumu... — hepsi veriden
 # türetilir; veri değişince clear_stale_state ile silinirler.
-_DRAFT_PREFIXES = ("proposal_", "wizard_", "semi_editor_", "reroll_", "semi_force")
+_DRAFT_PREFIXES = (
+    "proposal_", "wizard_", "editor_", "edit_", "gen_", "reroll_",
+    "force_", "bulk_",
+)
 
 
 def month_options(months: list[str], done: set[str]) -> tuple[list[str], str | None]:
@@ -37,6 +55,8 @@ def month_options(months: list[str], done: set[str]) -> tuple[list[str], str | N
 
 def render(store) -> None:
     st.header("🔄 Rotasyon Oluştur")
+    if msg := st.session_state.pop("_rotation_flash", None):
+        st.success(msg)
     students = store.load_students()
     units = store.load_units()
     if not students or not units:
@@ -81,11 +101,6 @@ def render(store) -> None:
         for a in all_assignments
         if a.student_id in group_ids and a.month == month
     }
-    if existing:
-        st.info(
-            f"{month} ayı için {len(existing)} kayıtlı atama var. "
-            "Yeniden oluşturursanız üzerine yazılır."
-        )
     missing_gender = [s.full_name for s in group_students if not s.gender]
     if missing_gender:
         st.error(
@@ -105,6 +120,7 @@ def render(store) -> None:
         ),
         _DRAFT_PREFIXES,
     )
+
     month_pins = [
         r for r in custom_rules
         if r.type == "sabit_atama" and r.month == month
@@ -116,9 +132,6 @@ def render(store) -> None:
             "(Veri Yönetimi → Kurallar)."
         )
 
-    tab_auto, tab_semi, tab_wizard = st.tabs(
-        ["⚡ Tam Otomatik", "✏️ Yarı Otomatik", "🧭 Adım Adım Sihirbaz"]
-    )
     ctx = dict(
         store=store,
         settings=settings,
@@ -132,18 +145,32 @@ def render(store) -> None:
         group_ids=group_ids,
         custom_rules=custom_rules,
     )
-    with tab_auto:
-        _auto_mode(ctx)
-    with tab_semi:
-        _semi_mode(ctx)
-    with tab_wizard:
-        _wizard_mode(ctx)
+    _flow(ctx)
+
+    st.divider()
+    _bulk_section(
+        dict(
+            store=store,
+            students=students,
+            units=units,
+            settings=settings,
+            custom_rules=custom_rules,
+            assignments=all_assignments,
+        )
+    )
 
 
-# ---------- yardımcılar ----------
+# ---------- ortak yardımcılar ----------
 
-def _proposal_key(ctx) -> str:
+def _pkey(ctx) -> str:
     return f"proposal_{ctx['group']}_{ctx['month']}"
+
+
+def _bump_gen(g, m) -> None:
+    """Düzenleyici neslini artırır: data_editor taze anahtar alır, eski
+    hücre düzenlemeleri yeni taslağın üzerine binmez."""
+    k = f"gen_{g}_{m}"
+    st.session_state[k] = st.session_state.get(k, 0) + 1
 
 
 def _solve(ctx, locked=None, reroll=False):
@@ -200,8 +227,10 @@ def _save(ctx, mapping: dict[str, str]) -> None:
     replace_month_assignments(
         ctx["store"], ctx["group_ids"], ctx["month"], mapping
     )
-    st.session_state.pop(_proposal_key(ctx), None)
-    st.success(f"{ctx['month']} ayı ataması kaydedildi. ✅")
+    st.session_state.pop(_pkey(ctx), None)
+    st.session_state["_rotation_flash"] = (
+        f"{ctx['month']} ayı ataması kaydedildi. ✅"
+    )
 
 
 def _show_infeasible(result) -> None:
@@ -211,75 +240,13 @@ def _show_infeasible(result) -> None:
         st.markdown(f"- {reason}")
 
 
-# ---------- Tam Otomatik ----------
-#
-# Mod fonksiyonları st.fragment: buton tıklamaları (özellikle uzun süren
-# çözücü koşuları) yalnız kendi sekme içeriğini yeniden çizer; sayfanın
-# kalanı soluklaşıp yeniden çizilmez. Veri değiştiren kayıtlarda
-# st.rerun(scope="app") ile tüm sayfa tazelenir.
-
-@st.fragment
-def _auto_mode(ctx) -> None:
-    key = _proposal_key(ctx)
-    c1, c2 = st.columns(2)
-    result = None
-    if c1.button("🚀 Rotasyonu Oluştur", type="primary", key="auto_solve"):
-        result = _solve(ctx)
-    if c2.button("🎲 Yeniden Oluştur (farklı çözüm)", key="auto_reroll"):
-        result = _solve(ctx, reroll=True)
-    if result is not None:
-        if result.ok:
-            st.session_state[key] = result.assignments
-        else:
-            st.session_state.pop(key, None)
-            # Uyarı kalıcı saklanmaz: yalnız bu koşuda gösterilir. Kullanıcı
-            # veriyi düzeltince (örn. kontenjan artırınca) bayat uyarı kalmaz.
-            _show_infeasible(result)
-            return
-
-    mapping = st.session_state.get(key)
-    if not mapping:
-        if ctx["existing"]:
-            st.caption("Kayıtlı atama aşağıda gösteriliyor.")
-            st.dataframe(
-                _proposal_df(ctx, ctx["existing"]),
-                use_container_width=True,
-                hide_index=True,
-            )
-        return
-
-    st.subheader("Önerilen Atama")
-    st.dataframe(
-        _proposal_df(ctx, mapping), use_container_width=True, hide_index=True
-    )
-    show_violations(_check_proposal(ctx, mapping))
-    if st.button("✅ Onayla ve Kaydet", type="primary", key="auto_save"):
-        _save(ctx, mapping)
-        st.rerun(scope="app")
-
-
-# ---------- Yarı Otomatik ----------
-
-@st.fragment
-def _semi_mode(ctx) -> None:
-    key = _proposal_key(ctx)
-    st.caption(
-        "Sistem öneri üretir; hücreleri elle değiştirebilirsiniz. Her "
-        "değişiklikte kural denetimi çalışır, ihlaller anında görünür."
-    )
-    if st.button("Öneri üret / yenile", key="semi_solve"):
-        result = _solve(ctx, reroll=True)
-        if result.ok:
-            st.session_state[key] = result.assignments
-        else:
-            _show_infeasible(result)
-
-    mapping = dict(st.session_state.get(key) or ctx["existing"])
-    if not mapping:
-        st.info("Önce öneri üretin veya Tam Otomatik moddan bir atama kaydedin.")
-        return
-
-    units_by_label = {unit_label(u): u for u in ctx["units"] if u.active and u.quota > 0}
+def _editor(ctx, mapping: dict[str, str]) -> dict[str, str]:
+    """Taslağı/kaydı hücre hücre düzenleme tablosu; yeni eşlemeyi döndürür."""
+    g, m = ctx["group"], ctx["month"]
+    gen = st.session_state.get(f"gen_{g}_{m}", 0)
+    units_by_label = {
+        unit_label(u): u for u in ctx["units"] if u.active and u.quota > 0
+    }
     units_by_id = {u.id: u for u in ctx["units"]}
     df = pd.DataFrame(
         [
@@ -288,7 +255,7 @@ def _semi_mode(ctx) -> None:
                 "Sınıf": s.class_name,
                 "Cinsiyet": gender_label(s.gender),
                 "Birim": unit_label(units_by_id[mapping[s.id]])
-                if s.id in mapping and mapping[s.id] in units_by_id
+                if mapping.get(s.id) in units_by_id
                 else None,
             }
             for s in ctx["students"]
@@ -306,57 +273,202 @@ def _semi_mode(ctx) -> None:
         },
         use_container_width=True,
         hide_index=True,
-        key=f"semi_editor_{ctx['group']}_{ctx['month']}",
+        key=f"editor_{g}_{m}_{gen}",
     )
     new_mapping: dict[str, str] = {}
     for s, (_, row) in zip(ctx["students"], edited.iterrows()):
         label = row["Birim"]
         if label in units_by_label:
             new_mapping[s.id] = units_by_label[label].id
-    st.session_state[key] = new_mapping
+    return new_mapping
 
-    violations = _check_proposal(ctx, new_mapping)
+
+# ---------- durum temizleme callback'leri ----------
+# (widget durumu ancak callback'te — widget'lar kurulmadan önce —
+#  güvenle değiştirilebilir)
+
+def _cb_discard_draft(g, m) -> None:
+    st.session_state.pop(f"proposal_{g}_{m}", None)
+    st.session_state[f"edit_{g}_{m}"] = False
+    _bump_gen(g, m)
+
+
+def _cb_cancel_edit(g, m) -> None:
+    st.session_state[f"edit_{g}_{m}"] = False
+    _bump_gen(g, m)
+
+
+def _cb_close_wizard(g, m) -> None:
+    for k in list(st.session_state):
+        if isinstance(k, str) and k.startswith(f"wizard_{g}_{m}"):
+            del st.session_state[k]
+
+
+# ---------- ana akış ----------
+
+@st.fragment
+def _flow(ctx) -> None:
+    g, m = ctx["group"], ctx["month"]
+    wizard_on = st.session_state.get(f"wizard_{g}_{m}", {}).get("step", 0) > 0
+    draft = st.session_state.get(_pkey(ctx))
+    existing = ctx["existing"]
+
+    if wizard_on:
+        _wizard(ctx)
+        return
+    if draft is not None:
+        note = " — kaydedene kadar mevcut kayıt korunur" if existing else ""
+        st.markdown(f"🟡 **{m}: kaydedilmemiş taslak**{note}")
+        _draft_view(ctx, draft)
+        return
+    if existing:
+        st.markdown(f"🟢 **{m}: kayıtlı rotasyon** ({len(existing)} öğrenci)")
+        _saved_view(ctx)
+        return
+    st.markdown(f"⚪ **{m}: henüz rotasyon oluşturulmadı**")
+    _generate_view(ctx)
+
+
+def _generate_view(ctx) -> None:
+    g, m = ctx["group"], ctx["month"]
+    st.caption(
+        "Sonuç önce **taslak** olarak gösterilir; siz onaylayıp "
+        "kaydetmeden hiçbir şey değişmez."
+    )
+    c1, c2 = st.columns(2)
+    if c1.button("🚀 Otomatik oluştur", type="primary", key=f"go_auto_{g}_{m}"):
+        result = _solve(ctx)
+        if result.ok:
+            st.session_state[_pkey(ctx)] = result.assignments
+            _bump_gen(g, m)
+            st.rerun(scope="fragment")
+        else:
+            _show_infeasible(result)
+    if c2.button(
+        "🧭 Sihirbazla adım adım", key=f"go_wiz_{g}_{m}",
+        help="Önce tekli ve kısıtlı birimleri siz onaylarsınız, "
+        "kalanı otomatik dağıtılır.",
+    ):
+        st.session_state[f"wizard_{g}_{m}"] = {"step": 1, "locks": {}}
+        st.rerun(scope="fragment")
+
+
+def _draft_view(ctx, draft: dict[str, str]) -> None:
+    g, m = ctx["group"], ctx["month"]
+    edit = st.toggle(
+        "✏️ Elle düzenle", key=f"edit_{g}_{m}",
+        help="Hücrelere tıklayıp birimi değiştirin; her değişiklikte "
+        "kural denetimi çalışır.",
+    )
+    if edit:
+        mapping = _editor(ctx, draft)
+        st.session_state[_pkey(ctx)] = mapping
+    else:
+        mapping = draft
+        st.dataframe(
+            _proposal_df(ctx, mapping),
+            use_container_width=True,
+            hide_index=True,
+        )
+    violations = _check_proposal(ctx, mapping)
     show_violations(violations)
     errors = [v for v in violations if v.severity == "hata"]
     force = False
     if errors:
         force = st.checkbox(
-            "İhlallere rağmen kaydetmek istiyorum", key="semi_force"
+            "İhlallere rağmen kaydetmek istiyorum", key=f"force_{g}_{m}"
         )
-    if st.button(
-        "💾 Kaydet", type="primary", disabled=bool(errors) and not force,
-        key="semi_save",
+    c1, c2, c3 = st.columns(3)
+    if c1.button(
+        "✅ Onayla ve Kaydet", type="primary",
+        disabled=bool(errors) and not force, key=f"dsave_{g}_{m}",
     ):
-        _save(ctx, new_mapping)
+        _save(ctx, mapping)
         st.rerun(scope="app")
+    if c2.button(
+        "🎲 Farklı çözüm", key=f"dreroll_{g}_{m}",
+        help="Aynı kurallarla eş değerde başka bir dağılım üretir.",
+    ):
+        result = _solve(ctx, reroll=True)
+        if result.ok:
+            st.session_state[_pkey(ctx)] = result.assignments
+            _bump_gen(g, m)
+            st.rerun(scope="fragment")
+        else:
+            _show_infeasible(result)
+    c3.button(
+        "🗑️ Taslağı sil", key=f"ddiscard_{g}_{m}",
+        on_click=_cb_discard_draft, args=(g, m),
+    )
 
 
-# ---------- Adım Adım Sihirbaz ----------
+def _saved_view(ctx) -> None:
+    g, m = ctx["group"], ctx["month"]
+    edit = st.toggle(
+        "✏️ Elle düzenle", key=f"edit_{g}_{m}",
+        help="Kayıtlı atamayı hücre hücre değiştirin; kaydedince güncellenir.",
+    )
+    if edit:
+        mapping = _editor(ctx, dict(ctx["existing"]))
+        violations = _check_proposal(ctx, mapping)
+        show_violations(violations)
+        errors = [v for v in violations if v.severity == "hata"]
+        force = False
+        if errors:
+            force = st.checkbox(
+                "İhlallere rağmen kaydetmek istiyorum", key=f"force_{g}_{m}"
+            )
+        c1, c2 = st.columns(2)
+        if c1.button(
+            "💾 Değişiklikleri kaydet", type="primary",
+            disabled=bool(errors) and not force, key=f"esave_{g}_{m}",
+        ):
+            _save(ctx, mapping)
+            st.rerun(scope="app")
+        c2.button(
+            "❌ Vazgeç", key=f"ecancel_{g}_{m}",
+            on_click=_cb_cancel_edit, args=(g, m),
+        )
+        return
+    st.dataframe(
+        _proposal_df(ctx, ctx["existing"]),
+        use_container_width=True,
+        hide_index=True,
+    )
+    show_violations(_check_proposal(ctx, ctx["existing"]))
+    if st.button(
+        "🔄 Yeniden oluştur (yeni taslak)", key=f"regen_{g}_{m}",
+        help="Mevcut kayıt bozulmaz; yeni öneri taslak olarak gelir, "
+        "siz kaydedince yerine geçer.",
+    ):
+        result = _solve(ctx, reroll=True)
+        if result.ok:
+            st.session_state[_pkey(ctx)] = result.assignments
+            _bump_gen(g, m)
+            st.rerun(scope="fragment")
+        else:
+            _show_infeasible(result)
 
-@st.fragment
-def _wizard_mode(ctx) -> None:
-    """Önce tekli birimler, sonra cinsiyet kısıtlı/tam dolan birimler,
-    en son kalan öğrenciler havuza otomatik dağıtılır.
 
-    Çözücü YALNIZ kullanıcı sihirbazı başlattıktan sonra çalışır; sekme
-    arka planda dururken sayfa yüklenişini yavaşlatmaz.
+# ---------- sihirbaz ----------
+
+def _wizard(ctx) -> None:
+    """Adım adım üretim: tekli birimler → kısıtlı birimler → otomatik kalan.
+
+    Sonuç kaydedilmez; 'Taslağa aktar' ile ana akıştaki taslağa düşer.
     """
-    wkey = f"wizard_{ctx['group']}_{ctx['month']}"
-    state = st.session_state.setdefault(wkey, {"step": 0, "locks": {}})
+    g, m = ctx["group"], ctx["month"]
+    wkey = f"wizard_{g}_{m}"
+    state = st.session_state[wkey]
     units_by_id = {u.id: u for u in ctx["units"]}
     active_units = [u for u in ctx["units"] if u.active and u.quota > 0]
 
-    if state["step"] == 0:
-        st.caption(
-            "Sihirbaz üç adımda ilerler: önce tekli birimler, sonra cinsiyet "
-            "kısıtlı / tam dolan birimler, en son kalan öğrenciler otomatik "
-            "dağıtılır. Her adımda önerilen öğrenciyi onaylar veya "
-            "değiştirirsiniz."
-        )
-        if st.button("🧭 Sihirbazı başlat", type="primary", key=f"{wkey}_start"):
-            state["step"] = 1
-            st.rerun(scope="fragment")
-        return
+    top1, top2 = st.columns([4, 1])
+    top1.markdown(f"🧭 **Sihirbaz — {m}** (bitince sonuç taslağa aktarılır)")
+    top2.button(
+        "❌ Kapat", key=f"{wkey}_close",
+        on_click=_cb_close_wizard, args=(g, m),
+    )
 
     steps = {
         1: ("Tekli birimler", [u for u in active_units if u.single_slot]),
@@ -391,7 +503,6 @@ def _wizard_mode(ctx) -> None:
                 _show_infeasible(result)
         unit_to_sid = st.session_state[suggestion_key]
 
-        locked_sids = set(state["locks"])
         for u in step_units:
             eligible = [
                 s
@@ -422,7 +533,6 @@ def _wizard_mode(ctx) -> None:
                     st.warning(f"{pick} zaten başka bir birime seçildi.")
                 else:
                     state["locks"][sid] = u.id
-        _ = locked_sids
 
         c1, c2 = st.columns(2)
         if c1.button("İleri ➡️", type="primary", key=f"{wkey}_next"):
@@ -434,7 +544,7 @@ def _wizard_mode(ctx) -> None:
             st.rerun(scope="fragment")
         return
 
-    # Adım 3: kalanları otomatik dağıt
+    # Adım 3: kalanları otomatik dağıt, sonucu taslağa aktar
     st.subheader("Adım 3: Kalan öğrenciler havuz birimlerine dağıtılıyor")
     st.caption(
         f"{len(state['locks'])} öğrenci ilk iki adımda sabitlendi; kalan "
@@ -455,13 +565,100 @@ def _wizard_mode(ctx) -> None:
     )
     show_violations(_check_proposal(ctx, result.assignments))
     c1, c2 = st.columns(2)
-    if c1.button("✅ Onayla ve Kaydet", type="primary", key=f"{wkey}_save"):
-        _save(ctx, result.assignments)
-        st.session_state.pop(wkey, None)
+    if c1.button("📝 Taslağa aktar", type="primary", key=f"{wkey}_finish"):
+        st.session_state[_pkey(ctx)] = result.assignments
+        _bump_gen(g, m)
+        # adım 3'te seçim widget'ları kurulu değildir; temizlik güvenli
         for k in list(st.session_state):
-            if k.startswith(f"{wkey}_suggest"):
-                st.session_state.pop(k)
-        st.rerun(scope="app")
+            if isinstance(k, str) and k.startswith(wkey):
+                del st.session_state[k]
+        st.rerun(scope="fragment")
     if c2.button("⬅️ Geri", key=f"{wkey}_back_final"):
         state["step"] = 2
         st.rerun(scope="fragment")
+
+
+# ---------- toplu oluşturma ----------
+
+@st.fragment
+def _bulk_section(bctx) -> None:
+    st.subheader("📅 Toplu oluşturma")
+    if report := st.session_state.pop("_bulk_report", None):
+        (st.warning if report["failed"] else st.success)(report["text"])
+    st.caption(
+        "Kalan ayları sezon sonuna kadar **sırayla** tek seferde oluşturur "
+        "ve her başarılı ayı kaydeder. Sezon ortasından da çalışır: dolu "
+        "aylar geçmiş kabul edilir, ilk boş aydan devam edilir."
+    )
+    students = bctx["students"]
+    settings = bctx["settings"]
+    months = settings["months"]
+    groups = groups_in(students)
+    remaining = {
+        g: remaining_months(
+            months, bctx["assignments"], {s.id for s in students if s.group == g}
+        )
+        for g in groups
+    }
+    todo = {g: ms for g, ms in remaining.items() if ms}
+    if not todo:
+        st.success("🎉 Tüm gruplar için sezonun bütün ayları oluşturulmuş.")
+        return
+    for g, ms in todo.items():
+        st.caption(f"**{g}. grup** için kalan {len(ms)} ay: {', '.join(ms)}")
+    picks = st.multiselect(
+        "Hangi gruplar için?",
+        list(todo),
+        default=list(todo),
+        format_func=lambda g: f"{g}. Grup",
+        key="bulk_groups",
+    )
+    total = sum(len(todo[g]) for g in picks)
+    if st.button(
+        f"🚀 Kalan {total} ayı tek seferde oluştur",
+        type="primary",
+        disabled=not picks,
+        key="bulk_run",
+    ):
+        store = bctx["store"]
+        with st.status("Aylar sırayla çözülüyor...", expanded=True) as status:
+            done_counter = {"n": 0}
+
+            def on_month(g, m):
+                done_counter["n"] += 1
+                status.update(
+                    label=f"Çözülüyor: {g}. grup — {m} "
+                    f"({done_counter['n']}/{total})"
+                )
+                status.write(f"⏳ {g}. grup — {m}")
+
+            new, solved, failed = plan_remaining(
+                students,
+                bctx["units"],
+                months,
+                bctx["assignments"],
+                settings=settings,
+                custom_rules=bctx["custom_rules"],
+                groups=picks,
+                on_month=on_month,
+            )
+            if new:
+                store.save_assignments(store.load_assignments() + new)
+            parts = [
+                f"{g}. grup: {len(ms)} ay oluşturuldu ✅"
+                for g, ms in solved.items()
+                if ms
+            ]
+            for g, (m, reasons) in failed.items():
+                parts.append(
+                    f"{g}. grup {m} ayında durdu — "
+                    + (reasons[0] if reasons else "neden bilinmiyor")
+                )
+            st.session_state["_bulk_report"] = {
+                "failed": bool(failed),
+                "text": " • ".join(parts) if parts else "Yapılacak ay yoktu.",
+            }
+            status.update(
+                label="Bitti", state="error" if failed else "complete"
+            )
+        st.rerun(scope="app")

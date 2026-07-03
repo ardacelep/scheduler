@@ -199,7 +199,13 @@ DEFAULT_SETTINGS: dict = {
     # gender_restriction'lı iki ayrı FTR birimi (k/e) tanımlanır, ikisinin de
     # dolu olması sağlanır. Bu ayar sadece uyarı eşiği vb. için yer tutucu.
     "solver": {
-        "time_limit_seconds": 30,
+        # Ölçüm: en iyi çözüm ilk 1-2 saniyede bulunuyor, kalan süre yalnız
+        # optimallik kanıtına gidiyor (skor 60 sn'de bile değişmedi).
+        # Eski/yavaş bilgisayarlarda da akıcı kalsın diye 5 sn yeterli.
+        "time_limit_seconds": 5,
+        # Paralel arama worker sayısı. 1 bırakın: bu boyuttaki modellerde tek
+        # worker daha hızlı VE macOS'ta pyarrow ile absl deadlock'unu önlüyor.
+        "num_workers": 1,
         # Yumuşak kısıt ağırlıkları — değişebilir detaylar, sabit kodlanmadı
         "weights": {
             "pool_balance": 5,        # madde 4: havuz birimlerine eşit dağılım
