@@ -6,6 +6,7 @@ from pathlib import Path
 
 import streamlit as st
 
+from rotasyon.catalog import catalog_available, load_default_units
 from rotasyon.models import (
     Assignment,
     ClassGroup,
@@ -48,6 +49,35 @@ def load_seed(store: Store) -> None:
     store.save_classes([ClassGroup.from_dict(d) for d in read("classes")])
     # Örnek atamalar geçmiş olarak da yüklenir (madde 16 ekranı hemen dolu olur)
     store.save_assignments([Assignment.from_dict(d) for d in read("assignments")])
+
+
+# ---- yeni sezon için birim kaynağı seçenekleri ----
+
+UNITS_EMPTY = "(boş başla — birimleri elle gireceğim)"
+UNITS_CATALOG = "📦 Varsayılan birim kataloğu"
+
+
+def unit_source_options(seasons: list[str]) -> list[str]:
+    """Yeni sezon açarken 'birimler nereden gelsin' seçenekleri.
+
+    Sıralama: önce mevcut sezonlar (en pratik yol), sonra katalog, sonra boş.
+    """
+    options = list(seasons)
+    if catalog_available():
+        options.append(UNITS_CATALOG)
+    options.append(UNITS_EMPTY)
+    return options
+
+
+def create_season_with_units(manager: SeasonManager, name: str, source: str) -> Store:
+    """Yeni sezonu açar ve birimleri seçilen kaynaktan doldurur."""
+    if source == UNITS_CATALOG:
+        store = manager.create(name)
+        store.save_units(load_default_units())
+        return store
+    if source == UNITS_EMPTY:
+        return manager.create(name)
+    return manager.create(name, copy_units_from=source)
 
 
 def unit_label(u: Unit) -> str:

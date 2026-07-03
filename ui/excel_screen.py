@@ -19,9 +19,10 @@ from rotasyon.excel_io import (
     read_rotation_workbook,
     read_student_list_workbook,
 )
+from rotasyon.gender_guess import fill_missing_genders, guess_gender
 from rotasyon.importer import build_dataset, build_roster_dataset
-from rotasyon.models import PROGRAM_LABELS
-from .common import get_manager
+from rotasyon.models import GENDER_LABELS, PROGRAM_LABELS
+from .common import create_season_with_units, get_manager, unit_source_options
 
 
 def render(store) -> None:
@@ -106,6 +107,8 @@ def _rotation_import_flow(store, data: bytes) -> None:
     )
     confirm = st.checkbox("Anladım, mevcut verinin değiştirilmesini onaylıyorum")
     if st.button("📥 İçe Aktar", type="primary", disabled=not confirm):
+        # dosyadan çıkarılamayan cinsiyetler isimden tahminle tamamlanır
+        filled, remaining = fill_missing_genders(ds.students)
         store.save_students(ds.students)
         store.save_units(ds.units)
         store.save_classes(ds.classes)
@@ -118,7 +121,14 @@ def _rotation_import_flow(store, data: bytes) -> None:
             store.save_settings(settings)
         st.success(
             f"{len(ds.students)} öğrenci, {len(ds.units)} birim ve "
-            f"{len(ds.assignments)} atama '{active}' sezonuna aktarıldı. ✅"
+            f"{len(ds.assignments)} atama '{active}' sezonuna aktarıldı. "
+            f"{len(filled)} öğrencinin cinsiyeti isimden dolduruldu"
+            + (
+                f"; {len(remaining)} öğrenci Veri Yönetimi ekranında "
+                "onayınızı bekliyor. ✅"
+                if remaining
+                else ". ✅"
+            )
         )
         st.balloons()
 
@@ -137,6 +147,7 @@ def roster_import_flow(data: bytes) -> None:
         return
 
     students_by_id = {s.id: s for s in ds.students}
+    guesses = {s.id: guess_gender(s.full_name) for s in ds.students}
     st.dataframe(
         pd.DataFrame(
             [
@@ -146,6 +157,10 @@ def roster_import_flow(data: bytes) -> None:
                     "Bölüm": PROGRAM_LABELS.get(s.program, s.program),
                     "Okul No": s.student_no,
                     "Önerilen Grup": f"{s.group}. grup",
+                    "Cinsiyet (tahmin)": GENDER_LABELS.get(
+                        guesses[s.id].gender, "?"
+                    ),
+                    "Kesinlik": guesses[s.id].percent,
                 }
                 for s in students_by_id.values()
             ]
@@ -153,6 +168,13 @@ def roster_import_flow(data: bytes) -> None:
         use_container_width=True,
         hide_index=True,
         height=320,
+    )
+    sure = sum(1 for g in guesses.values() if g.gender and g.confidence >= 0.8)
+    st.caption(
+        f"🔮 Cinsiyet, listede olmadığı için isimden tahmin edilir: "
+        f"{sure} öğrenci yüksek kesinlikle (≥%80) otomatik doldurulacak, "
+        f"kalan {len(ds.students) - sure} öğrenci içe aktarımdan sonra "
+        "Veri Yönetimi ekranında onayınızı bekleyecek."
     )
 
     st.divider()
@@ -167,12 +189,13 @@ def roster_import_flow(data: bytes) -> None:
     )
     if target == "Yeni sezon oluştur":
         season_name = st.text_input("Yeni sezon adı", value="", placeholder="örn. 2025-2026")
-        copy_from = st.selectbox(
-            "Birim ve sınıf tanımlarını kopyala",
-            ["(kopyalama — birimleri elle gireceğim)"] + seasons,
-            index=len(seasons) if seasons else 0,
+        source = st.selectbox(
+            "Birimler nereden gelsin?",
+            unit_source_options(seasons),
+            index=max(len(seasons) - 1, 0),  # varsayılan: en son sezon
             help="Birimler genelde sezondan sezona aynı kalır; önceki sezondan "
-            "kopyalamak en hızlısıdır. Öğrenci ve atamalar kopyalanmaz.",
+            "kopyalamak en hızlısıdır. Hiç sezon yoksa varsayılan katalog "
+            "hazır bir başlangıç sunar. Öğrenci ve atamalar kopyalanmaz.",
         )
         if st.button(
             "🚀 Sezonu oluştur ve öğrencileri aktar",
@@ -180,14 +203,13 @@ def roster_import_flow(data: bytes) -> None:
             disabled=not season_name.strip(),
         ):
             try:
-                new_store = manager.create(
-                    season_name.strip(),
-                    copy_units_from=None
-                    if copy_from.startswith("(") else copy_from,
+                new_store = create_season_with_units(
+                    manager, season_name.strip(), source
                 )
             except ValueError as exc:
                 st.error(str(exc))
                 return
+            filled, remaining = fill_missing_genders(ds.students)
             new_store.save_students(ds.students)
             # sınıflar: kopyalanan sezondan gelenler varsa öğrenci listesindekilerle birleştir
             existing = {c.name for c in new_store.load_classes()}
@@ -197,9 +219,16 @@ def roster_import_flow(data: bytes) -> None:
             new_store.save_classes(merged)
             st.success(
                 f"'{season_name.strip()}' sezonu oluşturuldu, "
-                f"{len(ds.students)} öğrenci aktarıldı. Şimdi Veri Yönetimi "
-                "ekranından cinsiyetleri girip grupları kontrol edin; sonra "
-                "Rotasyon Oluştur ekranından ilk ayı planlayabilirsiniz. ✅"
+                f"{len(ds.students)} öğrenci aktarıldı. {len(filled)} "
+                "öğrencinin cinsiyeti isimden dolduruldu"
+                + (
+                    f"; {len(remaining)} öğrenci için Veri Yönetimi "
+                    "ekranında onayınız gerekiyor."
+                    if remaining
+                    else "."
+                )
+                + " Grupları kontrol edin, sonra Rotasyon Oluştur "
+                "ekranından ilk ayı planlayabilirsiniz. ✅"
             )
             st.balloons()
     else:
@@ -210,6 +239,7 @@ def roster_import_flow(data: bytes) -> None:
         confirm = st.checkbox("Anladım, onaylıyorum")
         if st.button("📥 Aktif sezona aktar", type="primary", disabled=not confirm):
             store = manager.store()
+            filled, remaining = fill_missing_genders(ds.students)
             store.save_students(ds.students)
             existing = {c.name for c in store.load_classes()}
             store.save_classes(
@@ -218,8 +248,14 @@ def roster_import_flow(data: bytes) -> None:
             )
             store.save_assignments([])
             st.success(
-                f"{len(ds.students)} öğrenci '{active}' sezonuna aktarıldı. "
-                "Cinsiyetleri Veri Yönetimi ekranından tamamlayın. ✅"
+                f"{len(ds.students)} öğrenci '{active}' sezonuna aktarıldı; "
+                f"{len(filled)} öğrencinin cinsiyeti isimden dolduruldu. "
+                + (
+                    f"Kalan {len(remaining)} öğrenciyi Veri Yönetimi "
+                    "ekranından tamamlayın. ✅"
+                    if remaining
+                    else "✅"
+                )
             )
 
 

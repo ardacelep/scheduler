@@ -21,6 +21,8 @@ datas = [
 # Streamlit çalışma zamanı dosyaları ve metadata'sı (bilinen paketleme gereği)
 datas += collect_data_files("streamlit")
 datas += copy_metadata("streamlit")
+# gender_guesser'ın isim sözlüğü veri dosyası (cinsiyet tahmini)
+datas += collect_data_files("gender_guesser")
 
 a = Analysis(
     [os.path.join(ROOT, "run_app.py")],
@@ -35,6 +37,8 @@ a = Analysis(
         "ortools.sat.python.cp_model",
         "openpyxl",
         "pandas",
+        "gender_guesser",
+        "gender_guesser.detector",
     ],
     hookspath=[],
     hooksconfig={},

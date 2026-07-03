@@ -170,7 +170,13 @@ def _show_infeasible(result) -> None:
 
 
 # ---------- Tam Otomatik ----------
+#
+# Mod fonksiyonları st.fragment: buton tıklamaları (özellikle uzun süren
+# çözücü koşuları) yalnız kendi sekme içeriğini yeniden çizer; sayfanın
+# kalanı soluklaşıp yeniden çizilmez. Veri değiştiren kayıtlarda
+# st.rerun(scope="app") ile tüm sayfa tazelenir.
 
+@st.fragment
 def _auto_mode(ctx) -> None:
     key = _proposal_key(ctx)
     c1, c2 = st.columns(2)
@@ -214,11 +220,12 @@ def _auto_mode(ctx) -> None:
     show_violations(_check_proposal(ctx, mapping))
     if st.button("✅ Onayla ve Kaydet", type="primary", key="auto_save"):
         _save(ctx, mapping)
-        st.rerun()
+        st.rerun(scope="app")
 
 
 # ---------- Yarı Otomatik ----------
 
+@st.fragment
 def _semi_mode(ctx) -> None:
     key = _proposal_key(ctx)
     st.caption(
@@ -286,11 +293,12 @@ def _semi_mode(ctx) -> None:
         key="semi_save",
     ):
         _save(ctx, new_mapping)
-        st.rerun()
+        st.rerun(scope="app")
 
 
 # ---------- Adım Adım Sihirbaz ----------
 
+@st.fragment
 def _wizard_mode(ctx) -> None:
     """Önce tekli birimler, sonra cinsiyet kısıtlı/tam dolan birimler,
     en son kalan öğrenciler havuza otomatik dağıtılır."""
@@ -368,11 +376,11 @@ def _wizard_mode(ctx) -> None:
         c1, c2 = st.columns(2)
         if c1.button("İleri ➡️", type="primary", key=f"{wkey}_next"):
             state["step"] += 1
-            st.rerun()
+            st.rerun(scope="fragment")
         if state["step"] > 1 and c2.button("⬅️ Geri", key=f"{wkey}_back"):
             st.session_state.pop(f"{wkey}_suggest_{state['step']}", None)
             state["step"] -= 1
-            st.rerun()
+            st.rerun(scope="fragment")
         return
 
     # Adım 3: kalanları otomatik dağıt
@@ -387,7 +395,7 @@ def _wizard_mode(ctx) -> None:
         _show_infeasible(result)
         if st.button("⬅️ Geri dön ve seçimleri değiştir", key=f"{wkey}_back3"):
             state["step"] = 2
-            st.rerun()
+            st.rerun(scope="fragment")
         return
     st.dataframe(
         _proposal_df(ctx, result.assignments),
@@ -402,7 +410,7 @@ def _wizard_mode(ctx) -> None:
         for k in list(st.session_state):
             if k.startswith(f"{wkey}_suggest"):
                 st.session_state.pop(k)
-        st.rerun()
+        st.rerun(scope="app")
     if c2.button("⬅️ Geri", key=f"{wkey}_back_final"):
         state["step"] = 2
-        st.rerun()
+        st.rerun(scope="fragment")

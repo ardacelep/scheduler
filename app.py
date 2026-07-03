@@ -16,7 +16,11 @@ st.set_page_config(
 
 from ui import dashboard, data_management, history, rotation, violations  # noqa: E402
 from ui import excel_screen  # noqa: E402
-from ui.common import get_manager  # noqa: E402
+from ui.common import (  # noqa: E402
+    create_season_with_units,
+    get_manager,
+    unit_source_options,
+)
 
 
 def _page(render_fn, url_path: str):
@@ -51,20 +55,18 @@ def _season_sidebar(manager) -> None:
     with st.sidebar.expander("➕ Yeni sezon oluştur"):
         with st.form("new_season", clear_on_submit=True):
             name = st.text_input("Sezon adı", placeholder="örn. 2025-2026")
-            copy_from = st.selectbox(
-                "Birim ve sınıfları kopyala",
-                ["(kopyalama)"] + seasons,
+            source = st.selectbox(
+                "Birimler nereden gelsin?",
+                unit_source_options(seasons),
+                index=max(len(seasons) - 1, 0),  # varsayılan: en son sezon
                 help="Birim tanımları genelde sezondan sezona aynı kalır; "
-                "öğrenci ve atamalar asla kopyalanmaz.",
+                "sezondan kopyalamak en pratiğidir. Hiç sezon yoksa "
+                "varsayılan katalog hazır bir başlangıç sunar. Öğrenci ve "
+                "atamalar asla kopyalanmaz.",
             )
             if st.form_submit_button("Oluştur") and name.strip():
                 try:
-                    manager.create(
-                        name.strip(),
-                        copy_units_from=None
-                        if copy_from == "(kopyalama)"
-                        else copy_from,
-                    )
+                    create_season_with_units(manager, name.strip(), source)
                     st.rerun()
                 except ValueError as exc:
                     st.error(str(exc))

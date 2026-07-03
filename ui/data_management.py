@@ -80,12 +80,14 @@ def _students_tab(store) -> None:
         st.info("Henüz öğrenci yok. Excel'den içe aktarın veya elle ekleyin.")
         return
 
-    missing = sum(1 for s in students if not s.gender)
+    missing = [s for s in students if not s.gender]
     if missing:
         st.warning(
-            f"⚠️ {missing} öğrencinin cinsiyeti eksik — rotasyon için gerekli. "
-            "Aşağıdaki tabloda 'Cinsiyet' sütununu doldurup kaydedin."
+            f"⚠️ {len(missing)} öğrencinin cinsiyeti eksik — rotasyon için "
+            "gerekli. İsimden tahminle doldurabilir veya alttaki tabloda "
+            "elle girebilirsiniz."
         )
+        _gender_guess_panel(store, students, missing)
 
     st.caption(
         "Hücrelere tıklayarak doğrudan düzenleyin, sonra **Kaydet**'e basın. "
@@ -179,6 +181,47 @@ def _students_tab(store) -> None:
             st.rerun()
 
 
+def _gender_guess_panel(store, students, missing) -> None:
+    """Eksik cinsiyetler için isimden tahmin + tek tıkla uygulama.
+
+    Kesinliği eşiğin (%80) altında kalanlar otomatik doldurulmaz;
+    kullanıcının ana tablodan elle girmesi beklenir.
+    """
+    from rotasyon.gender_guess import AUTO_FILL_CONFIDENCE, guess_gender
+
+    with st.expander("🔮 İsimden cinsiyet tahmini", expanded=True):
+        rows, applicable = [], 0
+        for s in sorted(missing, key=lambda s: s.full_name):
+            g = guess_gender(s.full_name)
+            ok = bool(g.gender) and g.confidence >= AUTO_FILL_CONFIDENCE
+            applicable += ok
+            rows.append(
+                {
+                    "Öğrenci": s.full_name,
+                    "Tahmin": GENDER_LABELS.get(g.gender, "—"),
+                    "Kesinlik": g.percent,
+                    "Otomatik": "✅" if ok else "✏️ elle girin",
+                }
+            )
+        st.dataframe(
+            pd.DataFrame(rows),
+            use_container_width=True,
+            hide_index=True,
+            height=min(38 * (len(rows) + 1), 300),
+        )
+        if applicable and st.button(
+            f"🔮 {applicable} tahmini uygula (kesinlik ≥ "
+            f"%{round(AUTO_FILL_CONFIDENCE * 100)})",
+            type="primary",
+            key="apply_gender_guesses",
+        ):
+            from rotasyon.gender_guess import fill_missing_genders
+
+            fill_missing_genders(students)
+            store.save_students(students)
+            st.rerun()
+
+
 def _new_student_form(store, students, class_names) -> None:
     from rotasyon.models import GENDERS
 
@@ -215,7 +258,7 @@ def _units_tab(store) -> None:
         _new_unit_form(store, units)
 
     if not units:
-        st.info("Henüz birim yok.")
+        _empty_units_panel(store)
         return
 
     st.caption(
@@ -311,6 +354,44 @@ def _units_tab(store) -> None:
                 )
             else:
                 store.save_units([x for x in units if x.id != u.id])
+                st.rerun()
+
+
+def _empty_units_panel(store) -> None:
+    """Birim listesi boşken hızlı doldurma seçenekleri sunar."""
+    from rotasyon.catalog import catalog_available, load_default_units
+    from .common import get_manager
+
+    st.info(
+        "Bu sezonda henüz birim yok. Tek tek eklemek yerine hazır bir "
+        "listeyle başlayabilirsiniz:"
+    )
+    c1, c2 = st.columns(2)
+    with c1:
+        if catalog_available():
+            catalog = load_default_units()
+            st.markdown("**📦 Varsayılan birim kataloğu**")
+            st.caption(
+                f"{len(catalog)} birim (kat servisleri, yoğun bakımlar, "
+                "poliklinikler...) kontenjan ve kısıtlarıyla yüklenir; "
+                "sonra bu tablodan serbestçe düzenlersiniz."
+            )
+            if st.button("Kataloğu yükle", type="primary", key="load_catalog"):
+                store.save_units(catalog)
+                st.rerun()
+    with c2:
+        manager = get_manager()
+        others = [
+            s for s in manager.list_seasons() if s != manager.active_season()
+        ]
+        if others:
+            st.markdown("**📅 Başka sezondan kopyala**")
+            pick = st.selectbox(
+                "Sezon", others, index=len(others) - 1, key="copy_units_season"
+            )
+            if st.button("Birimleri kopyala", key="copy_units_btn"):
+                source = manager.store(pick)
+                store.save_units(source.load_units())
                 st.rerun()
 
 
