@@ -253,3 +253,31 @@ def test_rule16_student_history_query(small_world):
         ("EKİM", "DİŞ"),
     ]
     assert hist[0][2] == "Çrş günleri üro.pol"  # madde 11 notu görünür
+
+
+def test_blocking_errors_scopes_by_month_and_student():
+    from rotasyon.rules import ERROR, Violation, blocking_errors
+
+    v_past = Violation(rule_no=12, severity=ERROR, message="x", month="EYLÜL", unit_id="u1")
+    v_cur = Violation(rule_no=12, severity=ERROR, message="y", month="EKİM", unit_id="u1")
+    v_student = Violation(rule_no=1, severity=ERROR, message="z", month="KASIM", student_id="s1")
+    v_warn = Violation(rule_no=21, severity="uyarı", message="w", month="EKİM")
+    blk = blocking_errors([v_past, v_cur, v_student, v_warn], {"EKİM"}, {"s1"})
+    assert v_cur in blk          # değiştirilen ay
+    assert v_student in blk       # değiştirilen öğrenci (başka ayda bile)
+    assert v_past not in blk      # dokunulmayan geçmiş ay
+    assert v_warn not in blk      # uyarı engellemez
+
+
+def test_blocking_errors_none_scope_blocks_all():
+    from rotasyon.rules import ERROR, Violation, blocking_errors
+
+    v = Violation(rule_no=12, severity=ERROR, message="x", month="EYLÜL")
+    assert blocking_errors([v]) == [v]
+
+
+def test_blocking_errors_structural_always_blocks():
+    from rotasyon.rules import ERROR, Violation, blocking_errors
+
+    v = Violation(rule_no=0, severity=ERROR, message="bozuk veri")
+    assert blocking_errors([v], {"EKİM"}, set()) == [v]

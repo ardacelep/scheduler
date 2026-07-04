@@ -20,7 +20,7 @@ import pandas as pd
 import streamlit as st
 
 from rotasyon.models import Assignment
-from rotasyon.rules import check_all
+from rotasyon.rules import blocking_errors, check_all
 from rotasyon.solver import solve_month
 from .common import (
     clear_stale_state,
@@ -175,27 +175,18 @@ def _grid(
         )
     base_df = st.session_state[basekey]
 
-    # başlık işareti (🟡): overrides + widget'ın anlık düzenleme deltası
-    # (data_editor durumu rerun'dan ÖNCE yazıldığı için gecikmesiz)
-    changed_months = {
-        m for (sid, m), lbl in ov.items() if lbl != saved.get((sid, m), BLANK)
-    }
-    state = st.session_state.get(edkey)
-    edited_rows = state.get("edited_rows", {}) if isinstance(state, dict) else {}
-    for ridx, chg in edited_rows.items():
-        sid = group_students[int(ridx)].id if int(ridx) < len(group_students) else None
-        for col, val in chg.items():
-            if sid and col in months and val != saved.get((sid, col), BLANK):
-                changed_months.add(col)
-
+    # ÖNEMLİ: sütun başlıkları/column_config SABİT olmalı. Başlığa düzenleme
+    # durumuna göre 🟡 eklemek column_config'i değiştirir; st.data_editor bunu
+    # "widget tanımı değişti" sayıp editörü sıfırlar (seçim ilk denemede
+    # uygulanmaz + kaydırma başa döner). Bu yüzden değişiklik işareti tabloda
+    # DEĞİL, tablonun ALTINDAKİ göstergede verilir.
     col_config = {
         "Öğrenci": st.column_config.TextColumn(disabled=True, pinned=True),
         "Sınıf": st.column_config.TextColumn(disabled=True, width="small"),
     }
     for m in months:
         col_config[m] = st.column_config.SelectboxColumn(
-            f"{m} 🟡" if m in changed_months else m,
-            options=options, required=True, width=col_w,
+            m, options=options, required=True, width=col_w,
         )
     height = (
         40 + 35 * len(base_df) if show_all
@@ -265,6 +256,12 @@ def _grid(
         or v.unit_id in group_unit_ids
     ]
     errors = [v for v in relevant if v.severity == "hata"]
+    # Kaydı YALNIZ kullanıcının değiştirdiği ay/öğrencilerle ilişkili hatalar
+    # engeller; dokunulmayan geçmiş aylardaki eski hatalar (örn. sonradan
+    # düşürülmüş kontenjan) yeni kaydı bloklamaz — geçmiş yeniden yazılmaz.
+    changed_students = {sid for (sid, _m) in changed}
+    blocking = blocking_errors(relevant, changed_month_set, changed_students)
+    non_blocking = len(errors) - len(blocking)
 
     st.divider()
     if changed_cells:
@@ -284,16 +281,21 @@ def _grid(
             violations_dataframe(relevant), use_container_width=True,
             hide_index=True,
         )
+        if non_blocking and not blocking:
+            st.caption(
+                f"ℹ️ Bu hataların {non_blocking} tanesi değiştirmediğiniz "
+                "(geçmiş) aylarda; kaydı engellemez."
+            )
     else:
         st.success("Bu grup için kural ihlali yok. ✅")
 
     force = False
-    if errors:
+    if blocking:
         force = st.checkbox("İhlallere rağmen kaydet", key=f"grid_force_{group}")
     if st.button(
         f"💾 Değişiklikleri kaydet ({changed_cells} hücre)",
         type="primary",
-        disabled=changed_cells == 0 or (bool(errors) and not force),
+        disabled=changed_cells == 0 or (bool(blocking) and not force),
         key=f"grid_save_{group}",
     ):
         _save(store, months, group_ids, group_students, live, saved, label_to_id)

@@ -23,7 +23,7 @@ import streamlit as st
 from rotasyon.capacity import season_capacity_findings
 from rotasyon.models import Assignment
 from rotasyon.planner import plan_season, remaining_months
-from rotasyon.rules import check_all
+from rotasyon.rules import blocking_errors, check_all
 from rotasyon.solver import solve_month, visited_unit_keys
 from rotasyon.normalize import normalize_key
 from .common import (
@@ -415,16 +415,18 @@ def _draft_view(ctx, draft: dict[str, str]) -> None:
         )
     violations = _check_proposal(ctx, mapping)
     show_violations(violations)
-    errors = [v for v in violations if v.severity == "hata"]
+    # Kaydı yalnız BU AY / bu grubun öğrencilerine dokunan hatalar engeller;
+    # değiştirilmeyen geçmiş aylardaki eski hatalar yeni kaydı bloklamaz.
+    blocking = blocking_errors(violations, {m}, ctx["group_ids"])
     force = False
-    if errors:
+    if blocking:
         force = st.checkbox(
             "İhlallere rağmen kaydetmek istiyorum", key=f"force_{g}_{m}"
         )
     c1, c2, c3 = st.columns(3)
     if c1.button(
         "✅ Onayla ve Kaydet", type="primary",
-        disabled=bool(errors) and not force, key=f"dsave_{g}_{m}",
+        disabled=bool(blocking) and not force, key=f"dsave_{g}_{m}",
     ):
         _save(ctx, mapping)
         st.rerun(scope="app")
@@ -455,16 +457,16 @@ def _saved_view(ctx) -> None:
         mapping = _editor(ctx, dict(ctx["existing"]))
         violations = _check_proposal(ctx, mapping)
         show_violations(violations)
-        errors = [v for v in violations if v.severity == "hata"]
+        blocking = blocking_errors(violations, {m}, ctx["group_ids"])
         force = False
-        if errors:
+        if blocking:
             force = st.checkbox(
                 "İhlallere rağmen kaydetmek istiyorum", key=f"force_{g}_{m}"
             )
         c1, c2 = st.columns(2)
         if c1.button(
             "💾 Değişiklikleri kaydet", type="primary",
-            disabled=bool(errors) and not force, key=f"esave_{g}_{m}",
+            disabled=bool(blocking) and not force, key=f"esave_{g}_{m}",
         ):
             _save(ctx, mapping)
             st.rerun(scope="app")

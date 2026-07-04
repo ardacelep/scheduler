@@ -92,21 +92,25 @@ def test_quota_change_applies_forward(small_world, settings):
     assert r2.ok
     occ2 = [sid for sid, uid in r2.assignments.items() if uid == cerr.id]
     assert len(occ2) == 3  # yeni kontenjan kullanılıyor (toplam = öğrenci sayısı)
-    all_v = check_all(
-        students, units, history + [
-            Assignment(student_id=sid, month="EKİM", unit_id=uid)
-            for sid, uid in r2.assignments.items()
-        ], DEFAULT_MONTHS, settings=settings,
-    )
-    errors = [v for v in all_v if v.severity == ERROR]
-    assert errors == [], [e.message for e in errors]
-    # kontenjanı sonradan sıfırlanan birimin TAMAMLANMIŞ EYLÜL ayı hata
-    # değil, açıklamalı uyarı olarak raporlanır (geçmiş yeniden yazılmaz)
-    softened = [
-        v for v in all_v
-        if v.rule_no == 12 and v.month == "EYLÜL"
+    ekim_assignments = [
+        Assignment(student_id=sid, month="EKİM", unit_id=uid)
+        for sid, uid in r2.assignments.items()
     ]
-    assert softened and "Tamamlanmış ay" in softened[0].message
+    all_v = check_all(
+        students, units, history + ekim_assignments, DEFAULT_MONTHS,
+        settings=settings,
+    )
+    # Değiştirilen ay (EKİM) hatasız
+    assert [v for v in all_v if v.severity == ERROR and v.month == "EKİM"] == []
+    # Kontenjanı sonradan 0'a düşürülen birimin EYLÜL ihlali artık TUTARLI
+    # biçimde hata (aya göre yumuşatma yok; aynı kural = aynı düzey)
+    eylul_err = [v for v in all_v if v.rule_no == 12 and v.month == "EYLÜL"]
+    assert eylul_err and eylul_err[0].severity == ERROR
+    # ...ama yalnız EKİM'e dokunan bir kayıt bu ESKİ hatayı engellemez
+    from rotasyon.rules import blocking_errors
+    ekim_students = {a.student_id for a in ekim_assignments}
+    blk = blocking_errors(all_v, {"EKİM"}, ekim_students)
+    assert all(v.month != "EYLÜL" for v in blk)
 
 
 def test_deactivated_unit_keeps_history(small_world, settings):

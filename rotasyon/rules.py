@@ -117,57 +117,40 @@ def check_all(
     v += _check_custom_rules(
         valid, students_by_id, units_by_id, custom_rules or [], months
     )
-    _soften_past_violations(v, students_by_id, units_by_id, valid, months)
     return v
 
 
-# Birim/öğrenci ÖZELLİĞİNE bağlı kurallar: özellik sezon ortasında
-# değişebilir (kontenjan, cinsiyet kısıtı, yasak, muafiyet, grup, tam dolma).
-# Geçmiş aylar o günkü tanıma göre yapılmıştı ve değiştirilemez.
-_PAST_SOFTENED_RULES = {2, 3, 5, 8, 9, 12, 17}
+def blocking_errors(violations, months_touched=None, students_touched=None):
+    """Kaydı ENGELLEMESİ gereken hatalar.
 
+    Kural düzeyleri her zaman tutarlıdır (aynı kural = aynı düzey, aya göre
+    değişmez). Ancak sezon ortasında bir ay eklenip kaydedilirken, DOKUNULMAYAN
+    geçmiş aylardaki eski hatalar (örn. sonradan düşürülen bir kontenjan) yeni
+    kaydı engellememeli — geçmiş yeniden yazılmaz. Bu yüzden kaydı yalnız
+    kullanıcının DEĞİŞTİRDİĞİ ay veya öğrencilerle ilişkili hatalar engeller.
 
-def _soften_past_violations(v, students_by_id, units_by_id, assignments, months):
-    """Tamamlanmış aylardaki özellik-bağımlı ihlalleri uyarıya indirir.
+    months_touched / students_touched None ise (kapsam verilmemişse) TÜM
+    hatalar engelleyicidir (ör. Kural Kontrolü ekranı bütünü denetler).
 
-    'Tamamlanmış ay' = grubun EN SON planlanmış ayından önceki aylar.
-    Kontenjan/kısıt sonradan değiştiyse eski aylar bugünkü tanımı sağlamaz;
-    bu eyleme dönük bir hata değildir (geçmiş yeniden yazılmaz) ama kullanıcı
-    yine de uyarı olarak görür. Son ay ve taslaklar hata düzeyinde kalır.
+    Öğrenci bazlı eşleşme önemlidir: bir öğrencinin bu ayki birimini
+    değiştirmek, madde 1 (tekrar) ihlalini BAŞKA (dokunulmamış) bir ayda
+    tetikleyebilir; o hata da o öğrenci değiştiği için engelleyici sayılır.
     """
-    order = {m: i for i, m in enumerate(months)}
-    last_by_group: dict[int, int] = {}
-    for a in assignments:
-        s = students_by_id.get(a.student_id)
-        if s is None:
-            continue
-        idx = order.get(a.month, -1)
-        if idx > last_by_group.get(s.group, -1):
-            last_by_group[s.group] = idx
-    if not last_by_group:
-        return
-    for x in v:
-        if x.rule_no not in _PAST_SOFTENED_RULES or not x.month:
-            continue
-        if x.severity != ERROR:
-            continue
-        g = None
-        if x.student_id and x.student_id in students_by_id:
-            g = students_by_id[x.student_id].group
-        elif x.unit_id and x.unit_id in units_by_id:
-            g = units_by_id[x.unit_id].group
-        if g == 0:  # her iki grupta ortak birim
-            last = max(last_by_group.values())
-        elif g in last_by_group:
-            last = last_by_group[g]
-        else:
-            continue
-        if order.get(x.month, 99) < last:
-            x.severity = WARNING
-            x.message += (
-                " (Tamamlanmış ay: kural/kontenjan sonradan değiştiyse "
-                "bilgi amaçlıdır, geçmiş yeniden yazılmaz.)"
-            )
+    errs = [v for v in violations if v.severity == ERROR]
+    if months_touched is None and students_touched is None:
+        return errs
+    months_touched = months_touched or set()
+    students_touched = students_touched or set()
+    out = []
+    for v in errs:
+        if v.student_id and v.student_id in students_touched:
+            out.append(v)
+        elif v.month and v.month in months_touched:
+            out.append(v)
+        elif not v.month and not v.student_id:
+            # aya/öğrenciye bağlanamayan yapısal hata (bozuk veri) hep engeller
+            out.append(v)
+    return out
 
 
 def _check_custom_rules(assignments, students_by_id, units_by_id, custom_rules, months):
