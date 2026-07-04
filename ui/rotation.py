@@ -401,8 +401,11 @@ def _draft_view(ctx, draft: dict[str, str]) -> None:
         "kural denetimi çalışır.",
     )
     if edit:
+        # Not: düzenlemeler editörün DÖNÜŞ değerinden okunur; taslağa
+        # (_pkey) geri YAZILMAZ. Geri yazmak, data_editor'ın taban verisini
+        # her turda değiştirip kaydırma konumunu sıfırlıyor ve seçimin ilk
+        # denemede uygulanmamasına yol açıyordu. Taban sabit → sorun çözülür.
         mapping = _editor(ctx, draft)
-        st.session_state[_pkey(ctx)] = mapping
     else:
         mapping = draft
         st.dataframe(

@@ -127,12 +127,18 @@ geçmiş/taslak tablosu yoktur:
 Kaydedilmemiş hücreler işaretlenir: ilgili ay sütunu başlığında 🟡, altta
 "N hücre kaydedilmedi" göstergesi. **Kaydet**, yalnız değişen ayları veriye
 yazar ve tüm sezonu kurallara karşı denetler (hatalar onay istemeden yazılmaz).
-İsteğe bağlı **renkli görünüm** (salt-okunur), sınıf renkleriyle boyalı Excel
-görünümünü sunar.
 
-> Not: Streamlit'in düzenlenebilir tablosu tek tek hücreleri renklendiremediği
-> için taslak/değişiklik işareti hücre dolgusuyla değil sütun başlığındaki 🟡
-> ve değişiklik sayacıyla verilir.
+**Görünüm ayarları** (🔧 Görünüm): sütun genişliği ve "tüm satırları göster".
+Ayrıca **renkli görünüm** (salt-okunur), sınıf renkleriyle boyalı, gerçek bir
+HTML tablodur ve **yakınlaştırma** kaydırıcısıyla (%40–%120) küçültülerek
+sezonun tamamı tek ekrana sığdırılabilir (yazdırmaya da uygun).
+
+> Notlar: (1) Streamlit'in düzenlenebilir tablosu tek tek hücreleri
+> renklendiremediği için taslak işareti hücre dolgusuyla değil sütun
+> başlığındaki 🟡 ve değişiklik sayacıyla verilir. (2) Düzenlerken tablo
+> verisi bir "nesil" boyunca sabit tutulur (düzenlemeler yalnız okunur, tabana
+> geri yazılmaz); böylece seçim ilk denemede uygulanır ve kaydırma konumu
+> sıfırlanmaz.
 
 Rehberli, tek grup+ay odaklı üretim için **Rotasyon Oluştur** ekranı olduğu
 gibi durur; Yıllık Tablo ona bir alternatiftir.

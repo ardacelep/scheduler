@@ -1,16 +1,20 @@
 """Yıllık Tablo — sezonun tamamı tek, Excel benzeri düzenlenebilir ızgarada.
 
-Satırlar öğrenci, sütunlar aylar, her hücre o ay gidilen birim (açılır menü).
-Geçmiş aylar da yeni ay taslağı da AYNI tablonun içinde görünür; kullanıcı
-herhangi bir hücreyi doğrudan değiştirir, tek "Kaydet" ile veriye yansır.
+Satırlar öğrenci, sütunlar aylar, her hücre bir açılır menü (o ay gidilen
+birim). Geçmiş aylar da yeni ay taslağı da AYNI tablonun içinde görünür;
+kullanıcı herhangi bir hücreyi doğrudan değiştirir, tek "Kaydet" ile veriye
+yansır.
 
-Taslak/kaydedilmemiş değişiklik işareti: ilgili ay sütunu başlığında 🟡 +
-"N hücre kaydedilmedi" göstergesi (Streamlit'in düzenlenebilir tablosu tek
-tek hücre renklendiremediğinden; renkli Excel görünümü ayrıca salt-okunur
-önizleme olarak sunulur). Kaydettikten sonra tüm sezon kurallara karşı
-denetlenir.
+Kaydırma/düzenleme kararlılığı: st.data_editor'a verilen TABAN veri bir
+"nesil" (gen) boyunca SABİT tutulur (session'da önbelleğe alınır) ve kullanıcı
+düzenlemeleri editörün DÖNÜŞ değerinden okunur — taban asla düzenlemeyle
+yeniden yazılmaz. Böylece her düzenlemede tablo kimliği değişmez: kaydırma
+konumu korunur ve seçim ilk denemede uygulanır. Taban yalnız programatik
+değişimde (otomatik doldurma / kaydet / geri al) yenilenir (gen artar).
 """
 from __future__ import annotations
+
+import html
 
 import pandas as pd
 import streamlit as st
@@ -27,8 +31,11 @@ from .common import (
     violations_dataframe,
 )
 
-_DRAFT_PREFIXES = ("grid_work_", "grid_gen_", "grid_ed_", "grid_force_")
-BLANK = "—"  # boş hücre (öğrenci o ay hiçbir birime atanmamış)
+_DRAFT_PREFIXES = (
+    "grid_gen_", "grid_ed_", "grid_base_", "grid_ov_", "grid_force_",
+)
+BLANK = "—"  # boş hücre (o ay atama yok)
+_WIDTHS = {"Dar": "small", "Orta": "medium", "Geniş": "large"}
 
 
 def render(store) -> None:
@@ -70,24 +77,31 @@ def render(store) -> None:
 
 
 def _labels_for_group(group, units, assignments, group_ids):
-    """Grup için birim etiketleri (aktifler) + geçmişte kullanılmış birimler.
-
-    Pasifleştirilmiş/eski birimler de listeye girer ki geçmiş hücreler
-    boş görünmesin ve seçilebilsin.
-    """
-    labels: dict[str, str] = {}  # etiket -> unit_id
+    """Grup için birim etiketleri (aktifler + geçmişte kullanılmış pasifler)."""
+    labels: dict[str, str] = {}
     for u in units:
         if u.group in (0, group) and u.active and u.quota > 0:
             labels[unit_label(u)] = u.id
-    used_ids = {
-        a.unit_id for a in assignments if a.student_id in group_ids
-    }
     by_id = {u.id: u for u in units}
-    for uid in used_ids:
-        u = by_id.get(uid)
-        if u is not None:
-            labels.setdefault(unit_label(u), u.id)
+    for a in assignments:
+        if a.student_id in group_ids:
+            u = by_id.get(a.unit_id)
+            if u is not None:
+                labels.setdefault(unit_label(u), u.id)
     return labels
+
+
+def _bump_gen(group: int) -> None:
+    """Nesli artırır ve eski nesle ait taban/editör durumunu temizler.
+
+    Yalnız programatik değişimde (otomatik doldur/kaydet/geri al) çağrılır;
+    kullanıcı düzenlemelerinde ÇAĞRILMAZ (taban sabit kalsın, kaydırma
+    korunsun)."""
+    g = f"grid_gen_{group}"
+    old = st.session_state.get(g, 0)
+    st.session_state.pop(f"grid_base_{group}_{old}", None)
+    st.session_state.pop(f"grid_ed_{group}_{old}", None)
+    st.session_state[g] = old + 1
 
 
 @st.fragment
@@ -112,9 +126,8 @@ def _grid(
     if note := st.session_state.pop("_grid_autofill_note", None):
         st.info(
             f"ℹ️ **{note}** otomatik dolduruldu; otomatik doldurma yalnız "
-            "KAYDEDİLMİŞ geçmişi kullanır, o sırada bekleyen kaydedilmemiş "
-            "değişiklikleriniz dikkate alınmadı. Gerekirse önce kaydedip "
-            "yeniden doldurun."
+            "KAYDEDİLMİŞ geçmişi kullanır. Bekleyen elle değişiklikleriniz "
+            "korunur ama geçmiş olarak sayılmaz — gerekirse önce kaydedin."
         )
 
     labels = _labels_for_group(group, units, assignments, group_ids)
@@ -122,43 +135,59 @@ def _grid(
     id_to_label = {uid: lbl for lbl, uid in labels.items()}
     options = [BLANK] + sorted(labels)
 
-    # kaydedilmiş durum: (sid, ay) -> etiket
-    saved: dict[tuple[str, str], str] = {}
-    for a in assignments:
-        if a.student_id in group_ids and a.unit_id in id_to_label:
-            saved[(a.student_id, a.month)] = id_to_label[a.unit_id]
+    saved: dict[tuple[str, str], str] = {
+        (a.student_id, a.month): id_to_label[a.unit_id]
+        for a in assignments
+        if a.student_id in group_ids and a.unit_id in id_to_label
+    }
 
-    # çalışma durumu (kullanıcının o ana kadarki düzenlemeleri) — session'da yaşar
-    wkey = f"grid_work_{group}"
-    if wkey not in st.session_state:
-        st.session_state[wkey] = {
-            (s.id, m): saved.get((s.id, m), BLANK)
-            for s in group_students for m in months
-        }
-    work = st.session_state[wkey]
-    # yeni öğrenci/ay eklenmişse boş doldur
-    for s in group_students:
-        for m in months:
-            work.setdefault((s.id, m), saved.get((s.id, m), BLANK))
-
-    # değişmiş aylar (başlıkta 🟡 ve gösterge için) — çalışma vs kaydedilmiş
-    changed_cells = 0
-    changed_months = set()
-    for s in group_students:
-        for m in months:
-            if work[(s.id, m)] != saved.get((s.id, m), BLANK):
-                changed_cells += 1
-                changed_months.add(m)
-
-    # ---- düzenlenebilir ızgara ----
     gen = st.session_state.get(f"grid_gen_{group}", 0)
-    df = pd.DataFrame(
-        [
-            {"Öğrenci": s.full_name, "Sınıf": s.class_name,
-             **{m: work[(s.id, m)] for m in months}}
-            for s in group_students
+    ov = st.session_state.setdefault(f"grid_ov_{group}", {})  # otomatik doldurma
+    edkey = f"grid_ed_{group}_{gen}"
+    basekey = f"grid_base_{group}_{gen}"
+
+    # ---- görünüm kontrolleri ----
+    with st.popover("🔧 Görünüm"):
+        col_w = _WIDTHS[
+            st.select_slider(
+                "Sütun genişliği", list(_WIDTHS), value="Orta",
+                key=f"grid_w_{group}",
+            )
         ]
-    )
+        show_all = st.checkbox(
+            "Tüm satırları göster (dikey kaydırma olmadan)",
+            key=f"grid_all_{group}",
+        )
+        st.caption(
+            "Sezonun tamamını tek bakışta görmek için aşağıdaki **renkli "
+            "görünüm**i açıp yakınlaştırmayı küçültün."
+        )
+
+    # ---- SABİT taban (nesil boyunca değişmez → kaydırma korunur) ----
+    if basekey not in st.session_state:
+        st.session_state[basekey] = pd.DataFrame(
+            [
+                {"Öğrenci": s.full_name, "Sınıf": s.class_name,
+                 **{m: ov.get((s.id, m), saved.get((s.id, m), BLANK))
+                    for m in months}}
+                for s in group_students
+            ]
+        )
+    base_df = st.session_state[basekey]
+
+    # başlık işareti (🟡): overrides + widget'ın anlık düzenleme deltası
+    # (data_editor durumu rerun'dan ÖNCE yazıldığı için gecikmesiz)
+    changed_months = {
+        m for (sid, m), lbl in ov.items() if lbl != saved.get((sid, m), BLANK)
+    }
+    state = st.session_state.get(edkey)
+    edited_rows = state.get("edited_rows", {}) if isinstance(state, dict) else {}
+    for ridx, chg in edited_rows.items():
+        sid = group_students[int(ridx)].id if int(ridx) < len(group_students) else None
+        for col, val in chg.items():
+            if sid and col in months and val != saved.get((sid, col), BLANK):
+                changed_months.add(col)
+
     col_config = {
         "Öğrenci": st.column_config.TextColumn(disabled=True, pinned=True),
         "Sınıf": st.column_config.TextColumn(disabled=True, width="small"),
@@ -166,29 +195,36 @@ def _grid(
     for m in months:
         col_config[m] = st.column_config.SelectboxColumn(
             f"{m} 🟡" if m in changed_months else m,
-            options=options, required=True, width="medium",
+            options=options, required=True, width=col_w,
         )
-    edited = st.data_editor(
-        df, column_config=col_config, hide_index=True,
-        use_container_width=True, height=min(640, 90 + 35 * len(df)),
-        key=f"grid_ed_{group}_{gen}",
+    height = (
+        40 + 35 * len(base_df) if show_all
+        else min(640, 90 + 35 * len(base_df))
     )
-    # kullanıcının düzenlemelerini çalışma durumuna işle
+    edited = st.data_editor(
+        base_df, column_config=col_config, hide_index=True,
+        use_container_width=True, height=height, key=edkey,
+    )
+
+    # ---- canlı durum yalnız DÖNÜŞ değerinden okunur (tabana geri yazılmaz) ----
+    live: dict[tuple[str, str], str] = {}
     for s, (_, row) in zip(group_students, edited.iterrows()):
         for m in months:
-            work[(s.id, m)] = row[m]
-    st.session_state[wkey] = work
+            live[(s.id, m)] = row[m]
+    changed = {k for k, v in live.items() if v != saved.get(k, BLANK)}
+    changed_cells = len(changed)
+    changed_month_set = {m for (_sid, m) in changed}
 
     if inactive:
         st.caption(
-            f"ℹ️ {len(inactive)} ayrılmış (pasif) öğrenci tabloda gösterilmez; "
-            "geçmişleri veride korunur."
+            f"ℹ️ {len(inactive)} ayrılmış (pasif) öğrenci düzenleme tablosunda "
+            "gösterilmez; geçmişleri veride korunur ve renkli görünümde görünür."
         )
 
     # ---- otomatik doldurma (sıradaki boş ay) ----
-    saved_months_done = {m for (_sid, m), lbl in saved.items()}
-    next_empty = next((m for m in months if m not in saved_months_done), None)
-    cbtns = st.columns([2, 2, 3])
+    saved_done = {m for (_sid, m) in saved}
+    next_empty = next((m for m in months if m not in saved_done), None)
+    cbtns = st.columns([3, 2, 3])
     if next_empty:
         if cbtns[0].button(
             f"🚀 {next_empty} ayını otomatik doldur", type="primary",
@@ -197,9 +233,8 @@ def _grid(
             "yerleştirir; kaydedene kadar taslaktır.",
         ):
             _autofill(
-                store, settings, months, next_empty, group_students,
-                group, units, assignments, custom_rules, id_to_label, work,
-                saved,
+                settings, months, next_empty, group_students, group, units,
+                assignments, custom_rules, id_to_label, ov, saved, live,
             )
     else:
         cbtns[0].caption("✅ Tüm aylar dolu.")
@@ -207,21 +242,17 @@ def _grid(
     if changed_cells and cbtns[1].button(
         "↩️ Değişiklikleri geri al", key=f"grid_reset_{group}",
     ):
-        del st.session_state[wkey]
-        st.session_state[f"grid_gen_{group}"] = gen + 1
+        st.session_state[f"grid_ov_{group}"] = {}
+        _bump_gen(group)
         st.rerun(scope="fragment")
 
-    # ---- kural denetimi (çalışma durumunun tamamı) ----
-    proposed = [
-        a for a in assignments if a.student_id not in group_ids
-    ]
-    for s in group_students:
-        for m in months:
-            lbl = work[(s.id, m)]
-            if lbl in label_to_id:
-                proposed.append(
-                    Assignment(student_id=s.id, month=m, unit_id=label_to_id[lbl])
-                )
+    # ---- kural denetimi (canlı durumun tamamı) ----
+    proposed = [a for a in assignments if a.student_id not in group_ids]
+    for (sid, m), lbl in live.items():
+        if lbl in label_to_id:
+            proposed.append(
+                Assignment(student_id=sid, month=m, unit_id=label_to_id[lbl])
+            )
     violations = check_all(
         students, units, proposed, months,
         custom_rules=custom_rules, settings=settings,
@@ -239,7 +270,7 @@ def _grid(
     if changed_cells:
         st.markdown(
             f"🟡 **{changed_cells} hücrede kaydedilmemiş değişiklik** "
-            f"(aylar: {', '.join(m for m in months if m in changed_months)})."
+            f"(aylar: {', '.join(m for m in months if m in changed_month_set)})."
         )
     else:
         st.caption("Kaydedilmemiş değişiklik yok.")
@@ -258,42 +289,37 @@ def _grid(
 
     force = False
     if errors:
-        force = st.checkbox(
-            "İhlallere rağmen kaydet", key=f"grid_force_{group}"
-        )
+        force = st.checkbox("İhlallere rağmen kaydet", key=f"grid_force_{group}")
     if st.button(
         f"💾 Değişiklikleri kaydet ({changed_cells} hücre)",
         type="primary",
         disabled=changed_cells == 0 or (bool(errors) and not force),
         key=f"grid_save_{group}",
     ):
-        _save(store, months, group_ids, group_students, work, saved, label_to_id)
-        del st.session_state[wkey]
-        st.session_state[f"grid_gen_{group}"] = gen + 1
-        st.session_state["_grid_flash"] = (
-            f"{changed_cells} hücre kaydedildi. ✅"
-        )
+        _save(store, months, group_ids, group_students, live, saved, label_to_id)
+        st.session_state[f"grid_ov_{group}"] = {}
+        _bump_gen(group)
+        st.session_state["_grid_flash"] = f"{changed_cells} hücre kaydedildi. ✅"
         st.rerun(scope="app")
 
-    # ---- renkli, salt-okunur önizleme (Excel görünümü) ----
-    with st.expander("🎨 Renkli görünüm (salt-okunur, Excel benzeri)"):
-        _colored_preview(group_students, months, work, classes)
+    # ---- renkli, salt-okunur, YAKINLAŞTIRILABİLİR önizleme ----
+    with st.expander("🎨 Renkli görünüm (salt-okunur, Excel benzeri, yakınlaştırılabilir)"):
+        zoom = st.slider(
+            "Yakınlaştırma", min_value=40, max_value=120, value=100, step=10,
+            format="%d%%", key=f"grid_zoom_{group}",
+            help="Sezonun tamamını tek ekranda görmek için küçültün.",
+        )
+        _colored_preview(group_students, inactive, months, live, saved, classes, zoom)
 
 
 def _autofill(
-    store, settings, months, target, group_students, group, units,
-    assignments, custom_rules, id_to_label, work, saved,
+    settings, months, target, group_students, group, units, assignments,
+    custom_rules, id_to_label, ov, saved, live,
 ):
-    # otomatik doldurma KAYDEDİLMİŞ geçmişe göre çalışır
-    has_unsaved = any(
-        work[(s.id, m)] != saved.get((s.id, m), BLANK)
-        for s in group_students for m in months
-    )
     group_units = [u for u in units if u.group in (0, group)]
     group_ids = {s.id for s in group_students}
     history = [
-        a for a in assignments
-        if a.student_id in group_ids and a.month != target
+        a for a in assignments if a.student_id in group_ids and a.month != target
     ]
     with st.spinner(f"{target} için çözücü çalışıyor..."):
         r = solve_month(
@@ -305,25 +331,27 @@ def _autofill(
         for reason in r.infeasible_reasons:
             st.markdown(f"- {reason}")
         return
+    # bekleyen elle düzenlemeleri koru (yeni tabana taşı), sonra hedef ayı ekle
+    for (sid, m), lbl in live.items():
+        if lbl != saved.get((sid, m), BLANK):
+            ov[(sid, m)] = lbl
     for sid, uid in r.assignments.items():
         if uid in id_to_label:
-            work[(sid, target)] = id_to_label[uid]
-    st.session_state[f"grid_work_{group}"] = work
-    st.session_state[f"grid_gen_{group}"] = (
-        st.session_state.get(f"grid_gen_{group}", 0) + 1
-    )
-    if has_unsaved:
+            ov[(sid, target)] = id_to_label[uid]
+    st.session_state[f"grid_ov_{group}"] = ov
+    if any(live[k] != saved.get(k, BLANK) for k in live):
         st.session_state["_grid_autofill_note"] = target
+    _bump_gen(group)
     st.rerun(scope="fragment")
 
 
-def _save(store, months, group_ids, group_students, work, saved, label_to_id):
-    """Yalnız DEĞİŞMİŞ ayları veriye yazar (gereksiz yedek/churn olmasın)."""
+def _save(store, months, group_ids, group_students, live, saved, label_to_id):
+    """Yalnız DEĞİŞMİŞ ayları veriye yazar."""
     for m in months:
         edited_map = {
-            s.id: label_to_id[work[(s.id, m)]]
+            s.id: label_to_id[live[(s.id, m)]]
             for s in group_students
-            if work[(s.id, m)] in label_to_id
+            if live.get((s.id, m)) in label_to_id
         }
         saved_map = {
             s.id: label_to_id[saved[(s.id, m)]]
@@ -334,26 +362,37 @@ def _save(store, months, group_ids, group_students, work, saved, label_to_id):
             replace_month_assignments(store, group_ids, m, edited_map)
 
 
-def _colored_preview(group_students, months, work, classes):
+def _colored_preview(group_students, inactive, months, live, saved, classes, zoom):
+    """Bütün öğrenciler (pasifler dahil) × aylar, sınıf renkli, HTML tablo.
+
+    HTML tablo (glide canvas değil) olduğu için CSS zoom ile küçültülebilir ve
+    tamamı tek ekrana sığdırılabilir; yazdırmaya da uygundur.
+    """
     color_of = {c.name: c.color_hex for c in classes if c.color_hex}
-    df = pd.DataFrame(
-        [
-            {"Öğrenci": s.full_name, "Sınıf": s.class_name,
-             **{m: work[(s.id, m)] for m in months}}
-            for s in group_students
-        ]
+    rows_html = []
+    header = "".join(f"<th>{html.escape(m)}</th>" for m in months)
+    rows_html.append(
+        "<tr><th>Öğrenci</th><th>Sınıf</th>" + header + "</tr>"
     )
-    name_colors = [color_of.get(s.class_name, "") for s in group_students]
-
-    def _style(_):
-        style = pd.DataFrame("", index=df.index, columns=df.columns)
-        loc = df.columns.get_loc("Öğrenci")
-        for i, hexc in enumerate(name_colors):
-            if hexc:
-                style.iloc[i, loc] = f"background-color: {hexc}; color: #000"
-        return style
-
-    st.dataframe(
-        df.style.apply(_style, axis=None), use_container_width=True,
-        hide_index=True, height=min(600, 90 + 35 * len(df)),
+    all_rows = group_students + sorted(inactive, key=lambda s: s.full_name)
+    for s in all_rows:
+        bg = color_of.get(s.class_name, "")
+        style = f' style="background:{bg};color:#000"' if bg else ""
+        passive = " (ayrıldı)" if not s.active else ""
+        cells = f"<td{style}>{html.escape(s.full_name)}{passive}</td>" \
+                f"<td>{html.escape(s.class_name)}</td>"
+        for m in months:
+            val = live.get((s.id, m)) if s.active else saved.get((s.id, m), BLANK)
+            val = val if val and val != BLANK else ""
+            cells += f"<td>{html.escape(val)}</td>"
+        rows_html.append(f"<tr>{cells}</tr>")
+    table = (
+        f'<div style="zoom:{zoom/100}; overflow-x:auto">'
+        '<table style="border-collapse:collapse;font-size:13px" border="1">'
+        + "".join(rows_html) + "</table></div>"
+    )
+    st.markdown(
+        "<style>table td,table th{padding:2px 6px;border:1px solid #555}</style>"
+        + table,
+        unsafe_allow_html=True,
     )
