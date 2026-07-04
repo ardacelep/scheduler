@@ -110,6 +110,7 @@ def _students_tab(store) -> None:
                 "Sınıf": s.class_name,
                 "Bölüm": PROGRAM_LABELS.get(s.program, s.program),
                 "Diş Muaf": s.dis_exempt,
+                "Aktif": s.active,
                 "Not": s.note,
             }
             for s in ordered
@@ -133,6 +134,11 @@ def _students_tab(store) -> None:
             "Diş Muaf": st.column_config.CheckboxColumn(
                 help="Madde 9: bu öğrenci Diş Poliklinik'e verilmez"
             ),
+            "Aktif": st.column_config.CheckboxColumn(
+                help="Sezon ortasında ayrılan öğrencinin işaretini kaldırın: "
+                "geçmiş ayları korunur, yeni aylara atanmaz. Silmekten "
+                "farklıdır — silme geçmişi de bozar."
+            ),
             "Not": st.column_config.TextColumn(
                 help="Madde 10: özel durum notu"
             ),
@@ -154,6 +160,7 @@ def _students_tab(store) -> None:
             s.class_name = row["Sınıf"] or s.class_name
             s.program = _PROGRAM_TO_CODE.get(row["Bölüm"], s.program)
             s.dis_exempt = bool(row["Diş Muaf"])
+            s.active = bool(row["Aktif"])
             s.note = str(row["Not"] or "").strip()
         store.save_students(students)
         st.success("Öğrenciler kaydedildi. ✅")
@@ -184,7 +191,12 @@ def _students_tab(store) -> None:
             s.banned_unit_ids = banned
             store.save_students(students)
             st.success("Kaydedildi. ✅")
-        if c2.button("🗑️ Öğrenciyi sil", key=f"del_student_{s.id}"):
+        if c2.button(
+            "🗑️ Öğrenciyi sil", key=f"del_student_{s.id}",
+            help="Silme, öğrencinin geçmiş atamalarını sahipsiz bırakır. "
+            "Sezon ortasında AYRILAN öğrenci için tablodaki 'Aktif' "
+            "işaretini kaldırmak doğrusudur.",
+        ):
             store.save_students([x for x in students if x.id != s.id])
             st.rerun()
 

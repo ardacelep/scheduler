@@ -46,14 +46,20 @@ def render(store) -> None:
     assignments = store.load_assignments()
     months = store.load_settings()["months"]
 
+    inactive = sum(1 for s in students if not s.active)
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Öğrenci", len(students))
+    c1.metric(
+        "Öğrenci",
+        len(students) - inactive,
+        delta=f"-{inactive} ayrıldı" if inactive else None,
+        delta_color="off",
+    )
     c2.metric("Aktif Birim", sum(1 for u in units if u.active))
     c3.metric("Sınıf", len(store.load_classes()))
     c4.metric("Kayıtlı Atama", len(assignments))
 
     # Eksik veri uyarıları — kullanıcıyı doğru ekrana yönlendir
-    missing_gender = [s.full_name for s in students if not s.gender]
+    missing_gender = [s.full_name for s in students if not s.gender and s.active]
     if missing_gender:
         st.warning(
             f"⚠️ {len(missing_gender)} öğrencinin cinsiyeti eksik; rotasyon "
@@ -67,7 +73,8 @@ def render(store) -> None:
     rows = []
     next_month = None
     for g in groups_in(students):
-        gids = {s.id for s in students if s.group == g}
+        # ayrılan (pasif) öğrenciler ilerleme paydasına girmez
+        gids = {s.id for s in students if s.group == g and s.active}
         row = {"Grup": f"{g}. Grup"}
         for m in months:
             done = sum(

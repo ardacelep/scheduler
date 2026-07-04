@@ -91,6 +91,23 @@ class Store:
     def save_custom_rules(self, rules: list[CustomRule]) -> None:
         self._save_list("rules", rules)
 
+    # ---- toplu taslak (kalıcı) ----
+    # Toplu üretim dakikalar sürebilir; sonucu yalnız oturum belleğinde
+    # tutmak sayfa yenilemede/uygulama kapanmasında emeği çöpe atar. Taslak
+    # onaylanana ya da silinene kadar diskte bekler; içindeki fingerprint
+    # veriyle karşılaştırılır, veri değiştiyse taslak bayattır ve atılır.
+    def save_bulk_draft(self, payload: dict) -> None:
+        self._write("draft_bulk", payload)
+
+    def load_bulk_draft(self) -> dict | None:
+        return self._read("draft_bulk", None)
+
+    def clear_bulk_draft(self) -> None:
+        for suffix in (".json", ".json.bak"):
+            p = self.data_dir / f"draft_bulk{suffix}"
+            if p.exists():
+                p.unlink()
+
     # ---- ayarlar ----
     def load_settings(self) -> dict:
         settings = self._read("settings", None)

@@ -102,7 +102,7 @@ def plan_remaining(
     solved: dict[int, list[str]] = {}
     failed: dict[int, tuple[str, list[str]]] = {}
     for g in groups:
-        g_students = [s for s in students if s.group == g]
+        g_students = [s for s in students if s.group == g and s.active]
         g_ids = {s.id for s in g_students}
         g_units = [u for u in units if u.group in (0, g)]
         history = [a for a in assignments if a.student_id in g_ids]
@@ -141,6 +141,7 @@ def plan_season(
     custom_rules=None,
     groups: list[int] | None = None,
     on_group=None,
+    on_month=None,
 ):
     """Kalan ayları toplu planlar — açgözlü birincil, ortak model emniyet ağı.
 
@@ -169,7 +170,7 @@ def plan_season(
     failed: dict[int, tuple[str, list[str]]] = {}
     order = {m: i for i, m in enumerate(months)}
     for g in groups:
-        g_students = [s for s in students if s.group == g]
+        g_students = [s for s in students if s.group == g and s.active]
         g_ids = {s.id for s in g_students}
         g_units = [u for u in units if u.group in (0, g)]
         history = [a for a in assignments if a.student_id in g_ids]
@@ -184,6 +185,7 @@ def plan_season(
         new, sub_solved, sub_failed = plan_remaining(
             g_students, g_units, months, assignments,
             settings=settings, custom_rules=custom_rules, groups=[g],
+            on_month=on_month,
         )
         if g not in sub_failed:
             new_assignments += new

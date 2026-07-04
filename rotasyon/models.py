@@ -105,6 +105,9 @@ class Student:
     banned_unit_ids: list[str] = field(default_factory=list)  # madde 8
     dis_exempt: bool = False  # madde 9: Diş Pol'e verilmez
     note: str = ""  # madde 10: özel durum, kural motorunu etkilemez
+    # Sezon ortasında ayrılan öğrenci SİLİNMEZ, pasifleştirilir: geçmiş
+    # atamaları ve kural denetimi referansları korunur, yeni aylara atanmaz.
+    active: bool = True
     id: str = field(default_factory=_new_id)
 
     def to_dict(self) -> dict:
