@@ -112,20 +112,30 @@ diskte saklanır, kaybolmaz.
 
 ### Yıllık Tablo
 
-Dışa aktarılan yıllık Excel görünümünün uygulama içi, **canlı ve
-düzenlenebilir** hâli. Satırlar öğrenci, sütunlar aylar, her hücre o ay gidilen
-birim; öğrenci adı sınıf rengiyle boyalıdır. Böylece sezonun tamamı ve her
-öğrencinin nereye gittiği tek bakışta görünür. Aynı ekrandan:
+Dışa aktarılan yıllık Excel görünümünün uygulama içi, **canlı ve tek parça
+düzenlenebilir** hâli — gerçek bir Excel tablosu gibi kullanılır. Satırlar
+öğrenci, sütunlar aylar; her hücre bir **açılır menüdür** (o ay gidilen birim).
+Geçmiş aylar da yeni ay taslağı da **aynı tablonun içinde** görünür, ayrı bir
+geçmiş/taslak tablosu yoktur:
 
-- boş (sıradaki) ayın rotasyonu **oluşturulur**,
-- herhangi bir planlanmış ay **elle düzeltilir**.
+- **Sıradaki boş ayı otomatik doldur** düğmesi, çözücünün ürettiği taslağı
+  doğrudan o ay sütununa yerleştirir.
+- Herhangi bir hücreyi (geçmiş dahil) doğrudan değiştirebilirsiniz; her
+  öğrencinin diğer aylardaki birimleri aynı satırda görünür, böylece tekrar
+  yasağına takılmadan, tüm sezon bağlamıyla karar verirsiniz.
 
-Elle düzeltme yaparken düzenleme satırında her öğrencinin **"şimdiye dek
-gittiği birimler"** sütunu görünür; tekrar yasağına takılmadan, tüm sezon
-bağlamıyla karar verebilirsiniz. Kaydettikten sonra tüm sezon kurallara karşı
-denetlenir; hiçbir şey onaylanmadan yazılmaz. (Rehberli, tek grup+ay odaklı
-üretim için **Rotasyon Oluştur** ekranı olduğu gibi durur; Yıllık Tablo ona
-bir alternatiftir.)
+Kaydedilmemiş hücreler işaretlenir: ilgili ay sütunu başlığında 🟡, altta
+"N hücre kaydedilmedi" göstergesi. **Kaydet**, yalnız değişen ayları veriye
+yazar ve tüm sezonu kurallara karşı denetler (hatalar onay istemeden yazılmaz).
+İsteğe bağlı **renkli görünüm** (salt-okunur), sınıf renkleriyle boyalı Excel
+görünümünü sunar.
+
+> Not: Streamlit'in düzenlenebilir tablosu tek tek hücreleri renklendiremediği
+> için taslak/değişiklik işareti hücre dolgusuyla değil sütun başlığındaki 🟡
+> ve değişiklik sayacıyla verilir.
+
+Rehberli, tek grup+ay odaklı üretim için **Rotasyon Oluştur** ekranı olduğu
+gibi durur; Yıllık Tablo ona bir alternatiftir.
 
 ---
 
