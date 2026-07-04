@@ -71,11 +71,16 @@ def test_plan_reports_failure_and_keeps_earlier_months(small_world, settings):
     """
     students, units, _ = small_world
     settings["solver"]["time_limit_seconds"] = 5
+    attempts = []
     new, solved, failed = plan_remaining(
-        students, units, settings["months"], [], settings=settings
+        students, units, settings["months"], [], settings=settings,
+        on_month=lambda g, m, a: attempts.append(a),
     )
     assert 1 in failed
     fail_month, reasons = failed[1]
     assert reasons  # Türkçe neden üretilir
     assert solved[1]  # başarısızlıktan önceki aylar üretilmiş durumda
     assert {a.month for a in new} == set(solved[1])
+    # Tıkanmada farklı tohumla bir kez daha denenir; ikinci deneme de aynı
+    # ayda aynı nedenle durunca (yapısal çözümsüzlük) üçüncüsü açılmaz.
+    assert max(attempts) == 2

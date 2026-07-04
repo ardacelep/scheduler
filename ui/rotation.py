@@ -648,13 +648,17 @@ def _bulk_section(bctx) -> None:
         with st.status("Aylar sırayla çözülüyor...", expanded=True) as status:
             done_counter = {"n": 0}
 
-            def on_month(g, m):
-                done_counter["n"] += 1
+            def on_month(g, m, attempt=1):
+                if attempt == 1:
+                    done_counter["n"] = min(done_counter["n"] + 1, total)
+                    label = f"⏳ {g}. grup — {m}"
+                else:
+                    label = f"🔁 {g}. grup — {m} ({attempt}. deneme)"
                 status.update(
                     label=f"Çözülüyor: {g}. grup — {m} "
                     f"({done_counter['n']}/{total})"
                 )
-                status.write(f"⏳ {g}. grup — {m}")
+                status.write(label)
 
             new, solved, failed = plan_remaining(
                 students,
