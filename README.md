@@ -86,6 +86,7 @@ Sol kenar çubuğundan **sezon** seçilir, yeni sezon oluşturulur veya silinir
 |---|---|
 | **Ana Sayfa** | Sezon özeti, ay bazında ilerleme tablosu, eksik veri uyarıları, hızlı erişim bağlantıları |
 | **Rotasyon Oluştur** | Tek akışlı üretim + toplu oluşturma (aşağıda ayrıntı) |
+| **Yıllık Tablo** | Sezonun tamamı tek tabloda (öğrenci × ay); aynı ekrandan ay oluşturma/elle düzeltme, düzeltirken herkesin geçmişi görünür (aşağıda ayrıntı) |
 | **Kural Kontrolü** | Kayıtlı tüm atamaların bütün kurallara karşı denetimi (hata / uyarı) |
 | **Veri Yönetimi** | Öğrenci, birim, sınıf ve özel kuralları toplu düzenleme; Excel içe aktarma; cinsiyet tahmini |
 | **Öğrenci Geçmişi** | Bir öğrencinin sezon boyunca gittiği birimler, ay sırasıyla |
@@ -108,6 +109,23 @@ tablosu + kural denetimiyle **taslak** olarak önizlenir, onaylayınca kaydedili
 Çözüm **arka planda** çalışır: bu sırada başka sayfalara geçebilir, hatta
 uygulamayı kapatıp açabilirsiniz — biten taslak siz onaylayana/silene kadar
 diskte saklanır, kaybolmaz.
+
+### Yıllık Tablo
+
+Dışa aktarılan yıllık Excel görünümünün uygulama içi, **canlı ve
+düzenlenebilir** hâli. Satırlar öğrenci, sütunlar aylar, her hücre o ay gidilen
+birim; öğrenci adı sınıf rengiyle boyalıdır. Böylece sezonun tamamı ve her
+öğrencinin nereye gittiği tek bakışta görünür. Aynı ekrandan:
+
+- boş (sıradaki) ayın rotasyonu **oluşturulur**,
+- herhangi bir planlanmış ay **elle düzeltilir**.
+
+Elle düzeltme yaparken düzenleme satırında her öğrencinin **"şimdiye dek
+gittiği birimler"** sütunu görünür; tekrar yasağına takılmadan, tüm sezon
+bağlamıyla karar verebilirsiniz. Kaydettikten sonra tüm sezon kurallara karşı
+denetlenir; hiçbir şey onaylanmadan yazılmaz. (Rehberli, tek grup+ay odaklı
+üretim için **Rotasyon Oluştur** ekranı olduğu gibi durur; Yıllık Tablo ona
+bir alternatiftir.)
 
 ---
 
@@ -328,8 +346,8 @@ rotasyon/             çekirdek mantık (arayüzden bağımsız)
   normalize.py        birim adı normalizasyonu / Türkçe küçük harf
   queries.py          salt-okunur yardımcı sorgular
 
-ui/                   ekran modülleri (dashboard, rotation, violations,
-                      data_management, history, excel_screen, common)
+ui/                   ekran modülleri (dashboard, rotation, season_grid,
+                      violations, data_management, history, excel_screen, common)
 
 data/                 çalışma verisi — sezon bazında (gitignore)
 seed_data/            "Örnek veriyle başla" için hazır veri

@@ -15,7 +15,7 @@ st.set_page_config(
 )
 
 from ui import dashboard, data_management, history, rotation, violations  # noqa: E402
-from ui import excel_screen  # noqa: E402
+from ui import excel_screen, season_grid  # noqa: E402
 from ui.common import (  # noqa: E402
     create_season_with_units,
     get_manager,
@@ -100,6 +100,10 @@ def main() -> None:
             st.Page(
                 _page(rotation.render, "rotasyon"),
                 title="Rotasyon Oluştur", icon="🔄", url_path="rotasyon",
+            ),
+            st.Page(
+                _page(season_grid.render, "yillik-tablo"),
+                title="Yıllık Tablo", icon="📅", url_path="yillik-tablo",
             ),
             st.Page(
                 _page(violations.render, "kural-kontrolu"),
