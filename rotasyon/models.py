@@ -228,14 +228,18 @@ DEFAULT_SETTINGS: dict = {
         # worker daha hızlı VE macOS'ta pyarrow ile absl deadlock'unu önlüyor.
         "num_workers": 1,
         # Yumuşak kısıt ağırlıkları — değişebilir detaylar, sabit kodlanmadı
+        # Ölçüm (74 öğrencilik gerçek sezon, tam sezon çözümü): repeat_pair
+        # 3→10 tekrar eden ikili sayısını 8'den 1'e, gender_balance 2→6
+        # (repeat_pair=10 ile birlikte) K/E uyarısını 17'den 9'a düşürdü;
+        # başka bir kuralda gerileme olmadı.
         "weights": {
             "pool_balance": 5,        # madde 4: havuz birimlerine eşit dağılım
-            "repeat_pair": 3,         # madde 19: tekrar eden ikili cezası
+            "repeat_pair": 10,        # madde 19: tekrar eden ikili cezası
             "ebelik_priority": 20,    # madde 18
             "core_branch_early": 2,   # madde 6/7'yi erken aylarda karşılama bonusu
             "single_slot_fill": 50,   # madde 4: tekli birimler boş kalmasın
             "reserve_use": 15,        # gri/yedek birim yalnız ihtiyaç olursa
-            "gender_balance": 2,      # havuz birimlerinde kız/erkek dengesi
+            "gender_balance": 6,      # havuz birimlerinde kız/erkek dengesi
         },
     },
 }

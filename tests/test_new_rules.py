@@ -165,12 +165,31 @@ def test_pool_gender_balance_soft():
         assert glist.count("K") == 1 and glist.count("E") == 1
 
 
-def test_checker_warns_on_gender_imbalance():
-    students = [
-        Student(full_name=f"K{i}", gender=FEMALE, group=1) for i in range(3)
+def test_checker_warns_on_fixable_gender_imbalance():
+    """3K/0E birimi, başka bir havuzda ≥2 erkek varken (takasla düzelirdi)
+    uyarı üretir."""
+    ks = [Student(full_name=f"K{i}", gender=FEMALE, group=1) for i in range(3)]
+    es = [Student(full_name=f"E{i}", gender=MALE, group=1) for i in range(3)]
+    p1 = Unit(name="KAT1", group=1, quota=3, pool=True)
+    p2 = Unit(name="KAT2", group=1, quota=3, pool=True)
+    assignments = [make_assignment(s, p1, "EYLÜL") for s in ks] + [
+        make_assignment(s, p2, "EYLÜL") for s in es
     ]
-    pool = Unit(name="KAT1", group=1, quota=3, pool=True)
-    assignments = [make_assignment(s, pool, "EYLÜL") for s in students]
-    v = check_all(students, [pool], assignments, DEFAULT_MONTHS)
+    v = check_all(ks + es, [p1, p2], assignments, DEFAULT_MONTHS)
     hits = [x for x in v if x.rule_no == 21]
     assert hits and hits[0].severity == WARNING
+
+
+def test_checker_silent_on_unavoidable_gender_imbalance():
+    """Grupta eksik cinsiyetten takas edilecek öğrenci yoksa (örn. hiç
+    erkek kalmamışsa) dengesizlik kaçınılmazdır — uyarı üretilmez."""
+    ks = [Student(full_name=f"K{i}", gender=FEMALE, group=1) for i in range(4)]
+    e = Student(full_name="E0", gender=MALE, group=1)
+    p1 = Unit(name="KAT1", group=1, quota=3, pool=True)
+    p2 = Unit(name="KAT2", group=1, quota=2, pool=True)
+    assignments = [make_assignment(s, p1, "EYLÜL") for s in ks[:3]] + [
+        make_assignment(ks[3], p2, "EYLÜL"),
+        make_assignment(e, p2, "EYLÜL"),
+    ]
+    v = check_all(ks + [e], [p1, p2], assignments, DEFAULT_MONTHS)
+    assert [x for x in v if x.rule_no == 21] == []

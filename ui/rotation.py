@@ -597,15 +597,23 @@ def _wizard(ctx) -> None:
 
 # ---------- toplu oluşturma ----------
 
+def _cb_discard_bulk() -> None:
+    st.session_state.pop("bulk_draft", None)
+
+
 @st.fragment
 def _bulk_section(bctx) -> None:
     st.subheader("📅 Toplu oluşturma")
     if report := st.session_state.pop("_bulk_report", None):
         (st.warning if report["failed"] else st.success)(report["text"])
+    if (draft := st.session_state.get("bulk_draft")) is not None:
+        _bulk_preview(bctx, draft)
+        return
     st.caption(
-        "Kalan ayları sezon sonuna kadar **sırayla** tek seferde oluşturur "
-        "ve her başarılı ayı kaydeder. Sezon ortasından da çalışır: dolu "
-        "aylar geçmiş kabul edilir, ilk boş aydan devam edilir."
+        "Kalan ayları sezon sonuna kadar **sırayla** tek seferde çözer; "
+        "sonuç önce **taslak** olarak gösterilir, siz onaylamadan hiçbir "
+        "şey kaydedilmez. Sezon ortasından da çalışır: dolu aylar geçmiş "
+        "kabul edilir, ilk boş aydan devam edilir."
     )
     students = bctx["students"]
     settings = bctx["settings"]
@@ -637,7 +645,6 @@ def _bulk_section(bctx) -> None:
         disabled=not picks,
         key="bulk_run",
     ):
-        store = bctx["store"]
         with st.status("Aylar sırayla çözülüyor...", expanded=True) as status:
             done_counter = {"n": 0}
 
@@ -659,23 +666,111 @@ def _bulk_section(bctx) -> None:
                 groups=picks,
                 on_month=on_month,
             )
-            if new:
-                store.save_assignments(store.load_assignments() + new)
-            parts = [
-                f"{g}. grup: {len(ms)} ay oluşturuldu ✅"
-                for g, ms in solved.items()
-                if ms
-            ]
-            for g, (m, reasons) in failed.items():
-                parts.append(
-                    f"{g}. grup {m} ayında durdu — "
-                    + (reasons[0] if reasons else "neden bilinmiyor")
-                )
-            st.session_state["_bulk_report"] = {
-                "failed": bool(failed),
-                "text": " • ".join(parts) if parts else "Yapılacak ay yoktu.",
+            st.session_state["bulk_draft"] = {
+                "new": new,
+                "solved": solved,
+                "failed": failed,
             }
             status.update(
-                label="Bitti", state="error" if failed else "complete"
+                label="Bitti — önizleme hazır",
+                state="error" if failed else "complete",
             )
+        st.rerun(scope="fragment")
+
+
+def _bulk_preview(bctx, draft: dict) -> None:
+    """Toplu çözüm taslağı: incele → onayla ve kaydet / vazgeç."""
+    new, solved, failed = draft["new"], draft["solved"], draft["failed"]
+    settings = bctx["settings"]
+    months = settings["months"]
+    for g, (m, reasons) in failed.items():
+        st.error(
+            f"{g}. grup {m} ayında durdu — "
+            + (reasons[0] if reasons else "neden bilinmiyor")
+            + " Önceki aylar taslakta korunur."
+        )
+    if not new:
+        st.warning("Hiçbir ay çözülemedi; kaydedilecek bir şey yok.")
+        st.button("↩️ Kapat", key="bulk_discard", on_click=_cb_discard_bulk)
+        return
+
+    parts = [
+        f"{g}. grup: {', '.join(ms)}" for g, ms in solved.items() if ms
+    ]
+    st.markdown(
+        f"🟡 **Toplu taslak — henüz kaydedilmedi** ({'; '.join(parts)})"
+    )
+    students_by_id = {s.id: s for s in bctx["students"]}
+    units_by_id = {u.id: u for u in bctx["units"]}
+    order = {m: i for i, m in enumerate(months)}
+    for g, ms in solved.items():
+        if not ms:
+            continue
+        ms = sorted(ms, key=lambda m: order.get(m, 99))
+        g_students = sorted(
+            (s for s in bctx["students"] if s.group == g),
+            key=lambda s: s.full_name,
+        )
+        cell = {
+            (a.student_id, a.month): unit_label(units_by_id[a.unit_id])
+            for a in new
+            if a.unit_id in units_by_id
+            and students_by_id.get(a.student_id, None) is not None
+            and students_by_id[a.student_id].group == g
+        }
+        with st.expander(
+            f"👀 {g}. grup önizleme ({len(ms)} ay)", expanded=len(solved) == 1
+        ):
+            st.dataframe(
+                pd.DataFrame(
+                    [
+                        {"Öğrenci": s.full_name}
+                        | {m: cell.get((s.id, m), "—") for m in ms}
+                        for s in g_students
+                    ]
+                ),
+                use_container_width=True,
+                hide_index=True,
+            )
+
+    violations = check_all(
+        bctx["students"],
+        bctx["units"],
+        bctx["assignments"] + new,
+        months,
+        custom_rules=bctx["custom_rules"],
+        settings=settings,
+    )
+    show_violations(violations)
+    errors = [v for v in violations if v.severity == "hata"]
+    force = False
+    if errors:
+        force = st.checkbox(
+            "İhlallere rağmen kaydetmek istiyorum", key="bulk_force"
+        )
+    c1, c2 = st.columns(2)
+    if c1.button(
+        "✅ Onayla ve Kaydet",
+        type="primary",
+        disabled=bool(errors) and not force,
+        key="bulk_save",
+    ):
+        store = bctx["store"]
+        store.save_assignments(store.load_assignments() + new)
+        st.session_state.pop("bulk_draft", None)
+        report = [
+            f"{g}. grup: {len(ms)} ay kaydedildi ✅"
+            for g, ms in solved.items()
+            if ms
+        ]
+        for g, (m, reasons) in failed.items():
+            report.append(
+                f"{g}. grup {m} ayında durmuştu — "
+                + (reasons[0] if reasons else "neden bilinmiyor")
+            )
+        st.session_state["_bulk_report"] = {
+            "failed": bool(failed),
+            "text": " • ".join(report),
+        }
         st.rerun(scope="app")
+    c2.button("🗑️ Taslağı sil", key="bulk_discard", on_click=_cb_discard_bulk)

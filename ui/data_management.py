@@ -510,7 +510,9 @@ bir yoğun bakım ve bir palyatif** görür (branş bazlı zorunluluklar) •
 görünümü renksiz • 16. Öğrenci geçmişi • 17. FTR ve 2.KAT ÇOCUK-DOĞUM'a
 1 kız 1 erkek • 18. Doğum birimlerinde ebelik önceliği • 19. Aynı ikili
 tekrar aynı birimde olmaz • 20. Peş peşe iki ay **yoğun** (veya **hafif**)
-bölüme verilmez • 21. Havuz birimlerinde kız/erkek dengesi gözetilir •
+bölüme verilmez • 21. Havuz birimlerinde kız/erkek dengesi gözetilir
+(dengesizlik ancak takas ile düzeltilebilir olduğunda uyarı verilir;
+gruptaki kız/erkek sayısı zaten dengesizse uyarı üretilmez) •
 **Yedek (gri) birimlere** yalnız ihtiyaç olursa öğrenci verilir.
 
 Bu kurallar öğrenci/birim tanımlarındaki alanlarla (cinsiyet kısıtı, branş

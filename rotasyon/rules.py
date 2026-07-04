@@ -377,7 +377,14 @@ def _check_rule20_intensity(assignments, students_by_id, units_by_id, months):
 
 def _check_rule21_gender_balance(assignments, students_by_id, units_by_id):
     """Madde 21 (BÖLÜMLER VE ÖZELLİKLERİ): havuz birimlerinde kız/erkek
-    sayısı dengeli olmalı — belirgin dengesizlik uyarı üretir."""
+    sayısı dengeli olmalı.
+
+    Yalnız GİDERİLEBİLİR dengesizlik uyarı üretir: aynı ay aynı gruptaki
+    başka bir havuz biriminde eksik cinsiyetten en az 2 öğrenci varsa bir
+    takas dengeyi düzeltirdi, uyarı verilir. Grubun kendisi dengesizse
+    (örn. 24 kız / 7 erkek — çoğu havuza erkek düşmez) uyarı ÜRETİLMEZ:
+    kimsenin düzeltemeyeceği dağılım için uyarı gürültüdür.
+    """
     out = []
     per_unit_month: dict[tuple[str, str], list[str]] = defaultdict(list)
     for a in assignments:
@@ -388,20 +395,29 @@ def _check_rule21_gender_balance(assignments, students_by_id, units_by_id):
                 per_unit_month[(a.unit_id, a.month)].append(g)
     for (uid, month), genders in per_unit_month.items():
         k, e = genders.count("K"), genders.count("E")
-        if abs(k - e) >= 3:
-            u = units_by_id[uid]
-            out.append(
-                Violation(
-                    rule_no=21,
-                    severity=WARNING,
-                    message=(
-                        f"{u.name} ({month}): kız/erkek dağılımı dengesiz "
-                        f"({k} kız, {e} erkek)."
-                    ),
-                    month=month,
-                    unit_id=uid,
-                )
+        if abs(k - e) < 3:
+            continue
+        u = units_by_id[uid]
+        scarce = "E" if e < k else "K"
+        fixable = any(
+            other_genders.count(scarce) >= 2
+            for (oid, m2), other_genders in per_unit_month.items()
+            if m2 == month and oid != uid and units_by_id[oid].group == u.group
+        )
+        if not fixable:
+            continue
+        out.append(
+            Violation(
+                rule_no=21,
+                severity=WARNING,
+                message=(
+                    f"{u.name} ({month}): kız/erkek dağılımı dengesiz "
+                    f"({k} kız, {e} erkek)."
+                ),
+                month=month,
+                unit_id=uid,
             )
+        )
     return out
 
 
