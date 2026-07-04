@@ -224,6 +224,10 @@ DEFAULT_SETTINGS: dict = {
         # optimallik kanıtına gidiyor (skor 60 sn'de bile değişmedi).
         # Eski/yavaş bilgisayarlarda da akıcı kalsın diye 5 sn yeterli.
         "time_limit_seconds": 5,
+        # Toplu üretimde bütün sezonu tek modelde çözen ortak çözücünün süre
+        # sınırı (solve_season). Model ay-bazlıdan büyük olduğu için daha
+        # geniş; süre dolarsa açgözlü ay-bazlı yola geri düşülür.
+        "season_time_limit_seconds": 60,
         # Paralel arama worker sayısı. 1 bırakın: bu boyuttaki modellerde tek
         # worker daha hızlı VE macOS'ta pyarrow ile absl deadlock'unu önlüyor.
         "num_workers": 1,

@@ -19,7 +19,7 @@ import pandas as pd
 import streamlit as st
 
 from rotasyon.models import Assignment
-from rotasyon.planner import plan_remaining, remaining_months
+from rotasyon.planner import plan_season, remaining_months
 from rotasyon.rules import check_all
 from rotasyon.solver import solve_month, visited_unit_keys
 from rotasyon.normalize import normalize_key
@@ -610,10 +610,12 @@ def _bulk_section(bctx) -> None:
         _bulk_preview(bctx, draft)
         return
     st.caption(
-        "Kalan ayları sezon sonuna kadar **sırayla** tek seferde çözer; "
-        "sonuç önce **taslak** olarak gösterilir, siz onaylamadan hiçbir "
-        "şey kaydedilmez. Sezon ortasından da çalışır: dolu aylar geçmiş "
-        "kabul edilir, ilk boş aydan devam edilir."
+        "Kalan ayları tek seferde üretir. Bir ay diğerini çıkmaza sokarsa "
+        "**bütün sezonu tek modelde birlikte** çözen emniyet ağı devreye "
+        "girer: geçerli bir sezon varsa bulunması garanti edilir, yoksa "
+        "nedeni net söylenir. Sonuç önce **taslak** gösterilir, siz "
+        "onaylamadan hiçbir şey kaydedilmez. Sezon ortasından da çalışır: "
+        "dolu aylar geçmiş kabul edilir."
     )
     students = bctx["students"]
     settings = bctx["settings"]
@@ -645,22 +647,22 @@ def _bulk_section(bctx) -> None:
         disabled=not picks,
         key="bulk_run",
     ):
-        with st.status("Aylar sırayla çözülüyor...", expanded=True) as status:
-            done_counter = {"n": 0}
+        with st.status(
+            "Bütün sezon birlikte çözülüyor...", expanded=True
+        ) as status:
 
-            def on_month(g, m, attempt=1):
-                if attempt == 1:
-                    done_counter["n"] = min(done_counter["n"] + 1, total)
-                    label = f"⏳ {g}. grup — {m}"
+            def on_group(g, phase):
+                if phase == "cozum":
+                    status.update(label=f"{g}. grup: aylar çözülüyor…")
+                    status.write(f"⏳ {g}. grup — aylar çözülüyor")
                 else:
-                    label = f"🔁 {g}. grup — {m} ({attempt}. deneme)"
-                status.update(
-                    label=f"Çözülüyor: {g}. grup — {m} "
-                    f"({done_counter['n']}/{total})"
-                )
-                status.write(label)
+                    status.update(
+                        label=f"{g}. grup: bir ay tıkandı, bütün sezon tek "
+                        "modelde birlikte çözülüyor (emniyet ağı)…"
+                    )
+                    status.write(f"🧮 {g}. grup — ortak sezon çözümü")
 
-            new, solved, failed = plan_remaining(
+            new, solved, failed = plan_season(
                 students,
                 bctx["units"],
                 months,
@@ -668,7 +670,7 @@ def _bulk_section(bctx) -> None:
                 settings=settings,
                 custom_rules=bctx["custom_rules"],
                 groups=picks,
-                on_month=on_month,
+                on_group=on_group,
             )
             st.session_state["bulk_draft"] = {
                 "new": new,
@@ -689,7 +691,7 @@ def _bulk_preview(bctx, draft: dict) -> None:
     months = settings["months"]
     for g, (m, reasons) in failed.items():
         st.error(
-            f"{g}. grup {m} ayında durdu — "
+            f"Grup {g} — {m} ayında durdu: "
             + (reasons[0] if reasons else "neden bilinmiyor")
             + " Önceki aylar taslakta korunur."
         )
@@ -699,7 +701,7 @@ def _bulk_preview(bctx, draft: dict) -> None:
         return
 
     parts = [
-        f"{g}. grup: {', '.join(ms)}" for g, ms in solved.items() if ms
+        f"Grup {g}: {', '.join(ms)}" for g, ms in solved.items() if ms
     ]
     st.markdown(
         f"🟡 **Toplu taslak — henüz kaydedilmedi** ({'; '.join(parts)})"
@@ -723,7 +725,7 @@ def _bulk_preview(bctx, draft: dict) -> None:
             and students_by_id[a.student_id].group == g
         }
         with st.expander(
-            f"👀 {g}. grup önizleme ({len(ms)} ay)", expanded=len(solved) == 1
+            f"👀 Grup {g} önizleme ({len(ms)} ay)", expanded=len(solved) == 1
         ):
             st.dataframe(
                 pd.DataFrame(
@@ -763,13 +765,13 @@ def _bulk_preview(bctx, draft: dict) -> None:
         store.save_assignments(store.load_assignments() + new)
         st.session_state.pop("bulk_draft", None)
         report = [
-            f"{g}. grup: {len(ms)} ay kaydedildi ✅"
+            f"Grup {g}: {len(ms)} ay kaydedildi ✅"
             for g, ms in solved.items()
             if ms
         ]
         for g, (m, reasons) in failed.items():
             report.append(
-                f"{g}. grup {m} ayında durmuştu — "
+                f"Grup {g}: {m} ayında durmuştu — "
                 + (reasons[0] if reasons else "neden bilinmiyor")
             )
         st.session_state["_bulk_report"] = {

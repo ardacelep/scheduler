@@ -23,6 +23,8 @@ from .models import (
     Unit,
     BRANCH_DOGUM_SALONU,
     BRANCH_LABELS,
+    INTENSITY_HAFIF,
+    INTENSITY_YOGUN,
     PROGRAM_EBELIK,
     RULE_AYRI_TUT,
     RULE_BIRLIKTE_TUT,
@@ -39,6 +41,22 @@ class SolveResult:
     infeasible_reasons: list[str] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)  # kullanıcıya bilgi notları
     objective: float | None = None  # amaç fonksiyonu (düşük = iyi); kıyas için
+
+    @property
+    def ok(self) -> bool:
+        return self.status in ("OPTIMAL", "FEASIBLE")
+
+
+@dataclass
+class SeasonSolveResult:
+    """Bütün sezonu tek modelde çözen `solve_season` sonucu."""
+
+    status: str  # "OPTIMAL" | "FEASIBLE" | "INFEASIBLE" | "UNKNOWN"
+    # (öğrenci_id, ay) -> birim_id
+    assignments: dict[tuple[str, str], str] = field(default_factory=dict)
+    infeasible_reasons: list[str] = field(default_factory=list)
+    notes: list[str] = field(default_factory=list)
+    objective: float | None = None
 
     @property
     def ok(self) -> bool:
@@ -566,5 +584,311 @@ def solve_month(
         status="UNKNOWN",
         infeasible_reasons=[
             "Süre sınırı içinde çözüm bulunamadı; süreyi artırmayı deneyin."
+        ],
+    )
+
+
+def solve_season(
+    students: list[Student],
+    units: list[Unit],
+    months: list[str],
+    solve_months: list[str],
+    history: list[Assignment],
+    settings: dict | None = None,
+    custom_rules: list[CustomRule] | None = None,
+    random_seed: int | None = None,
+) -> SeasonSolveResult:
+    """`solve_months`'un TAMAMINI tek CP-SAT modelinde birlikte çözer.
+
+    Ay-bazlı `solve_month` açgözlüdür: erken bir ayın (tek başına kusursuz)
+    çözümü ileriki ayı çözümsüz bırakabilir. Bu fonksiyon bütün ayları aynı
+    anda değişkenleştirir; böylece madde 1 (tekrar yasağı), sezon
+    zorunlulukları (madde 6/7) ve madde 20 (peş peşe yoğunluk) SERT kısıt
+    olarak kurulur ve veri elveriyorsa geçerli bir sezon bulunması garanti
+    edilir (köşeye sıkışma imkânsız). `history`'deki dolu aylar sabit girdidir.
+
+    Dönüş: (öğrenci_id, ay) -> birim_id eşlemesi + durum.
+    """
+    settings = settings or DEFAULT_SETTINGS
+    weights: dict = settings["solver"]["weights"]
+    custom_rules = [r for r in (custom_rules or []) if r.active]
+    solve_set = set(solve_months)
+
+    catalog_by_id = {u.id: u for u in units}
+    active_units = [u for u in units if u.active and u.quota > 0]
+
+    # geçmiş yorumu (tekrar yasağı + görülmüş branşlar)
+    visited: dict[str, set[str]] = {
+        s.id: visited_unit_keys(s.id, history, catalog_by_id) for s in students
+    }
+    seen_branches: dict[str, set[str]] = {}
+    hist_by_student_month: dict[tuple[str, str], Unit] = {}
+    for s in students:
+        seen_branches[s.id] = set()
+    for a in history:
+        if a.unit_id in catalog_by_id:
+            u = catalog_by_id[a.unit_id]
+            if a.student_id in seen_branches:
+                seen_branches[a.student_id].add(u.branch_category)
+            hist_by_student_month[(a.student_id, a.month)] = u
+
+    available_branches = {u.branch_category for u in active_units}
+    req_branches = [
+        r["branch"]
+        for r in settings.get("season_requirements", [])
+        if r.get("branch") and r["branch"] in available_branches
+    ]
+
+    model = cp_model.CpModel()
+
+    # ---- değişkenler: x[s, u, m], statik uygunlukla budanmış ----
+    x: dict[tuple[str, str, str], cp_model.IntVar] = {}
+    key_of = {u.id: normalize_key(u.name) for u in active_units}
+    for s in students:
+        for m in solve_months:
+            for u in active_units:
+                if u.gender_restriction and s.gender and s.gender != u.gender_restriction:
+                    continue
+                if key_of[u.id] in visited[s.id]:
+                    continue  # madde 1: sezon öncesinde görülmüş
+                if u.id in s.banned_unit_ids:
+                    continue
+                if s.dis_exempt and "DİŞ" in key_of[u.id]:
+                    continue
+                x[(s.id, u.id, m)] = model.NewBoolVar(f"x_{s.id}_{u.id}_{m}")
+
+    def vars_for(sid, m, pred):
+        return [
+            x[(sid, u.id, m)]
+            for u in active_units
+            if (sid, u.id, m) in x and pred(u)
+        ]
+
+    # her öğrenciye her ay tam bir birim
+    for s in students:
+        for m in solve_months:
+            cell = vars_for(s.id, m, lambda u: True)
+            if not cell:
+                return SeasonSolveResult(
+                    status="INFEASIBLE",
+                    infeasible_reasons=[
+                        f"{s.full_name}: {m} ayında atanabilecek hiç birim yok "
+                        "(tekrar yasağı ve kısıtlar tüm birimleri eliyor)."
+                    ],
+                )
+            model.AddExactlyOne(cell)
+
+    # madde 1: sezon içinde de aynı bölüme iki kez gidilmez (ad bazında)
+    keys = {key_of[u.id] for u in active_units}
+    for s in students:
+        for k in keys:
+            if k in visited[s.id]:
+                continue
+            same = [
+                x[(s.id, u.id, m)]
+                for u in active_units
+                for m in solve_months
+                if key_of[u.id] == k and (s.id, u.id, m) in x
+            ]
+            if len(same) > 1:
+                model.AddAtMostOne(same)
+
+    # kontenjan + madde 17 (tam dolma)
+    def unit_occ(uid, m):
+        return sum(
+            x[(s.id, uid, m)] for s in students if (s.id, uid, m) in x
+        )
+
+    occ: dict[tuple[str, str], cp_model.LinearExpr] = {}
+    for u in active_units:
+        for m in solve_months:
+            e = unit_occ(u.id, m)
+            occ[(u.id, m)] = e
+            model.Add(e <= u.quota)
+            if u.must_fill:
+                model.Add(e == u.quota)
+
+    # madde 20: peş peşe yoğun/hafif yasağı (komşu aylar; geçmiş sınır dahil)
+    for i in range(len(months) - 1):
+        a_m, b_m = months[i], months[i + 1]
+        for s in students:
+            for t in (INTENSITY_YOGUN, INTENSITY_HAFIF):
+                if a_m in solve_set and b_m in solve_set:
+                    av = vars_for(s.id, a_m, lambda u: u.intensity == t)
+                    bv = vars_for(s.id, b_m, lambda u: u.intensity == t)
+                    if av and bv:
+                        model.AddAtMostOne(av + bv)
+                elif a_m in solve_set and b_m not in solve_set:
+                    hu = hist_by_student_month.get((s.id, b_m))
+                    if hu is not None and hu.intensity == t:
+                        for v in vars_for(s.id, a_m, lambda u: u.intensity == t):
+                            model.Add(v == 0)
+                elif b_m in solve_set and a_m not in solve_set:
+                    hu = hist_by_student_month.get((s.id, a_m))
+                    if hu is not None and hu.intensity == t:
+                        for v in vars_for(s.id, b_m, lambda u: u.intensity == t):
+                            model.Add(v == 0)
+
+    # sezon zorunlulukları (madde 6/7): görülmemiş her zorunlu branş, kalan
+    # aylardan en az birinde karşılanmalı — SERT kısıt (açgözlü lookahead değil)
+    for s in students:
+        needs = [b for b in req_branches if b not in seen_branches[s.id]]
+        if s.program == PROGRAM_EBELIK and BRANCH_DOGUM_SALONU not in seen_branches[s.id]:
+            needs.append(BRANCH_DOGUM_SALONU)
+        for b in needs:
+            cover = [
+                x[(s.id, u.id, m)]
+                for u in active_units
+                for m in solve_months
+                if u.branch_category == b and (s.id, u.id, m) in x
+            ]
+            if cover:
+                model.Add(sum(cover) >= 1)
+            else:
+                return SeasonSolveResult(
+                    status="INFEASIBLE",
+                    infeasible_reasons=[
+                        f"{s.full_name}: {BRANCH_LABELS.get(b, b)} zorunluluğu "
+                        "kalan aylarda hiçbir uygun birimle karşılanamıyor."
+                    ],
+                )
+
+    # özel kurallar
+    student_id_set = {s.id for s in students}
+    for rule in custom_rules:
+        if rule.type == RULE_SABIT_ATAMA and rule.month in solve_set:
+            for sid in rule.student_ids:
+                if (sid, rule.unit_id, rule.month) in x:
+                    model.Add(x[(sid, rule.unit_id, rule.month)] == 1)
+        ids = [sid for sid in rule.student_ids if sid in student_id_set]
+        if len(ids) < 2:
+            continue
+        if rule.type == RULE_AYRI_TUT:
+            for m in solve_months:
+                for u in active_units:
+                    pair = [x[(sid, u.id, m)] for sid in ids if (sid, u.id, m) in x]
+                    if len(pair) > 1:
+                        model.AddAtMostOne(pair)
+        elif rule.type == RULE_BIRLIKTE_TUT:
+            first = ids[0]
+            for other in ids[1:]:
+                for m in solve_months:
+                    for u in active_units:
+                        a = x.get((first, u.id, m))
+                        b = x.get((other, u.id, m))
+                        if a is not None and b is not None:
+                            model.Add(a == b)
+                        elif a is not None:
+                            model.Add(a == 0)
+                        elif b is not None:
+                            model.Add(b == 0)
+
+    # ---- Objective ----
+    penalties: list[cp_model.LinearExpr] = []
+    pool_units = [u for u in active_units if u.pool]
+    genders_present = {s.gender for s in students if s.gender}
+
+    for m in solve_months:
+        # madde 4: havuz doluluk yayılımı
+        if len(pool_units) >= 2:
+            mx = model.NewIntVar(0, len(students), f"pmax_{m}")
+            mn = model.NewIntVar(0, len(students), f"pmin_{m}")
+            for u in pool_units:
+                model.Add(occ[(u.id, m)] <= mx)
+                model.Add(occ[(u.id, m)] >= mn)
+            penalties.append(weights["pool_balance"] * (mx - mn))
+        # madde 4: tekli birimler boş kalmasın
+        for u in active_units:
+            if u.single_slot:
+                empty = model.NewBoolVar(f"empty_{u.id}_{m}")
+                model.Add(occ[(u.id, m)] == 0).OnlyEnforceIf(empty)
+                model.Add(occ[(u.id, m)] >= 1).OnlyEnforceIf(empty.Not())
+                penalties.append(weights["single_slot_fill"] * empty)
+        # madde 21: havuzda kız/erkek dengesi
+        if len(genders_present) == 2:
+            wg = weights.get("gender_balance", 2)
+            for u in pool_units:
+                if u.gender_restriction:
+                    continue
+                diff = model.NewIntVar(-len(students), len(students), f"gd_{u.id}_{m}")
+                model.Add(
+                    diff
+                    == sum(x[(s.id, u.id, m)] for s in students
+                           if s.gender == "K" and (s.id, u.id, m) in x)
+                    - sum(x[(s.id, u.id, m)] for s in students
+                          if s.gender == "E" and (s.id, u.id, m) in x)
+                )
+                gap = model.NewIntVar(0, len(students), f"gap_{u.id}_{m}")
+                model.AddAbsEquality(gap, diff)
+                penalties.append(wg * gap)
+
+    # yedek birim + ebelik önceliği (her yerleştirme başına)
+    ebelik_students = {s.id for s in students if s.program == PROGRAM_EBELIK}
+    for (sid, uid, m), var in x.items():
+        u = catalog_by_id[uid]
+        if u.reserve:
+            penalties.append(weights.get("reserve_use", 15) * var)
+        if u.ebelik_priority and ebelik_students and sid not in ebelik_students:
+            penalties.append(weights["ebelik_priority"] * var)
+
+    # madde 19: geçmişte birlikte olmuş ikili yine aynı birime düşmesin
+    together_count: dict[tuple[str, str], int] = defaultdict(int)
+    by_month_unit: dict[tuple[str, str], list[str]] = defaultdict(list)
+    for a in history:
+        by_month_unit[(a.month, a.unit_id)].append(a.student_id)
+    for ids in by_month_unit.values():
+        for s1, s2 in itertools.combinations(sorted(ids), 2):
+            together_count[(s1, s2)] += 1
+    for (s1, s2), count in together_count.items():
+        if s1 not in student_id_set or s2 not in student_id_set:
+            continue
+        for u in active_units:
+            for m in solve_months:
+                a = x.get((s1, u.id, m))
+                b = x.get((s2, u.id, m))
+                if a is None or b is None:
+                    continue
+                both = model.NewBoolVar(f"pair_{s1}_{s2}_{u.id}_{m}")
+                model.Add(a + b - 1 <= both)
+                penalties.append(weights["repeat_pair"] * count * both)
+
+    model.Minimize(sum(penalties) if penalties else 0)
+
+    solver = cp_model.CpSolver()
+    solver.parameters.max_time_in_seconds = float(
+        settings["solver"].get("season_time_limit_seconds", 60)
+    )
+    solver.parameters.num_workers = int(settings["solver"].get("num_workers", 1))
+    if random_seed is not None:
+        solver.parameters.random_seed = (
+            random_seed * 2654435761 + 101
+        ) % (2**31)
+        solver.parameters.randomize_search = True
+    status = solver.Solve(model)
+
+    if status in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+        result = SeasonSolveResult(
+            status="OPTIMAL" if status == cp_model.OPTIMAL else "FEASIBLE",
+            objective=solver.ObjectiveValue(),
+        )
+        for (sid, uid, m), var in x.items():
+            if solver.Value(var):
+                result.assignments[(sid, m)] = uid
+        return result
+
+    if status == cp_model.INFEASIBLE:
+        return SeasonSolveResult(
+            status="INFEASIBLE",
+            infeasible_reasons=[
+                "Bütün sezonu birlikte sağlayan bir çözüm yok: veri yapısal "
+                "olarak çözümsüz (örn. kontenjanlar, cinsiyet kısıtları ve "
+                "tekrar yasağı birlikte tutmuyor)."
+            ],
+        )
+
+    return SeasonSolveResult(
+        status="UNKNOWN",
+        infeasible_reasons=[
+            "Süre sınırı içinde bütün sezon için çözüm bulunamadı."
         ],
     )

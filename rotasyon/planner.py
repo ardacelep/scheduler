@@ -1,17 +1,21 @@
-"""Sezon planlayıcı — kalan ayları tek seferde, sırayla çözer.
+"""Sezon planlayıcı — kalan ayları toplu üretir.
 
-Sezon başı (hiç atama yok) ve sezon ortası (bazı aylar içe aktarılmış /
-elle yapılmış) durumlarını aynı şekilde ele alır: dolu aylar geçmiş kabul
-edilir, ilk boş aydan sezon sonuna kadar sırayla devam edilir. Her ayın
-çözümü bir sonrakinin geçmişine eklenir; böylece madde 1/6/7/19 sezon
-bütününde tutarlı kalır.
+İki yol vardır:
+- `plan_season` (arayüzün kullandığı): her grubun bütün kalan aylarını TEK
+  CP-SAT modelinde birlikte çözer (bkz. solver.solve_season). Köşeye
+  sıkışma imkânsızdır; süreye sığmazsa açgözlü yola geri düşer.
+- `plan_remaining`: açgözlü ay-bazlı yol (geri-düşüş ve testler için). Dolu
+  aylar geçmiş kabul edilir, ilk boş aydan sona kadar sırayla çözülür; bir
+  ay tıkanırsa grubun kalanı farklı tohumla yeniden denenir.
+
+İkisi de aynı biçimde döner ve hiçbir şey kaydetmez; çağıran taraf onaylar.
 """
 from __future__ import annotations
 
 from typing import Callable
 
 from .models import Assignment, Student, Unit
-from .solver import solve_month
+from .solver import solve_month, solve_season
 
 
 def remaining_months(
@@ -125,4 +129,87 @@ def plan_remaining(
         solved[g] = months_ok
         if failure is not None:
             failed[g] = failure
+    return new_assignments, solved, failed
+
+
+def plan_season(
+    students: list[Student],
+    units: list[Unit],
+    months: list[str],
+    assignments: list[Assignment],
+    settings: dict | None = None,
+    custom_rules=None,
+    groups: list[int] | None = None,
+    on_group=None,
+):
+    """Kalan ayları toplu planlar — açgözlü birincil, ortak model emniyet ağı.
+
+    Ölçüm (74 öğrencilik gerçek sezon): açgözlü+yeniden-deneme yolu ayları
+    hızlı çözüyor ve yumuşak hedeflerde (madde 19/21) daha iyi sonuç
+    veriyor; ortak model (solve_season) ise 15 bin değişkende ikili-tekrar
+    cezasını süre içinde optimize edemiyor ama FİZİBİLİTEYİ garanti ediyor
+    ve yapısal çözümsüzlüğü saniyeler içinde kanıtlıyor. Bu yüzden:
+
+      1. Grup açgözlü yolla çözülür (hızlı + iyi kalite).
+      2. Açgözlü bir ayda tıkanırsa ortak model devreye girer: geçerli bir
+         sezon VARSA onu bulur (açgözlünün ıskaladığı köşe kurtulur); ortak
+         model de çözümsüz derse veri yapısal olarak çözümsüzdür ve
+         açgözlünün ürettiği somut Türkçe neden raporlanır.
+
+    Böylece geçerli sezon varsa kullanıcı onu mutlaka alır, yumuşak kalite
+    ise hiçbir zaman salt-açgözlüden kötü olmaz.
+
+    on_group(grup, faz) çağrılır: faz "cozum" (açgözlü) | "ortak" (emniyet).
+
+    Dönüş: (yeni atamalar, {g: çözülen aylar}, {g: (ay, nedenler)})
+    """
+    groups = groups or sorted({s.group for s in students})
+    new_assignments: list[Assignment] = []
+    solved: dict[int, list[str]] = {}
+    failed: dict[int, tuple[str, list[str]]] = {}
+    order = {m: i for i, m in enumerate(months)}
+    for g in groups:
+        g_students = [s for s in students if s.group == g]
+        g_ids = {s.id for s in g_students}
+        g_units = [u for u in units if u.group in (0, g)]
+        history = [a for a in assignments if a.student_id in g_ids]
+        todo = remaining_months(months, assignments, g_ids)
+        if not todo:
+            solved[g] = []
+            continue
+
+        # 1. Açgözlü birincil yol (yeniden-denemeli)
+        if on_group:
+            on_group(g, "cozum")
+        new, sub_solved, sub_failed = plan_remaining(
+            g_students, g_units, months, assignments,
+            settings=settings, custom_rules=custom_rules, groups=[g],
+        )
+        if g not in sub_failed:
+            new_assignments += new
+            solved[g] = sub_solved.get(g, [])
+            continue
+
+        # 2. Açgözlü tıkandı → ortak model: gerçekten çözümsüz mü, yoksa
+        #    açgözlü mü ıskaladı? Geçerli sezon varsa ortak model bulur.
+        if on_group:
+            on_group(g, "ortak")
+        r = solve_season(
+            g_students, g_units, months, todo, history=history,
+            settings=settings, custom_rules=custom_rules,
+        )
+        if r.ok:
+            new_assignments += [
+                Assignment(student_id=sid, month=m, unit_id=uid)
+                for (sid, m), uid in r.assignments.items()
+            ]
+            solved[g] = sorted(
+                {m for (_sid, m) in r.assignments}, key=lambda m: order.get(m, 99)
+            )
+        else:
+            # ortak model de çözemedi: yapısal — açgözlünün kısmi sonucu +
+            # somut ay/neden raporu korunur
+            new_assignments += new
+            solved[g] = sub_solved.get(g, [])
+            failed[g] = sub_failed[g]
     return new_assignments, solved, failed

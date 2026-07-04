@@ -1,7 +1,13 @@
 """Sezon planlayıcı (toplu oluşturma) testleri."""
-from rotasyon.planner import plan_remaining, remaining_months
+from rotasyon.planner import plan_remaining, plan_season, remaining_months
 from rotasyon.rules import ERROR, check_all
+from rotasyon.solver import solve_season
+from rotasyon.models import Assignment
 from conftest import make_assignment
+
+
+def make_assignment_by_ids(student_id, month, unit_id):
+    return Assignment(student_id=student_id, month=month, unit_id=unit_id)
 
 
 def test_remaining_months_fresh_and_mid(small_world):
@@ -84,3 +90,82 @@ def test_plan_reports_failure_and_keeps_earlier_months(small_world, settings):
     # Tıkanmada farklı tohumla bir kez daha denenir; ikinci deneme de aynı
     # ayda aynı nedenle durunca (yapısal çözümsüzlük) üçüncüsü açılmaz.
     assert max(attempts) == 2
+
+
+# ---------- ortak sezon çözücüsü (solve_season) ----------
+
+def test_solve_season_complete_and_valid(small_world, settings):
+    """Bütün ayları tek modelde çözer; her hücre dolar, kural hatası yok."""
+    students, units, _ = small_world
+    settings["months"] = ["EYLÜL", "EKİM"]
+    settings["season_requirements"] = []
+    r = solve_season(
+        students, units, settings["months"], settings["months"], history=[],
+        settings=settings,
+    )
+    assert r.ok
+    assert len(r.assignments) == len(students) * 2
+    asg = [
+        make_assignment_by_ids(sid, m, uid)
+        for (sid, m), uid in r.assignments.items()
+    ]
+    errors = [
+        v for v in check_all(students, units, asg, settings["months"], settings=settings)
+        if v.severity == ERROR
+    ]
+    assert errors == [], [e.message for e in errors]
+
+
+def test_solve_season_no_repeat_across_months(small_world, settings):
+    """Madde 1 sezon içinde de sert kısıt: kimse iki ay aynı bölümde olmaz."""
+    students, units, _ = small_world
+    settings["months"] = ["EYLÜL", "EKİM"]
+    settings["season_requirements"] = []
+    r = solve_season(
+        students, units, settings["months"], settings["months"], history=[],
+        settings=settings,
+    )
+    assert r.ok
+    by_student = {}
+    for (sid, m), uid in r.assignments.items():
+        by_student.setdefault(sid, []).append(uid)
+    for uids in by_student.values():
+        assert len(uids) == len(set(uids))  # aynı birim iki kez yok
+
+
+def test_solve_season_structural_infeasible(small_world, settings):
+    """small_world'de 7 birim adı var; 10 ay madde 1 gereği taşınamaz →
+    ortak model INFEASIBLE, Türkçe neden döner."""
+    students, units, _ = small_world
+    r = solve_season(
+        students, units, settings["months"], settings["months"], history=[],
+        settings=settings,
+    )
+    assert r.status == "INFEASIBLE"
+    assert r.infeasible_reasons
+
+
+def test_plan_season_complete_no_failure(small_world, settings):
+    """Çözülebilir durumda plan_season tüm ayları döndürür, hata yok."""
+    students, units, _ = small_world
+    settings["months"] = ["EYLÜL", "EKİM", "KASIM"]
+    settings["season_requirements"] = []
+    new, solved, failed = plan_season(
+        students, units, settings["months"], [], settings=settings
+    )
+    assert failed == {}
+    assert solved[1] == ["EYLÜL", "EKİM", "KASIM"]
+    assert len(new) == len(students) * 3
+
+
+def test_plan_season_reports_structural_failure(small_world, settings):
+    """Açgözlü de ortak model de çözemezse yapısal neden raporlanır ve
+    önceki aylar korunur."""
+    students, units, _ = small_world
+    new, solved, failed = plan_season(
+        students, units, settings["months"], [], settings=settings
+    )
+    assert 1 in failed
+    assert failed[1][1]  # Türkçe neden
+    assert solved[1]  # tıkanana kadarki aylar tutulur
+    assert {a.month for a in new} == set(solved[1])
