@@ -170,10 +170,17 @@ class Assignment:
 RULE_AYRI_TUT = "ayri_tut"  # seçilen öğrenciler aynı ay aynı birimde olamaz
 RULE_BIRLIKTE_TUT = "birlikte_tut"  # seçilen öğrenciler her ay aynı birimde olur
 RULE_SABIT_ATAMA = "sabit_atama"  # öğrenci X, ay Y'de birim Z'ye atanır
-CUSTOM_RULE_TYPES = (RULE_AYRI_TUT, RULE_BIRLIKTE_TUT, RULE_SABIT_ATAMA)
+RULE_BIRIM_YASAK = "birim_yasak"  # öğrenci(ler) belirli aydan itibaren birime gitmez
+CUSTOM_RULE_TYPES = (
+    RULE_AYRI_TUT,
+    RULE_BIRLIKTE_TUT,
+    RULE_BIRIM_YASAK,
+    RULE_SABIT_ATAMA,
+)
 CUSTOM_RULE_LABELS = {
     RULE_AYRI_TUT: "Ayrı tut — seçilen öğrenciler aynı birime düşmesin",
     RULE_BIRLIKTE_TUT: "Birlikte tut — seçilen öğrenciler hep aynı birimde olsun",
+    RULE_BIRIM_YASAK: "Birim yasağı — öğrenci(ler) belirli birime gitmesin",
     RULE_SABIT_ATAMA: "Sabit atama — öğrenci belirli ayda belirli birime gitsin",
 }
 
@@ -181,9 +188,14 @@ CUSTOM_RULE_LABELS = {
 @dataclass
 class CustomRule:
     type: str  # CUSTOM_RULE_TYPES
-    student_ids: list[str] = field(default_factory=list)  # ayrı/birlikte: ≥2, sabit: 1
-    unit_id: str = ""  # sabit_atama için
-    month: str = ""  # sabit_atama için
+    student_ids: list[str] = field(default_factory=list)  # ayrı/birlikte: ≥2, sabit/yasak: ≥1
+    unit_id: str = ""  # sabit_atama / birim_yasak için
+    month: str = ""  # sabit_atama için (o ay)
+    # Zaman kapsamı (ayrı/birlikte tut + birim yasağı için). Boş = sınırsız.
+    # Sezon ortasında eklenen kural yalnız bu pencereden itibaren geçerli
+    # olur; geçmiş (tamamlanmış) aylar etkilenmez ve ihlal sayılmaz.
+    start_month: str = ""  # bu aydan itibaren (dahil); boş = sezon başı
+    end_month: str = ""  # bu aya kadar (dahil); boş = sezon sonu
     note: str = ""
     active: bool = True
     id: str = field(default_factory=_new_id)
@@ -194,6 +206,24 @@ class CustomRule:
     @classmethod
     def from_dict(cls, d: dict) -> "CustomRule":
         return cls(**d)
+
+
+def rule_active_in_month(rule: "CustomRule", month: str, months: list[str]) -> bool:
+    """Zaman kapsamlı kural (ayrı/birlikte tut, birim yasağı) bu ayda geçerli mi?
+
+    start_month/end_month penceresine göre; boş sınır = açık uç.
+    Sabit atama kendi `month` alanıyla çalışır, bu fonksiyon ona uygulanmaz.
+    """
+    if month not in months:
+        return False
+    idx = months.index(month)
+    if rule.start_month:
+        if rule.start_month not in months or idx < months.index(rule.start_month):
+            return False
+    if rule.end_month:
+        if rule.end_month not in months or idx > months.index(rule.end_month):
+            return False
+    return True
 
 
 DEFAULT_MONTHS = [

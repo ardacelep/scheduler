@@ -24,6 +24,9 @@ from rotasyon.models import (
     INTENSITY_LABELS,
     PROGRAM_LABELS,
     PROGRAMS,
+    RULE_AYRI_TUT,
+    RULE_BIRIM_YASAK,
+    RULE_BIRLIKTE_TUT,
     RULE_SABIT_ATAMA,
     Student,
     Unit,
@@ -521,6 +524,17 @@ uygulanır.
 """
 
 
+def _window_text(rule) -> str:
+    """Kuralın zaman penceresini insan diline çevirir."""
+    if rule.start_month and rule.end_month:
+        return f" _( {rule.start_month}–{rule.end_month} ayları)_"
+    if rule.start_month:
+        return f" _( {rule.start_month} ayından itibaren)_"
+    if rule.end_month:
+        return f" _( {rule.end_month} ayına kadar)_"
+    return ""
+
+
 def _describe_rule(rule, students_by_id, units_by_id, months) -> str:
     names = [
         students_by_id[sid].full_name
@@ -534,9 +548,48 @@ def _describe_rule(rule, students_by_id, units_by_id, months) -> str:
             f"📌 **Sabit atama:** {who} → {rule.month} ayında "
             f"**{unit.name if unit else '(silinmiş birim)'}**"
         )
-    if rule.type == "ayri_tut":
-        return f"↔️ **Ayrı tut:** {who} aynı birime düşmesin"
-    return f"🤝 **Birlikte tut:** {who} hep aynı birimde olsun"
+    if rule.type == RULE_BIRIM_YASAK:
+        unit = units_by_id.get(rule.unit_id)
+        return (
+            f"🚫 **Birim yasağı:** {who} → "
+            f"**{unit.name if unit else '(silinmiş birim)'}** birimine "
+            f"gitmesin{_window_text(rule)}"
+        )
+    if rule.type == RULE_AYRI_TUT:
+        return f"↔️ **Ayrı tut:** {who} aynı birime düşmesin{_window_text(rule)}"
+    return f"🤝 **Birlikte tut:** {who} hep aynı birimde olsun{_window_text(rule)}"
+
+
+def _next_unplanned_month(months, assignments) -> str:
+    """Henüz hiç ataması olmayan ilk ay (zaman kapsamlı kuralların güvenli
+    varsayılan başlangıcı — geçmişi bozmamak için)."""
+    planned = {a.month for a in assignments}
+    return next((m for m in months if m not in planned), "")
+
+
+def _window_pickers(months, default_start):
+    """Ortak 'şu aydan itibaren / şu aya kadar' seçicileri; (start, end) döner."""
+    START_ALL = "Sezon başı (tüm sezon)"
+    END_ALL = "Sezon sonuna kadar"
+    c1, c2 = st.columns(2)
+    start_opts = [START_ALL] + months
+    default_idx = start_opts.index(default_start) if default_start in months else 0
+    start = c1.selectbox(
+        "Şu aydan itibaren geçerli",
+        start_opts,
+        index=default_idx,
+        key="rule_start_month",
+        help="Sezon ortasında eklenen kural yalnız bu aydan itibaren "
+        "uygulanır; tamamlanmış geçmiş aylar etkilenmez ve ihlal sayılmaz.",
+    )
+    end_opts = [END_ALL] + months
+    end = c2.selectbox(
+        "Şu aya kadar (isteğe bağlı)", end_opts, index=0, key="rule_end_month"
+    )
+    return (
+        "" if start == START_ALL else start,
+        "" if end == END_ALL else end,
+    )
 
 
 def _rules_tab(store) -> None:
@@ -544,12 +597,17 @@ def _rules_tab(store) -> None:
     units = store.load_units()
     months = store.load_settings()["months"]
     rules = store.load_custom_rules()
+    assignments = store.load_assignments()
     students_by_id = {s.id: s for s in students}
     units_by_id = {u.id: u for u in units}
+    default_start = _next_unplanned_month(months, assignments)
 
     st.caption(
         "Yerleşik 19 kural her zaman uygulanır. Buraya eklediğiniz özel "
-        "kurallar hem rotasyon oluştururken hem kural denetiminde dikkate alınır."
+        "kurallar hem rotasyon oluştururken hem kural denetiminde dikkate "
+        "alınır. Ayrı/birlikte tut ve birim yasağı **belirli bir aydan "
+        "itibaren** geçerli kılınabilir; sezon ortasında eklenen kural "
+        "tamamlanmış geçmiş ayları etkilemez."
     )
     with st.expander("ℹ️ Yerleşik kurallar (özet)"):
         st.markdown(_BUILTIN_RULES_SUMMARY)
@@ -614,10 +672,47 @@ def _rules_tab(store) -> None:
             store.save_custom_rules(rules)
             st.success("Kural eklendi. ✅")
             st.rerun()
+    elif rtype == RULE_BIRIM_YASAK:
+        picks = st.multiselect(
+            "Öğrenci(ler)", list(student_options), key="rule_ban_students",
+            help="Bu öğrenciler seçilen birime (belirtilen aydan itibaren) "
+            "atanmaz. Kalıcı/tıbbi yasak için Öğrenciler sekmesindeki "
+            "'yasaklı birimler' alanını kullanın.",
+        )
+        pick_groups = {students_by_id[student_options[p]].group for p in picks}
+        # yasak birim seçenekleri: seçili öğrencilerin grubuna uygun
+        unit_opts = {
+            unit_label(u): u.id
+            for u in sorted(units, key=lambda u: u.name)
+            if u.active and (not pick_groups or u.group in {0, *pick_groups})
+        }
+        unit_pick = st.selectbox(
+            "Yasaklı birim", list(unit_opts), key="rule_ban_unit"
+        )
+        start, end = _window_pickers(months, default_start)
+        note = st.text_input("Not (isteğe bağlı)", key="rule_note_ban")
+        if st.button(
+            "Kuralı ekle", type="primary",
+            disabled=not picks or not unit_pick, key="add_rule_ban",
+        ):
+            rules.append(
+                CustomRule(
+                    type=RULE_BIRIM_YASAK,
+                    student_ids=[student_options[p] for p in picks],
+                    unit_id=unit_opts[unit_pick],
+                    start_month=start,
+                    end_month=end,
+                    note=note.strip(),
+                )
+            )
+            store.save_custom_rules(rules)
+            st.success("Kural eklendi. ✅")
+            st.rerun()
     else:
         picks = st.multiselect(
             "Öğrenciler (en az 2)", list(student_options), key="rule_students"
         )
+        start, end = _window_pickers(months, default_start)
         note = st.text_input("Not (isteğe bağlı)", key="rule_note_pair")
         groups = {students_by_id[student_options[p]].group for p in picks}
         if len(groups) > 1:
@@ -633,6 +728,8 @@ def _rules_tab(store) -> None:
                 CustomRule(
                     type=rtype,
                     student_ids=[student_options[p] for p in picks],
+                    start_month=start,
+                    end_month=end,
                     note=note.strip(),
                 )
             )

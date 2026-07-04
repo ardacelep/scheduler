@@ -25,8 +25,10 @@ from .models import (
     INTENSITY_LABELS,
     PROGRAM_EBELIK,
     RULE_AYRI_TUT,
+    RULE_BIRIM_YASAK,
     RULE_BIRLIKTE_TUT,
     RULE_SABIT_ATAMA,
+    rule_active_in_month,
 )
 from .normalize import normalize_key
 
@@ -113,13 +115,18 @@ def check_all(
     v += _check_rule18_ebelik_priority(valid, students_by_id, units_by_id, months)
     v += _check_rule19_repeat_pairs(valid, students_by_id, units_by_id)
     v += _check_custom_rules(
-        valid, students_by_id, units_by_id, custom_rules or []
+        valid, students_by_id, units_by_id, custom_rules or [], months
     )
     return v
 
 
-def _check_custom_rules(assignments, students_by_id, units_by_id, custom_rules):
-    """Kullanıcı tanımlı kurallar: ayrı tut / birlikte tut / sabit atama."""
+def _check_custom_rules(assignments, students_by_id, units_by_id, custom_rules, months):
+    """Kullanıcı tanımlı kurallar: ayrı/birlikte tut, birim yasağı, sabit atama.
+
+    Zaman kapsamlı kurallar (start_month/end_month) yalnız pencereleri
+    içindeki aylarda denetlenir; sezon ortasında eklenen bir kural geçmiş
+    (tamamlanmış) ayları geriye dönük ihlal saymaz.
+    """
     out = []
     by_student_month: dict[tuple[str, str], str] = {
         (a.student_id, a.month): a.unit_id for a in assignments
@@ -135,10 +142,37 @@ def _check_custom_rules(assignments, students_by_id, units_by_id, custom_rules):
         if not rule.active:
             continue
         ids = [sid for sid in rule.student_ids if sid in students_by_id]
-        if rule.type == RULE_AYRI_TUT and len(ids) >= 2:
-            months = set().union(*(months_assigned[sid] for sid in ids)) \
+        if rule.type == RULE_BIRIM_YASAK and ids and rule.unit_id:
+            banned = units_by_id.get(rule.unit_id)
+            if banned is None:
+                continue
+            key = normalize_key(banned.name)
+            for sid in ids:
+                for month in sorted(months_assigned[sid]):
+                    if not rule_active_in_month(rule, month, months):
+                        continue
+                    uid = by_student_month.get((sid, month))
+                    if uid and normalize_key(units_by_id[uid].name) == key:
+                        out.append(
+                            Violation(
+                                rule_no=CUSTOM_RULE_NO,
+                                severity=ERROR,
+                                message=(
+                                    f"Özel kural (birim yasağı) ihlali: "
+                                    f"{_name(sid)} {month} ayında yasaklı "
+                                    f"birimde: {units_by_id[uid].name}."
+                                ),
+                                student_id=sid,
+                                month=month,
+                                unit_id=uid,
+                            )
+                        )
+        elif rule.type == RULE_AYRI_TUT and len(ids) >= 2:
+            months_union = set().union(*(months_assigned[sid] for sid in ids)) \
                 if ids else set()
-            for month in months:
+            for month in months_union:
+                if not rule_active_in_month(rule, month, months):
+                    continue
                 units_used = defaultdict(list)
                 for sid in ids:
                     uid = by_student_month.get((sid, month))
@@ -165,6 +199,8 @@ def _check_custom_rules(assignments, students_by_id, units_by_id, custom_rules):
                 *(months_assigned[sid] for sid in ids)
             ) if all(months_assigned[sid] for sid in ids) else set()
             for month in common_months:
+                if not rule_active_in_month(rule, month, months):
+                    continue
                 units_used = {by_student_month.get((sid, month)) for sid in ids}
                 if len(units_used) > 1:
                     out.append(

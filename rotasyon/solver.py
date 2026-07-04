@@ -27,11 +27,23 @@ from .models import (
     INTENSITY_YOGUN,
     PROGRAM_EBELIK,
     RULE_AYRI_TUT,
+    RULE_BIRIM_YASAK,
     RULE_BIRLIKTE_TUT,
     RULE_SABIT_ATAMA,
     DEFAULT_SETTINGS,
+    rule_active_in_month,
 )
 from .normalize import normalize_key
+
+
+def _banned_keys(rule, catalog_by_id) -> set[str]:
+    """Birim yasağı kuralının kapsadığı normalize ad anahtarları.
+
+    Yasak birim adına göre işler (madde 1 gibi): "AMELİYATHANE k" ve
+    "AMELİYATHANE e" aynı bölüm sayılır, ikisi de yasaklanır.
+    """
+    u = catalog_by_id.get(rule.unit_id)
+    return {normalize_key(u.name)} if u is not None else set()
 
 
 @dataclass
@@ -371,9 +383,23 @@ def solve_month(
         if (sid, uid) in x:
             model.Add(x[(sid, uid)] == 1).OnlyEnforceIf(assumptions["locked"])
 
-    # Özel kurallar: ayrı tut / birlikte tut (sabit atama yukarıda locked'a girdi)
+    # Özel kurallar: ayrı tut / birlikte tut / birim yasağı — yalnız kuralın
+    # zaman penceresi bu ayı kapsıyorsa (sabit atama yukarıda locked'a girdi).
     student_id_set = {s.id for s in students}
     for rule in custom_rules:
+        if not rule_active_in_month(rule, month, months):
+            continue
+        if rule.type == RULE_BIRIM_YASAK:
+            banned_keys = _banned_keys(rule, catalog_by_id)
+            for sid in rule.student_ids:
+                if sid not in student_id_set:
+                    continue
+                for u in units:
+                    if normalize_key(u.name) in banned_keys and (sid, u.id) in x:
+                        model.Add(x[(sid, u.id)] == 0).OnlyEnforceIf(
+                            assumptions["custom"]
+                        )
+            continue
         ids = [sid for sid in rule.student_ids if sid in student_id_set]
         if len(ids) < 2:
             continue
@@ -753,18 +779,35 @@ def solve_season(
                     ],
                 )
 
-    # özel kurallar
+    # özel kurallar (her ay yalnız kuralın zaman penceresi içindeyse)
     student_id_set = {s.id for s in students}
     for rule in custom_rules:
-        if rule.type == RULE_SABIT_ATAMA and rule.month in solve_set:
+        if rule.type == RULE_SABIT_ATAMA:
+            if rule.month in solve_set:
+                for sid in rule.student_ids:
+                    if (sid, rule.unit_id, rule.month) in x:
+                        model.Add(x[(sid, rule.unit_id, rule.month)] == 1)
+            continue
+        win_months = [m for m in solve_months if rule_active_in_month(rule, m, months)]
+        if not win_months:
+            continue
+        if rule.type == RULE_BIRIM_YASAK:
+            banned_keys = _banned_keys(rule, catalog_by_id)
             for sid in rule.student_ids:
-                if (sid, rule.unit_id, rule.month) in x:
-                    model.Add(x[(sid, rule.unit_id, rule.month)] == 1)
+                if sid not in student_id_set:
+                    continue
+                for u in active_units:
+                    if key_of[u.id] not in banned_keys:
+                        continue
+                    for m in win_months:
+                        if (sid, u.id, m) in x:
+                            model.Add(x[(sid, u.id, m)] == 0)
+            continue
         ids = [sid for sid in rule.student_ids if sid in student_id_set]
         if len(ids) < 2:
             continue
         if rule.type == RULE_AYRI_TUT:
-            for m in solve_months:
+            for m in win_months:
                 for u in active_units:
                     pair = [x[(sid, u.id, m)] for sid in ids if (sid, u.id, m) in x]
                     if len(pair) > 1:
@@ -772,7 +815,7 @@ def solve_season(
         elif rule.type == RULE_BIRLIKTE_TUT:
             first = ids[0]
             for other in ids[1:]:
-                for m in solve_months:
+                for m in win_months:
                     for u in active_units:
                         a = x.get((first, u.id, m))
                         b = x.get((other, u.id, m))
