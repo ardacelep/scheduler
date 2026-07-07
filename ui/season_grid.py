@@ -34,6 +34,7 @@ from .common import (
 
 _DRAFT_PREFIXES = (
     "grid_gen_", "grid_ed_", "grid_base_", "grid_ov_", "grid_force_",
+    "grid_reroll_", "grid_last_auto_",
 )
 BLANK = "—"  # boş hücre (o ay atama yok)
 _WIDTHS = {"Dar": "small", "Orta": "medium", "Geniş": "large"}
@@ -235,6 +236,25 @@ def _grid(
     else:
         cbtns[0].caption("✅ Tüm aylar dolu.")
 
+    # son otomatik doldurulan ay hâlâ kaydedilmemiş taslaksa → farklı çözüm dene
+    last_auto = st.session_state.get(f"grid_last_auto_{group}")
+    if last_auto and last_auto in changed_month_set:
+        if cbtns[2].button(
+            f"🎲 Farklı çözüm ({last_auto})", key=f"grid_reroll_btn_{group}",
+            help="Aynı ay için çözücüden farklı bir taslak ister; "
+            "elle değişikliklerinizi ve diğer ayları korur.",
+        ):
+            avoid = {
+                s.id: label_to_id[ov[(s.id, last_auto)]]
+                for s in group_students
+                if (s.id, last_auto) in ov and ov[(s.id, last_auto)] in label_to_id
+            }
+            _autofill(
+                settings, months, last_auto, group_students, group, units,
+                assignments, custom_rules, id_to_label, ov, saved, live,
+                reroll=True, avoid=avoid,
+            )
+
     if changed_cells and cbtns[1].button(
         "↩️ Değişiklikleri geri al", key=f"grid_reset_{group}",
     ):
@@ -321,18 +341,36 @@ def _grid(
 
 def _autofill(
     settings, months, target, group_students, group, units, assignments,
-    custom_rules, id_to_label, ov, saved, live,
+    custom_rules, id_to_label, ov, saved, live, reroll=False, avoid=None,
 ):
+    """Hedef ayı çözüp taslağa yerleştirir.
+
+    reroll: farklı tohumla farklı bir çözüm dener. avoid: bu eşlemenin aynısı
+    gelirse (eş-maliyetli çözümler) tohum ilerletilip bir kez daha denenir —
+    'Farklı çözüm' boşa basılmış gibi olmasın (rotation._solve ile aynı desen).
+    """
     group_units = [u for u in units if u.group in (0, group)]
     group_ids = {s.id for s in group_students}
     history = [
         a for a in assignments if a.student_id in group_ids and a.month != target
     ]
-    with st.spinner(f"{target} için çözücü çalışıyor..."):
-        r = solve_month(
+
+    def run(seed):
+        return solve_month(
             group_students, group_units, target, history=history,
-            settings=settings, custom_rules=custom_rules,
+            settings=settings, custom_rules=custom_rules, random_seed=seed,
         )
+
+    counter_key = f"grid_reroll_{group}_{target}"
+    seed = None
+    if reroll:
+        st.session_state[counter_key] = st.session_state.get(counter_key, 0) + 1
+        seed = st.session_state[counter_key]
+    with st.spinner(f"{target} için çözücü çalışıyor..."):
+        r = run(seed)
+        if reroll and avoid is not None and r.ok and r.assignments == avoid:
+            st.session_state[counter_key] += 1
+            r = run(st.session_state[counter_key])
     if not r.ok:
         st.error(f"{target} için tüm kurallara uyan atama bulunamadı:")
         for reason in r.infeasible_reasons:
@@ -346,7 +384,9 @@ def _autofill(
         if uid in id_to_label:
             ov[(sid, target)] = id_to_label[uid]
     st.session_state[f"grid_ov_{group}"] = ov
-    if any(live[k] != saved.get(k, BLANK) for k in live):
+    # son otomatik doldurulan ayı hatırla → "Farklı çözüm" onu hedefler
+    st.session_state[f"grid_last_auto_{group}"] = target
+    if not reroll and any(live[k] != saved.get(k, BLANK) for k in live):
         st.session_state["_grid_autofill_note"] = target
     _bump_gen(group)
     st.rerun(scope="fragment")
