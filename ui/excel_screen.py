@@ -21,7 +21,8 @@ from rotasyon.excel_io import (
 )
 from rotasyon.gender_guess import fill_missing_genders, guess_gender
 from rotasyon.importer import build_dataset, build_roster_dataset
-from rotasyon.models import GENDER_LABELS, PROGRAM_LABELS
+from rotasyon.models import FEMALE, MALE, GENDER_LABELS, PROGRAM_LABELS
+from rotasyon.pdf_io import read_student_list_pdf
 from .common import create_season_with_units, get_manager, unit_source_options
 
 
@@ -38,15 +39,20 @@ def render(store) -> None:
 
 def _import_tab(store) -> None:
     st.caption(
-        "İki tür dosya desteklenir ve tür otomatik algılanır: **rotasyon "
-        "dosyası** (aylık sütunlu yıllık tablo) ve **öğrenci listesi** "
-        "(sezon başında gelen 'SML ÖĞRENCİ LİSTESİ' benzeri)."
+        "Desteklenen dosyalar ve türleri otomatik algılanır: **rotasyon "
+        "dosyası** (aylık sütunlu yıllık tablo, .xlsx), **öğrenci listesi** "
+        "(.xlsx — 'SML ÖĞRENCİ LİSTESİ' benzeri ya da 'sıra | ad | şube-kod') "
+        "ve **e-okul Sınıf Listesi PDF'i** (.pdf)."
     )
-    file = st.file_uploader("Excel dosyası seçin", type=["xlsx"])
+    file = st.file_uploader("Dosya seçin (.xlsx veya .pdf)", type=["xlsx", "pdf"])
     if file is None:
         return
 
-    data = file.read()  # openpyxl her okuma için taze akış ister
+    data = file.read()
+
+    if file.name.lower().endswith(".pdf"):
+        _pdf_roster_flow(data)
+        return
 
     try:
         kind = detect_workbook_kind(BytesIO(data))
@@ -57,11 +63,12 @@ def _import_tab(store) -> None:
     if kind == "rotation":
         _rotation_import_flow(store, data)
     elif kind == "student_list":
-        roster_import_flow(data)
+        _xlsx_roster_flow(data)
     else:
         st.error(
             "Dosya türü anlaşılamadı: ne ay sütunlu bir rotasyon tablosu ne de "
-            "ADI SOYADI / SINIF sütunlu bir öğrenci listesi bulundu."
+            "bir öğrenci listesi (ADI SOYADI/SINIF ya da 'sıra | ad | şube-kod') "
+            "bulundu."
         )
 
 
@@ -133,14 +140,68 @@ def _rotation_import_flow(store, data: bytes) -> None:
         st.balloons()
 
 
-def roster_import_flow(data: bytes) -> None:
-    st.subheader("Öğrenci listesi algılandı (sezon başı)")
+def _gender_validation_panel(ds, guesses, gender_counts) -> None:
+    """PDF'teki şube-bazlı K/E sayılarıyla isim tahminini çapraz kontrol eder."""
+    rows = []
+    any_mismatch = False
+    for sube in sorted(gender_counts):
+        pdf_k, pdf_e = gender_counts[sube]
+        subs = [s for s in ds.students if s.class_name == sube]
+        g_k = sum(1 for s in subs if guesses[s.id].gender == FEMALE)
+        g_e = sum(1 for s in subs if guesses[s.id].gender == MALE)
+        g_unknown = len(subs) - g_k - g_e
+        ok = g_k == pdf_k and g_e == pdf_e
+        any_mismatch = any_mismatch or not ok
+        rows.append(
+            {
+                "Şube": sube,
+                "PDF (K/E)": f"{pdf_k} / {pdf_e}",
+                "Tahmin (K/E)": f"{g_k} / {g_e}",
+                "Belirsiz": g_unknown,
+                "Durum": "✅" if ok else "⚠️",
+            }
+        )
+    st.markdown("**Cinsiyet doğrulaması** (PDF sayıları ↔ isim tahmini)")
+    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+    if any_mismatch:
+        st.warning(
+            "Bazı şubelerde tahmin, PDF'teki cinsiyet sayısıyla tutmuyor. "
+            "İçe aktarımdan sonra Veri Yönetimi ekranından ilgili öğrencileri "
+            "gözden geçirin (belirsizler ve tahmin hataları burada toplanır)."
+        )
+    else:
+        st.success("İsim tahmini, PDF'teki tüm şube cinsiyet sayılarıyla tutuyor. ✅")
+
+
+def _xlsx_roster_flow(data: bytes) -> None:
     try:
         roster, warns = read_student_list_workbook(BytesIO(data))
         ds = build_roster_dataset(roster)
     except Exception as exc:
         st.error(f"Dosya çözümlenemedi: {exc}")
         return
+    roster_import_flow(ds, warns)
+
+
+def _pdf_roster_flow(data: bytes) -> None:
+    try:
+        result = read_student_list_pdf(BytesIO(data))
+        ds = build_roster_dataset(result.students)
+    except Exception as exc:
+        st.error(f"PDF çözümlenemedi: {exc}")
+        return
+    if result.students:
+        st.info(
+            f"📄 e-okul PDF'inden **{len(result.students)}** öğrenci okundu "
+            f"({len(result.gender_counts)} şube). Elle hazırladığınız listede "
+            "bilerek çıkardığınız öğrenciler varsa, içe aktardıktan sonra "
+            "Veri Yönetimi'nden pasifleştirin."
+        )
+    roster_import_flow(ds, result.warnings, result.gender_counts)
+
+
+def roster_import_flow(ds, warns, gender_counts=None) -> None:
+    st.subheader("Öğrenci listesi algılandı (sezon başı)")
     for w in warns + ds.warnings:
         st.warning(w)
     if not ds.students:
@@ -148,6 +209,8 @@ def roster_import_flow(data: bytes) -> None:
 
     students_by_id = {s.id: s for s in ds.students}
     guesses = {s.id: guess_gender(s.full_name) for s in ds.students}
+    if gender_counts:
+        _gender_validation_panel(ds, guesses, gender_counts)
     st.dataframe(
         pd.DataFrame(
             [

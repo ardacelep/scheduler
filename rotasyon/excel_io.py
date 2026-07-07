@@ -408,11 +408,50 @@ def _find_roster_header(ws: Worksheet) -> tuple[int, dict[str, int]] | None:
     return None
 
 
+# Başlıksız "sıra | ad soyad | şube-kod" biçimi (ör. "A-HY", "D-EY").
+# Elle hazırlanmış listelerde başlık satırı olmayabilir; şube harfi ve
+# program kodu tek hücrede birleşik gelir.
+_CODED_ROSTER_RE = re.compile(r"^([A-ZÇĞİÖŞÜ]{1,3})\s*-\s*(HY|SBT|EY|EBE)$")
+
+
+def _read_coded_roster(ws: Worksheet) -> list[RosterStudent]:
+    """Başlıksız 'sıra | ad | şube-kod' (A-HY) biçimini okur.
+
+    Sütunlar: A=sıra no, B=ad soyad, C=şube-program kodu. Kod hücresi
+    ``_CODED_ROSTER_RE`` ile eşleşen satırlar öğrenci sayılır; başlık/başlık
+    dışı satırlar (kod eşleşmezse) sessizce atlanır.
+    """
+    out: list[RosterStudent] = []
+    for r in range(1, ws.max_row + 1):
+        name = ws.cell(r, 2).value
+        code = ws.cell(r, 3).value
+        if not isinstance(name, str) or not name.strip():
+            continue
+        if not isinstance(code, str):
+            continue
+        m = _CODED_ROSTER_RE.match(tr_upper(code.strip()))
+        if not m:
+            continue
+        seq = ws.cell(r, 1).value
+        out.append(
+            RosterStudent(
+                name=re.sub(r"\s+", " ", name).strip(),
+                class_text=m.group(1),  # şube harfi
+                field_text=m.group(2),  # HY/SBT/EY → program_from_field çözer
+                student_no=str(seq).strip() if seq is not None else "",
+                row=r,
+            )
+        )
+    return out
+
+
 def read_student_list_workbook(path: str | Path) -> tuple[list[RosterStudent], list[str]]:
     """Sezon başı öğrenci listesini ('SML ÖĞRENCİ LİSTESİ' benzeri) okur.
 
-    Dönüş: (öğrenciler, uyarılar). Cinsiyet bu listelerde bulunmaz;
-    kullanıcı içe aktarım sonrası Veri Yönetimi'nden tamamlar.
+    Dönüş: (öğrenciler, uyarılar). Önce başlıklı biçim (ADI SOYADI + SINIF)
+    denenir; bulunamazsa başlıksız kodlu biçim (sıra | ad | A-HY). Cinsiyet
+    bu listelerde bulunmaz; kullanıcı içe aktarım sonrası Veri Yönetimi'nden
+    tamamlar.
     """
     wb = openpyxl.load_workbook(path)
     students: list[RosterStudent] = []
@@ -442,10 +481,16 @@ def read_student_list_workbook(path: str | Path) -> tuple[list[RosterStudent], l
                 )
             )
         break  # ilk uygun sayfa yeterli
+    if not students:  # başlık yok — kodlu biçimi dene
+        for ws in wb.worksheets:
+            coded = _read_coded_roster(ws)
+            if coded:
+                students = coded
+                break
     if not students:
         warnings.append(
-            "Dosyada öğrenci listesi bulunamadı (ADI SOYADI ve SINIF "
-            "sütunları olan bir sayfa gerekli)."
+            "Dosyada öğrenci listesi bulunamadı (ADI SOYADI + SINIF sütunlu "
+            "ya da 'sıra | ad | şube-kod' biçiminde bir sayfa gerekli)."
         )
     return students, warnings
 
@@ -461,6 +506,9 @@ def detect_workbook_kind(path: str | Path) -> str:
             return "rotation"
     for ws in wb.worksheets:
         if _find_roster_header(ws) is not None:
+            return "student_list"
+    for ws in wb.worksheets:  # başlıksız kodlu liste (A-HY)
+        if _read_coded_roster(ws):
             return "student_list"
     return "unknown"
 

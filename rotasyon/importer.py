@@ -37,13 +37,17 @@ DEFAULT_CLASS_PALETTE = [
 
 
 def program_from_field(field_text: str) -> str:
-    """SML listesindeki ALAN/DAL metnini program enum'una çevirir."""
-    key = tr_upper(field_text)
-    if "EBE" in key:
+    """ALAN/DAL metnini program enum'una çevirir.
+
+    Hem tam metni ("Ebe Yardımcılığı", "Hemşire Yardımcılığı", "Sağlık Bakım
+    Teknisyenliği") hem de e-okul/liste kısaltmalarını (EY, HY, SBT) tanır.
+    """
+    key = tr_upper(field_text).strip()
+    if key == "EY" or "EBE" in key:
         return PROGRAM_EBELIK
-    if "HEMŞİRE" in key or "HEMSIRE" in key:
+    if key == "HY" or "HEMŞİRE" in key or "HEMSIRE" in key:
         return PROGRAM_HEMSIRELIK
-    if "SAĞLIK BAKIM" in key or "SAGLIK BAKIM" in key:
+    if key == "SBT" or "SAĞLIK BAKIM" in key or "SAGLIK BAKIM" in key:
         return PROGRAM_SAGLIK_BAKIM
     return PROGRAM_DIGER
 
