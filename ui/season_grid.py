@@ -27,7 +27,9 @@ from .common import (
     clear_stale_state,
     data_fingerprint,
     groups_in,
+    partition_violations,
     replace_month_assignments,
+    show_past_violations_enabled,
     unit_label,
     violations_dataframe,
 )
@@ -297,22 +299,36 @@ def _grid(
     else:
         st.caption("Kaydedilmemiş değişiklik yok.")
 
-    if relevant:
-        (st.error if errors else st.warning)(
-            f"{len(errors)} hata, {len(relevant) - len(errors)} uyarı."
-            if errors else f"{len(relevant)} uyarı."
+    # Ayar kapalıyken geçmişe dönük (değiştirmediğiniz ay/öğrenci) ihlaller
+    # gösterimden gizlenir. Gizleme YALNIZ gösterimi etkiler; blocking/errors
+    # yukarıda TAM 'relevant' kümesinden hesaplandı (kayıt kapısı değişmez).
+    show_past = show_past_violations_enabled()
+    current, past = partition_violations(relevant, changed_month_set, changed_students)
+    shown = relevant if show_past else current
+    if shown:
+        shown_errs = [v for v in shown if v.severity == "hata"]
+        (st.error if shown_errs else st.warning)(
+            f"{len(shown_errs)} hata, {len(shown) - len(shown_errs)} uyarı."
+            if shown_errs else f"{len(shown)} uyarı."
         )
         st.dataframe(
-            violations_dataframe(relevant), use_container_width=True,
+            violations_dataframe(shown), use_container_width=True,
             hide_index=True,
         )
-        if non_blocking and not blocking:
+        if show_past and non_blocking and not blocking:
             st.caption(
                 f"ℹ️ Bu hataların {non_blocking} tanesi değiştirmediğiniz "
                 "(geçmiş) aylarda; kaydı engellemez."
             )
+    elif past:
+        st.info("Güncel kapsamda ihlal yok.")
     else:
         st.success("Bu grup için kural ihlali yok. ✅")
+    if not show_past and past:
+        st.caption(
+            f"🕘 {len(past)} geçmişe dönük uyarı gizli — kenar çubuğundaki "
+            "“Geçmişe dönük uyarıları göster” ile açabilirsiniz."
+        )
 
     force = False
     if blocking:

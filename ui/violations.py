@@ -4,7 +4,7 @@ from __future__ import annotations
 import streamlit as st
 
 from rotasyon.rules import check_all
-from .common import show_violations
+from .common import show_violations_scoped
 
 
 def render(store) -> None:
@@ -35,4 +35,9 @@ def render(store) -> None:
         students, units, assignments, months,
         custom_rules=custom_rules, settings=settings,
     )
-    show_violations(violations, empty_message="Tüm atamalar kurallara uygun. ✅")
+    # Bu ekran tümüyle kayıtlı (tamamlanmış) veriyi denetler; düzenleme kapsamı
+    # yoktur → aya/öğrenciye bağlı her ihlal "geçmişe dönük" sayılır. Ayar
+    # kapalıyken yalnız yapısal (aysız) ihlaller kalır, gerisi gizlenir.
+    show_violations_scoped(
+        violations, empty_message="Tüm atamalar kurallara uygun. ✅"
+    )

@@ -221,6 +221,65 @@ def violations_dataframe(violations):
     )
 
 
+def _violation_in_scope(v, scope_months, scope_students) -> bool:
+    """blocking_errors ile AYNI kapsam mantığı (ama tüm düzeyler için).
+
+    Kapsam içi ("güncel") = yapısal (aysız ve öğrencisiz) VEYA ayı/öğrencisi
+    kullanıcının o an çalıştığı kapsamda. Kapsam dışı = "geçmişe dönük".
+    """
+    if v.student_id and v.student_id in scope_students:
+        return True
+    if v.month and v.month in scope_months:
+        return True
+    if not v.month and not v.student_id:
+        return True
+    return False
+
+
+def partition_violations(violations, scope_months=None, scope_students=None):
+    """İhlalleri (güncel, geçmişe_dönük) olarak ikiye ayırır."""
+    sm = scope_months or set()
+    ss = scope_students or set()
+    current, past = [], []
+    for v in violations:
+        (current if _violation_in_scope(v, sm, ss) else past).append(v)
+    return current, past
+
+
+def show_past_violations_enabled() -> bool:
+    """Kenar çubuğundaki 'geçmişe dönük uyarıları göster' ayarı (varsayılan açık)."""
+    return st.session_state.get("show_past_violations", True)
+
+
+def show_violations_scoped(
+    violations, scope_months=None, scope_students=None,
+    empty_message="Kural ihlali yok. ✅",
+) -> None:
+    """Kapsam-duyarlı ihlal gösterimi.
+
+    Ayar AÇIKKEN tüm ihlaller gösterilir (mevcut davranış). KAPALIYKEN yalnız
+    güncel kapsamdakiler; geçmişe dönük olanlar gizlenir ve sayısı bilgi
+    olarak yazılır. ÖNEMLİ: bu YALNIZ gösterimi etkiler — kaydı hangi hataların
+    engellediği (blocking_errors) ayrıca ve TAM ihlal kümesinden hesaplanır,
+    bu ayardan etkilenmez.
+    """
+    if show_past_violations_enabled():
+        show_violations(violations, empty_message)
+        return
+    current, past = partition_violations(violations, scope_months, scope_students)
+    if current:
+        show_violations(current, empty_message)
+    elif past:
+        st.info("Güncel kapsamda ihlal yok.")
+    else:
+        st.success(empty_message)
+    if past:
+        st.caption(
+            f"🕘 {len(past)} geçmişe dönük uyarı gizli — kenar çubuğundaki "
+            "“Geçmişe dönük uyarıları göster” ile açabilirsiniz."
+        )
+
+
 def show_violations(violations, empty_message="Kural ihlali yok. ✅") -> None:
     errors = [v for v in violations if v.severity == "hata"]
     warnings = [v for v in violations if v.severity == "uyarı"]

@@ -32,7 +32,7 @@ from .common import (
     gender_label,
     groups_in,
     replace_month_assignments,
-    show_violations,
+    show_violations_scoped,
     unit_label,
 )
 
@@ -400,7 +400,7 @@ def _draft_view(ctx, draft: dict[str, str]) -> None:
             hide_index=True,
         )
     violations = _check_proposal(ctx, mapping)
-    show_violations(violations)
+    show_violations_scoped(violations, {m}, ctx["group_ids"])
     # Kaydı yalnız BU AY / bu grubun öğrencilerine dokunan hatalar engeller;
     # değiştirilmeyen geçmiş aylardaki eski hatalar yeni kaydı bloklamaz.
     blocking = blocking_errors(violations, {m}, ctx["group_ids"])
@@ -442,7 +442,7 @@ def _saved_view(ctx) -> None:
     if edit:
         mapping = _editor(ctx, dict(ctx["existing"]))
         violations = _check_proposal(ctx, mapping)
-        show_violations(violations)
+        show_violations_scoped(violations, {m}, ctx["group_ids"])
         blocking = blocking_errors(violations, {m}, ctx["group_ids"])
         force = False
         if blocking:
@@ -466,7 +466,9 @@ def _saved_view(ctx) -> None:
         use_container_width=True,
         hide_index=True,
     )
-    show_violations(_check_proposal(ctx, ctx["existing"]))
+    show_violations_scoped(
+        _check_proposal(ctx, ctx["existing"]), {m}, ctx["group_ids"]
+    )
     if st.button(
         "🔄 Yeniden oluştur (yeni taslak)", key=f"regen_{g}_{m}",
         help="Mevcut kayıt bozulmaz; yeni öneri taslak olarak gelir, "
@@ -594,7 +596,9 @@ def _wizard(ctx) -> None:
         use_container_width=True,
         hide_index=True,
     )
-    show_violations(_check_proposal(ctx, result.assignments))
+    show_violations_scoped(
+        _check_proposal(ctx, result.assignments), {m}, ctx["group_ids"]
+    )
     c1, c2 = st.columns(2)
     if c1.button("📝 Taslağa aktar", type="primary", key=f"{wkey}_finish"):
         st.session_state[_pkey(ctx)] = result.assignments
@@ -861,7 +865,11 @@ def _bulk_preview(bctx, draft: dict) -> None:
         custom_rules=bctx["custom_rules"],
         settings=settings,
     )
-    show_violations(violations)
+    show_violations_scoped(
+        violations,
+        {a.month for a in new},
+        {a.student_id for a in new},
+    )
     errors = [v for v in violations if v.severity == "hata"]
     force = False
     if errors:

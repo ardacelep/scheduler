@@ -92,6 +92,16 @@ def _season_sidebar(manager) -> None:
         "Veriler `data/` klasöründe sezon bazında saklanır; her kayıtta "
         "otomatik yedek alınır."
     )
+    st.sidebar.divider()
+    st.sidebar.checkbox(
+        "🕘 Geçmişe dönük uyarıları göster",
+        value=True,
+        key="show_past_violations",
+        help="Bir birimin kontenjanını düşürmek gibi sonradan yapılan "
+        "değişiklikler, dokunmadığınız geçmiş ayları da ihlal gösterebilir. "
+        "Bu ihlaller yeni kaydı engellemez; gürültü olmaması için buradan "
+        "gizleyebilirsiniz. Tüm ekranlarda geçerlidir.",
+    )
 
 
 def main() -> None:
