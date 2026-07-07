@@ -20,7 +20,12 @@ from rotasyon.excel_io import (
     read_student_list_workbook,
 )
 from rotasyon.gender_guess import fill_missing_genders, guess_gender
-from rotasyon.importer import build_dataset, build_roster_dataset
+from rotasyon.importer import (
+    build_dataset,
+    build_roster_dataset,
+    default_class_group,
+    roster_class_names,
+)
 from rotasyon.models import FEMALE, MALE, GENDER_LABELS, PROGRAM_LABELS
 from rotasyon.pdf_io import read_student_list_pdf
 from .common import (
@@ -181,17 +186,15 @@ def _gender_validation_panel(ds, guesses, gender_counts) -> None:
 def _xlsx_roster_flow(data: bytes) -> None:
     try:
         roster, warns = read_student_list_workbook(BytesIO(data))
-        ds = build_roster_dataset(roster)
     except Exception as exc:
         st.error(f"Dosya çözümlenemedi: {exc}")
         return
-    roster_import_flow(ds, warns)
+    roster_import_flow(roster, warns)
 
 
 def _pdf_roster_flow(data: bytes) -> None:
     try:
         result = read_student_list_pdf(BytesIO(data))
-        ds = build_roster_dataset(result.students)
     except Exception as exc:
         st.error(f"PDF çözümlenemedi: {exc}")
         return
@@ -202,11 +205,46 @@ def _pdf_roster_flow(data: bytes) -> None:
             "bilerek çıkardığınız öğrenciler varsa, içe aktardıktan sonra "
             "Veri Yönetimi'nden pasifleştirin."
         )
-    roster_import_flow(ds, result.warnings, result.gender_counts)
+    roster_import_flow(result.students, result.warnings, result.gender_counts)
 
 
-def roster_import_flow(ds, warns, gender_counts=None) -> None:
+def _class_group_mapping(class_names) -> dict:
+    """Her sınıfın (şube) hangi gruba gireceğini kullanıcıya sorar.
+
+    Varsayılan dönüşümlü (A-C→1, B-D→2); kullanıcı serbestçe değiştirir.
+    Seçimler widget key'lerinde tutulur, yeniden çalışmada korunur.
+    """
+    st.markdown("**Sınıf → grup eşleştirmesi**")
+    st.caption(
+        "Her şubenin hangi gruba ait olacağını seçin. Rotasyonlar grup grup "
+        "oluşturulur; bu eşleştirmeyi sonradan Veri Yönetimi'nden de "
+        "değiştirebilirsiniz."
+    )
+    defaults = default_class_group(class_names)
+    mapping: dict[str, int] = {}
+    cols = st.columns(min(len(class_names), 4) or 1)
+    for i, name in enumerate(class_names):
+        mapping[name] = cols[i % len(cols)].selectbox(
+            f"{name} şubesi",
+            [1, 2],
+            index=defaults[name] - 1,
+            format_func=lambda g: f"{g}. Grup",
+            key=f"roster_grp_{name}",
+        )
+    counts = {g: sum(1 for v in mapping.values() if v == g) for g in (1, 2)}
+    if 0 in counts.values():
+        st.warning(
+            "⚠️ Bir grupta hiç şube yok — genelde her iki gruba da şube "
+            "atanır. Yine de devam edebilirsiniz."
+        )
+    return mapping
+
+
+def roster_import_flow(roster, warns, gender_counts=None) -> None:
     st.subheader("Öğrenci listesi algılandı (sezon başı)")
+    class_names = roster_class_names(roster)
+    class_group = _class_group_mapping(class_names) if class_names else None
+    ds = build_roster_dataset(roster, class_group=class_group)
     for w in warns + ds.warnings:
         st.warning(w)
     if not ds.students:

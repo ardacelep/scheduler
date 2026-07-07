@@ -11,7 +11,12 @@ from rotasyon.excel_io import (
     detect_workbook_kind,
     read_student_list_workbook,
 )
-from rotasyon.importer import build_roster_dataset, program_from_field
+from rotasyon.importer import (
+    build_roster_dataset,
+    default_class_group,
+    program_from_field,
+    roster_class_names,
+)
 from rotasyon.models import (
     PROGRAM_EBELIK,
     PROGRAM_HEMSIRELIK,
@@ -61,6 +66,21 @@ def test_coded_roster_detected_and_parsed():
     assert progs["AYSEL DENEME YILDIZ"] == PROGRAM_HEMSIRELIK
     assert progs["MEHMET CAN DENEME"] == PROGRAM_SAGLIK_BAKIM
     assert progs["ZELIHA DENEME"] == PROGRAM_EBELIK
+
+
+def test_roster_custom_class_group_mapping():
+    """Kullanıcının seçtiği sınıf→grup eşleştirmesi uygulanır; varsayılan
+    dönüşümlüdür."""
+    data = _coded_workbook_bytes()  # A, B, D şubeleri
+    roster, _ = read_student_list_workbook(BytesIO(data))
+    names = roster_class_names(roster)
+    assert names == ["A", "B", "D"]
+    assert default_class_group(names) == {"A": 1, "B": 2, "D": 1}  # dönüşümlü
+
+    # kullanıcı A-B → grup 1, D → grup 2 seçsin
+    ds = build_roster_dataset(roster, class_group={"A": 1, "B": 1, "D": 2})
+    grp = {s.class_name: s.group for s in ds.students}
+    assert grp == {"A": 1, "B": 1, "D": 2}
 
 
 def test_coded_roster_skips_non_matching_rows():

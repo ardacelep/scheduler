@@ -277,17 +277,31 @@ def _enrich_from_catalog(units) -> None:
         u.ebelik_priority = u.ebelik_priority or a["ebelik_priority"]
 
 
-def build_roster_dataset(roster: list[RosterStudent]) -> Dataset:
+def roster_class_names(roster: list[RosterStudent]) -> list[str]:
+    """Listedeki farklı sınıf (şube) adları, sıralı."""
+    return sorted({r.class_text for r in roster if r.class_text})
+
+
+def default_class_group(class_names: list[str]) -> dict[str, int]:
+    """Varsayılan sınıf→grup: dönüşümlü (A-C-E → 1, B-D-F → 2)."""
+    return {name: (1 if i % 2 == 0 else 2) for i, name in enumerate(class_names)}
+
+
+def build_roster_dataset(
+    roster: list[RosterStudent],
+    class_group: dict[str, int] | None = None,
+) -> Dataset:
     """Sezon başı öğrenci listesinden yeni sezon verisi kurar.
 
     Öğrenci + sınıf üretir (birim/atama üretmez — birimler önceki sezondan
-    kopyalanır veya elle girilir). Gruplar, gerçek kullanıma uygun biçimde
-    sınıflar üzerinden dönüşümlü dağıtılır (A-C-E → 1. grup, B-D-F → 2. grup);
-    kullanıcı Veri Yönetimi'nden değiştirebilir.
+    kopyalanır veya elle girilir). ``class_group`` verilmezse gruplar
+    dönüşümlü dağıtılır (A-C-E → 1. grup, B-D-F → 2. grup); UI bu eşleştirmeyi
+    kullanıcıya sorup buraya geçirir.
     """
     ds = Dataset()
-    class_names = sorted({r.class_text for r in roster if r.class_text})
-    class_group: dict[str, int] = {}
+    class_names = roster_class_names(roster)
+    if class_group is None:
+        class_group = default_class_group(class_names)
     for i, name in enumerate(class_names):
         ds.classes.append(
             ClassGroup(
@@ -295,7 +309,6 @@ def build_roster_dataset(roster: list[RosterStudent]) -> Dataset:
                 color_hex=DEFAULT_CLASS_PALETTE[i % len(DEFAULT_CLASS_PALETTE)],
             )
         )
-        class_group[name] = 1 if i % 2 == 0 else 2
 
     for r in roster:
         ds.students.append(
