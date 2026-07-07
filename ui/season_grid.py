@@ -23,6 +23,7 @@ from rotasyon.models import Assignment
 from rotasyon.rules import blocking_errors, check_all
 from rotasyon.solver import solve_month
 from .common import (
+    capacity_findings_panel,
     clear_stale_state,
     data_fingerprint,
     groups_in,
@@ -59,6 +60,10 @@ def render(store) -> None:
         data_fingerprint(students, units, assignments, custom_rules, [settings]),
         _DRAFT_PREFIXES,
     )
+
+    # Rotasyon Oluştur ekranıyla aynı kapasite ön-denetimi (bu ekran da
+    # rotasyon üretimi için kullanılır).
+    capacity_findings_panel(students, units, months, assignments)
 
     group = st.selectbox(
         "Grup", groups_in(students), format_func=lambda g: f"{g}. Grup",

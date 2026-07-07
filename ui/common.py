@@ -117,6 +117,34 @@ def create_season_with_units(manager: SeasonManager, name: str, source: str) -> 
     return manager.create(name, copy_units_from=source)
 
 
+def capacity_findings_panel(students, units, months, assignments) -> None:
+    """Sezon kapasite ön-denetimi bulgularını gösteren ortak panel.
+
+    Rotasyon Oluştur ve Yıllık Tablo ekranlarının ikisinde de kullanılır;
+    yalnız AKTİF öğrenciler hesaba katılır (pasifler yeni aya atanmaz).
+    """
+    from rotasyon.capacity import season_capacity_findings
+
+    active = [s for s in students if getattr(s, "active", True)]
+    cap = season_capacity_findings(active, units, months, assignments)
+    if not cap:
+        return
+    errs = [c for c in cap if c.level == "hata"]
+    with st.expander(
+        f"🔎 Sezon kapasite denetimi: {len(cap)} bulgu"
+        + (f" ({len(errs)} kritik)" if errs else ""),
+        expanded=bool(errs),
+    ):
+        st.caption(
+            "Bu denetim, verinin sezon SONUNA kadar taşıyıp taşımayacağını "
+            "üretime başlamadan hesaplar. Kritik bulgular giderilmezse "
+            "rotasyon bir noktada matematiksel olarak tıkanır — hiçbir çözücü "
+            "bunu aşamaz."
+        )
+        for c in cap:
+            (st.error if c.level == "hata" else st.warning)(c.message)
+
+
 def unit_label(u: Unit) -> str:
     """Kullanıcıya gösterilen birim adı: cinsiyet kısıtı ekiyle."""
     return u.display_name

@@ -39,6 +39,43 @@ def test_solver_ayri_tut(settings):
     assert r.assignments[a.id] != r.assignments[b.id]
 
 
+def test_solver_output_passes_checker_with_same_rules(settings):
+    """Tutarlılık round-trip'i: solver'ın özel kural + sert kurallara UYARAK
+    ürettiği çözüm, AYNI kural kümesiyle çalıştırılan denetleyicide sıfır
+    ERROR vermeli (solver ↔ check_all akış boyunca uyumlu)."""
+    settings["season_requirements"] = []
+    students = [
+        Student(full_name=f"S{i}", gender=FEMALE, group=1) for i in range(4)
+    ]
+    units = [Unit(name=f"U{i}", group=1, quota=2) for i in range(3)]  # 6 koltuk
+    a, b = students[0], students[1]
+    c, d = students[2], students[3]
+    rules = [
+        CustomRule(type=RULE_AYRI_TUT, student_ids=[a.id, b.id]),
+        CustomRule(type=RULE_BIRLIKTE_TUT, student_ids=[c.id, d.id]),
+    ]
+    r = solve_month(
+        students, units, "EYLÜL", history=[], settings=settings,
+        custom_rules=rules,
+    )
+    assert r.assignments[a.id] != r.assignments[b.id]
+    assert r.assignments[c.id] == r.assignments[d.id]
+    assert r.ok, r.infeasible_reasons
+    assignments = [
+        make_assignment(
+            next(s for s in students if s.id == sid),
+            next(u for u in units if u.id == uid),
+            "EYLÜL",
+        )
+        for sid, uid in r.assignments.items()
+    ]
+    v = check_all(
+        students, units, assignments, DEFAULT_MONTHS, rules, settings=settings
+    )
+    errors = [x for x in v if x.severity == ERROR]
+    assert errors == [], [e.message for e in errors]
+
+
 def test_solver_birlikte_tut(settings):
     students, units = _world()
     a, b = students[0], students[1]

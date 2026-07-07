@@ -143,7 +143,7 @@ _SUPPLEMENT_E = {
     "sercan", "gökhan", "gürkan", "hayati", "muhsin", "nurettin",
     "osama", "usame", "gültekin",
     # gerçek listelerden eklenenler
-    "seymen", "keremcem",
+    "seymen", "keremcem", "efehan",
     # klasik (genişletme)
     "adnan", "akif", "altan", "asım", "aslan", "ata", "atalay", "atilla",
     "aydın", "aziz", "bahadır", "bahri", "bayram", "behçet", "beytullah",

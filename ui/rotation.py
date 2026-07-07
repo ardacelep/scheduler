@@ -20,13 +20,13 @@ import threading
 import pandas as pd
 import streamlit as st
 
-from rotasyon.capacity import season_capacity_findings
 from rotasyon.models import Assignment
 from rotasyon.planner import plan_season, remaining_months
 from rotasyon.rules import blocking_errors, check_all
 from rotasyon.solver import solve_month, visited_unit_keys
 from rotasyon.normalize import normalize_key
 from .common import (
+    capacity_findings_panel,
     clear_stale_state,
     data_fingerprint,
     gender_label,
@@ -71,23 +71,9 @@ def render(store) -> None:
     months = settings["months"]
     all_assignments = store.load_assignments()
 
-    # Kapasite ön-denetimi: sezon 8. ayda duvara çarpmadan ÖNCE söyle
-    cap = season_capacity_findings(students, units, months, all_assignments)
-    if cap:
-        errs = [c for c in cap if c.level == "hata"]
-        with st.expander(
-            f"🔎 Sezon kapasite denetimi: {len(cap)} bulgu"
-            + (f" ({len(errs)} kritik)" if errs else ""),
-            expanded=bool(errs),
-        ):
-            st.caption(
-                "Bu denetim, verinin sezon SONUNA kadar taşıyıp "
-                "taşımayacağını üretime başlamadan hesaplar. Kritik bulgular "
-                "giderilmezse rotasyon bir noktada matematiksel olarak "
-                "tıkanır — hiçbir çözücü bunu aşamaz."
-            )
-            for c in cap:
-                (st.error if c.level == "hata" else st.warning)(c.message)
+    # Kapasite ön-denetimi: sezon 8. ayda duvara çarpmadan ÖNCE söyle.
+    # (students zaten aktiflere süzülmüş — panel de aktifleri kullanır.)
+    capacity_findings_panel(students, units, months, all_assignments)
 
     c1, c2 = st.columns(2)
     group = c1.selectbox(
