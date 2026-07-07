@@ -280,20 +280,18 @@ def roster_import_flow(ds, warns, gender_counts=None) -> None:
                 c for c in ds.classes if c.name not in existing
             ]
             new_store.save_classes(merged)
-            st.success(
+            st.toast(
                 f"'{season_name.strip()}' sezonu oluşturuldu, "
-                f"{len(ds.students)} öğrenci aktarıldı. {len(filled)} "
-                "öğrencinin cinsiyeti isimden dolduruldu"
+                f"{len(ds.students)} öğrenci aktarıldı"
                 + (
-                    f"; {len(remaining)} öğrenci için Veri Yönetimi "
-                    "ekranında onayınız gerekiyor."
+                    f"; {len(remaining)} öğrencinin cinsiyeti onayınızı bekliyor."
                     if remaining
-                    else "."
-                )
-                + " Grupları kontrol edin, sonra Rotasyon Oluştur "
-                "ekranından ilk ayı planlayabilirsiniz. ✅"
+                    else f" ({len(filled)} cinsiyet isimden dolduruldu)."
+                ),
+                icon="✅",
             )
             st.balloons()
+            st.rerun()
     else:
         st.error(
             f"Bu işlem **{active}** sezonundaki öğrenci ve sınıf listesini "
@@ -310,16 +308,16 @@ def roster_import_flow(ds, warns, gender_counts=None) -> None:
                 + [c for c in ds.classes if c.name not in existing]
             )
             store.save_assignments([])
-            st.success(
-                f"{len(ds.students)} öğrenci '{active}' sezonuna aktarıldı; "
-                f"{len(filled)} öğrencinin cinsiyeti isimden dolduruldu. "
+            st.toast(
+                f"{len(ds.students)} öğrenci '{active}' sezonuna aktarıldı"
                 + (
-                    f"Kalan {len(remaining)} öğrenciyi Veri Yönetimi "
-                    "ekranından tamamlayın. ✅"
+                    f"; {len(remaining)} öğrencinin cinsiyeti onayınızı bekliyor."
                     if remaining
-                    else "✅"
-                )
+                    else f" ({len(filled)} cinsiyet isimden dolduruldu)."
+                ),
+                icon="✅",
             )
+            st.rerun()
 
 
 # ======================= DIŞA AKTARIM =======================
