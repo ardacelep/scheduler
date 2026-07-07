@@ -71,19 +71,22 @@ def test_yearly_export_has_class_and_no_columns(seeded, yearly_wb):
 
 
 def test_rule14_yearly_export_red_gendered_units(yearly_wb):
+    """Cinsiyet kısıtlı birimler okunur '(Kız)'/'(Erkek)' ekiyle ve kırmızı."""
     ws = yearly_wb["1. GRUP"]
     header_row, name_col = _find_header(ws, "ADI-SOYADI")
-    red_k_e = []
+    red_gendered = []
     for row in ws.iter_rows(
         min_row=header_row + 1, min_col=name_col + 1, max_col=name_col + 10
     ):
         for cell in row:
-            if isinstance(cell.value, str) and cell.value.endswith((" k", " e")):
-                red_k_e.append(
+            if isinstance(cell.value, str) and (
+                "(Kız)" in cell.value or "(Erkek)" in cell.value
+            ):
+                red_gendered.append(
                     cell.font.color is not None
                     and cell.font.color.rgb in ("00FF0000", "FFFF0000")
                 )
-    assert red_k_e and all(red_k_e)
+    assert red_gendered and all(red_gendered)
 
 
 def test_yearly_export_quota_column(yearly_wb):

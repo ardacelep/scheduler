@@ -154,6 +154,17 @@ class Unit:
             return f"{self.name} (yalnız erkek)"
         return self.name
 
+    @property
+    def name_with_gender(self) -> str:
+        """Tablo/menü/Excel için okunur ad: cinsiyet kısıtı '(Kız)'/'(Erkek)'
+        ekiyle. Excel dışa aktarımı bunu kullanır ve içe aktarım parse_cell ile
+        bu biçimi geri okur (round-trip)."""
+        if self.gender_restriction == "K":
+            return f"{self.name} (Kız)"
+        if self.gender_restriction == "E":
+            return f"{self.name} (Erkek)"
+        return self.name
+
     def to_dict(self) -> dict:
         return asdict(self)
 

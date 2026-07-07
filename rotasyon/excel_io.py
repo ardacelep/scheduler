@@ -530,9 +530,10 @@ _CENTER = Alignment(horizontal="center", vertical="center")
 
 
 def _cell_value_for(unit: Unit, day_note: str) -> str:
-    value = unit.display_name
+    # Okunur biçim: "FTR.ÜNİT (Erkek)" — içe aktarımda parse_cell geri okur.
+    value = unit.name_with_gender
     if day_note:
-        value += f"({day_note})"
+        value += f" ({day_note})"
     return value
 
 
@@ -610,7 +611,7 @@ def export_yearly_workbook(
             key=lambda u: u.name,
         ):
             for _ in range(u.quota):
-                c = ws.cell(row, quota_col, u.display_name)
+                c = ws.cell(row, quota_col, u.name_with_gender)
                 if u.gender_restriction:
                     c.font = _RED_FONT
                 row += 1

@@ -89,20 +89,33 @@ def parse_cell(value: str) -> ParsedCell:
         extra_note = text[m.end():].strip()
         text = text[: m.start()].strip()
 
-    # Parantez içi gün notu ("EVRAK KAYIT(Çrş günleri üro.pol)")
+    # Sondaki parantez grupları: "(Kız)"/"(Erkek)" → cinsiyet, diğerleri
+    # gün notu ("EVRAK KAYIT(Çrş günleri üro.pol)", "FTR.ÜNİT (Erkek)").
+    # Hem bizim okunur dışa aktarımımız hem gün notlu gerçek belgeler desteklenir.
     day_note = ""
-    m = _PAREN_RE.search(text)
-    if m:
-        day_note = m.group(1).strip()
+    gender_suffix = ""
+    while True:
+        m = _PAREN_RE.search(text)
+        if not m:
+            break
+        content = m.group(1).strip()
+        g = _gender_from_token(content)
+        if g and not gender_suffix:
+            gender_suffix = g
+        elif not day_note:
+            day_note = content
+        else:
+            break  # sınıflandırılamayan üçüncü parantez: adın parçası say
         text = text[: m.start()].strip()
 
-    # Cinsiyet eki: "EKG k", "ALÇI ODASI e", "EFOR kız", "ÜROLOJİ POL.erkek"
-    gender_suffix = ""
-    m = _GENDER_TOKEN_RE.search(text)
-    if m:
-        gender_suffix = _gender_from_token(m.group(1))
-        if gender_suffix:
-            text = text[: m.start()].strip()
+    # Eski biçim cinsiyet eki: "EKG k", "ALÇI ODASI e", "EFOR kız",
+    # "ÜROLOJİ POL.erkek" (parantezsiz — gerçek hastane belgeleri)
+    if not gender_suffix:
+        m = _GENDER_TOKEN_RE.search(text)
+        if m:
+            gender_suffix = _gender_from_token(m.group(1))
+            if gender_suffix:
+                text = text[: m.start()].strip()
 
     return ParsedCell(
         raw=raw,
