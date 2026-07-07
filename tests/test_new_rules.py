@@ -118,6 +118,47 @@ def test_checker_allows_gap_between_yogun_months():
     assert [x for x in v if x.rule_no == 20] == []
 
 
+# ---------- eşit dağıtımda fazlalık yoğun bölümlere ----------
+
+def _pool_distribution(settings):
+    from collections import Counter
+
+    students = [Student(full_name=f"K{i}", gender=FEMALE, group=1) for i in range(4)]
+    yogun = Unit(
+        name="YOGUN", group=1, quota=4, pool=True, intensity=INTENSITY_YOGUN,
+    )
+    n1 = Unit(name="NORMAL1", group=1, quota=2, pool=True)
+    n2 = Unit(name="NORMAL2", group=1, quota=2, pool=True)
+    r = solve_month(
+        students, [yogun, n1, n2], "EYLÜL", history=[], settings=settings,
+    )
+    assert r.ok
+    occ = Counter(r.assignments.values())
+    return {u.name: occ.get(u.id, 0) for u in (yogun, n1, n2)}
+
+
+def test_surplus_goes_to_intensive_pool_unit():
+    """4 öğrenci, 3 havuz birimi → 2-1-1. Fazlalık (2 olan) YOĞUN birime düşer."""
+    dist = _pool_distribution(_settings())
+    assert dist["YOGUN"] == 2  # fazlalık yoğuna gitti
+    assert sorted(dist.values()) == [1, 1, 2]  # denge korundu (yayılım 1)
+
+
+def test_intensive_surplus_never_breaks_balance():
+    """YOĞUN kontenjanı 4 olsa da denge önce gelir: hepsini yoğuna doldurmaz,
+    yalnız dengeli dağılımdaki fazlalığı alır (yayılım yine 1)."""
+    dist = _pool_distribution(_settings())
+    assert max(dist.values()) - min(dist.values()) == 1  # 4-0-0 DEĞİL
+
+
+def test_intensive_surplus_can_be_disabled():
+    settings = _settings()
+    settings["solver"]["weights"]["intensive_surplus"] = 0
+    dist = _pool_distribution(settings)
+    # kapalıyken denge yine korunur ama fazlalık yoğuna garanti değil
+    assert max(dist.values()) - min(dist.values()) == 1
+
+
 # ---------- yedek (gri) birimler ----------
 
 def test_reserve_unit_avoided_when_capacity_suffices():

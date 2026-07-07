@@ -452,6 +452,19 @@ def solve_month(
             model.Add(occupancy[u.id] >= min_occ)
         penalties.append(weights["pool_balance"] * (max_occ - min_occ))
 
+    # Eşit dağıtım tam bölünmeyince oluşan FAZLALIK öğrenciler yoğun havuz
+    # birimlerine düşsün: yoğun havuz doluluğu ÖDÜLLENDİRİLİR (negatif ceza).
+    # Ağırlık pool_balance'tan küçük olduğundan dengeyi bozmaz — bir öğrenciyi
+    # dengeyi 1 bozacak şekilde yoğuna almak pool_balance kadar (5) ceza yer,
+    # ödül ise yalnız intensive_surplus (2); dolayısıyla yalnız EŞİT çözümler
+    # arasında yoğunu seçtirir.
+    w_surplus = weights.get("intensive_surplus", 2)
+    if w_surplus:
+        for u in pool_units:
+            if u.intensity == INTENSITY_YOGUN:
+                for s in students:
+                    penalties.append(-w_surplus * x[(s.id, u.id)])
+
     # Madde 4: tekli birimler boş kalmasın (önce onlar doldurulur)
     for u in units:
         if u.single_slot:
@@ -840,6 +853,15 @@ def solve_season(
                 model.Add(occ[(u.id, m)] <= mx)
                 model.Add(occ[(u.id, m)] >= mn)
             penalties.append(weights["pool_balance"] * (mx - mn))
+        # eşit dağıtımdaki FAZLALIK yoğun havuz birimlerine düşsün (tercih;
+        # pool_balance'tan küçük ağırlık → dengeyi bozmaz)
+        w_surplus = weights.get("intensive_surplus", 2)
+        if w_surplus:
+            for u in pool_units:
+                if u.intensity == INTENSITY_YOGUN:
+                    for s in students:
+                        if (s.id, u.id, m) in x:
+                            penalties.append(-w_surplus * x[(s.id, u.id, m)])
         # madde 4: tekli birimler boş kalmasın
         for u in active_units:
             if u.single_slot:

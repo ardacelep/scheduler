@@ -288,6 +288,11 @@ DEFAULT_SETTINGS: dict = {
             "single_slot_fill": 50,   # madde 4: tekli birimler boş kalmasın
             "reserve_use": 15,        # gri/yedek birim yalnız ihtiyaç olursa
             "gender_balance": 6,      # havuz birimlerinde kız/erkek dengesi
+            # Havuz eşit dağıtılırken tam bölünmeyen FAZLALIK öğrenciler
+            # yoğun havuz birimlerine düşsün (yalnız TERCİH; pool_balance=5'ten
+            # KÜÇÜK olmalı ki dengeyi asla bozmasın, sadece eşit çözümler
+            # arasında yoğunu seçsin).
+            "intensive_surplus": 2,
         },
     },
 }
