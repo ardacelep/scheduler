@@ -15,8 +15,8 @@ def test_labels_include_active_and_historical_units(small_world):
     labels = _labels_for_group(1, units, assignments, group_ids)
     assert "DİŞ" in labels            # aktif
     assert "ESKİ BİRİM" in labels     # geçmişte kullanılmış (pasif)
-    # cinsiyet varyantları ayrı etiketlerle
-    assert "FTR.ÜNİT k" in labels and "FTR.ÜNİT e" in labels
+    # cinsiyet varyantları ayrı, okunur etiketlerle ("(Kız)"/"(Erkek)")
+    assert "FTR.ÜNİT (Kız)" in labels and "FTR.ÜNİT (Erkek)" in labels
 
 
 def test_save_only_writes_changed_months(tmp_path, small_world):

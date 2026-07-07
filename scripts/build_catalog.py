@@ -34,7 +34,7 @@ from rotasyon.models import (  # noqa: E402
     INTENSITY_HAFIF,
     INTENSITY_YOGUN,
 )
-from rotasyon.normalize import normalize_key  # noqa: E402
+from rotasyon.normalize import normalize_key, normalize_unit_name  # noqa: E402
 
 SOURCE = ROOT / "example" / "BÖLÜMLER VE ÖZELLİKLERİ.xlsx"
 TARGET = ROOT / "rotasyon" / "data" / "default_units.json"
@@ -42,14 +42,17 @@ TARGET = ROOT / "rotasyon" / "data" / "default_units.json"
 # rotasyon dosyalarındaki tipik değerler.
 POOL_QUOTA_DEFAULT = 3
 
-# Ebelik öncelikli birimler (madde 18): doğum/yenidoğan ilişkili olanlar
-EBELIK_PRIORITY_KEYS = {"2.KAT ÇOCUK VE DOĞUM", "DOĞUM SALONU-YENİ DOĞAN", "GEBE OKULU-NST"}
+# Ebelik öncelikli birimler (madde 18): doğum/yenidoğan ilişkili olanlar.
+# "2.KAT ÇOCUK ve DOĞUM" belgede "2.KAT ÇOCUK" + "2.KAT DOĞUM" olarak ayrıldı;
+# ebelik önceliği doğum bölümündedir.
+EBELIK_PRIORITY_KEYS = {"2.KAT DOĞUM", "DOĞUM SALONU-YENİ DOĞAN", "GEBE OKULU-NST"}
 
 
 def parse_row(name: str, spec: str, gray: bool) -> list[dict]:
     spec_up = spec.upper()
+    name = normalize_unit_name(name)  # "FTR.ÜNİT." → "FTR.ÜNİT" (ad biçimi)
     base = {
-        "name": name.strip(),
+        "name": name,
         "quota": 0,
         "gender_restriction": "",
         "branch_category": BRANCH_DIGER,

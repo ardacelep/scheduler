@@ -146,8 +146,14 @@ def capacity_findings_panel(students, units, months, assignments) -> None:
 
 
 def unit_label(u: Unit) -> str:
-    """Kullanıcıya gösterilen birim adı: cinsiyet kısıtı ekiyle."""
-    return u.display_name
+    """Tablolarda/menülerde gösterilen birim adı: cinsiyet kısıtlı birimler
+    gözle kolay ayırt edilsin diye adın yanında '(Kız)' / '(Erkek)' belirtilir.
+    (Excel dışa aktarımı ayrıca display_name'in ' k'/' e' ekini kullanır.)"""
+    if u.gender_restriction == "K":
+        return f"{u.name} (Kız)"
+    if u.gender_restriction == "E":
+        return f"{u.name} (Erkek)"
+    return u.name
 
 
 def gender_label(g: str) -> str:
