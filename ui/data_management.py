@@ -69,16 +69,22 @@ def _students_tab(store) -> None:
     col_imp, col_new = st.columns(2)
     with col_imp, st.expander("📥 Excel listesinden içe aktar", expanded=not students):
         st.caption(
-            "Sezon başı öğrenci listesini (SML) buradan da yükleyebilirsiniz; "
+            "Sezon başı öğrenci listesini (SML xlsx, kodlu 'A-HY' xlsx ya da "
+            "e-okul Sınıf Listesi PDF'i) buradan da yükleyebilirsiniz; "
             "tür otomatik algılanır."
         )
         file = st.file_uploader(
-            "Öğrenci listesi (xlsx)", type=["xlsx"], key="dm_roster_upload"
+            "Öğrenci listesi (.xlsx veya .pdf)",
+            type=["xlsx", "pdf"],
+            key="dm_roster_upload",
         )
         if file is not None:
-            from .excel_screen import roster_import_flow
+            from .excel_screen import _pdf_roster_flow, _xlsx_roster_flow
 
-            roster_import_flow(file.read())
+            if file.name.lower().endswith(".pdf"):
+                _pdf_roster_flow(file.read())
+            else:
+                _xlsx_roster_flow(file.read())
     with col_new, st.expander("➕ Yeni öğrenci ekle"):
         _new_student_form(store, students, class_names)
 
