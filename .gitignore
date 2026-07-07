@@ -2,7 +2,9 @@
 __pycache__/
 *.pyc
 .pytest_cache/
-data/
+# Yalnız kökteki sezon verisi (kişisel: app.json, seasons/, trash/) git dışı.
+# rotasyon/data/ (varsayılan birim kataloğu, kişisel veri yok) izlenir.
+/data/
 dist/
 build/
 *.spec.bak
