@@ -80,6 +80,7 @@ _SUPPLEMENT_K = {
     "gülcan", "irem", "nurhan", "gülhan", "neslişah",
     # gerçek listelerden eklenenler
     "hira", "kader", "maria", "nurseza", "sahra", "selinay", "duygu",
+    "idil", "nursena",
     # klasik (genişletme)
     "ayşe", "fatma", "zeynep", "hacer", "huriye", "şerife", "cemile",
     "naciye", "nazife", "nuriye", "sabriye", "safiye", "sakine", "satı",
