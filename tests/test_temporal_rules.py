@@ -6,7 +6,7 @@ from rotasyon.models import (
     RULE_BIRIM_YASAK,
     rule_active_in_month,
 )
-from rotasyon.rules import check_all
+from rotasyon.rules import ERROR, check_all
 from rotasyon.solver import solve_month
 from conftest import make_assignment
 
@@ -125,3 +125,81 @@ def test_checker_ayri_tut_window_scoped(small_world):
         DEFAULT_MONTHS, custom_rules=[rule],
     )
     assert any(x.rule_no == -1 for x in after)
+
+
+# ---------- round-trip: solver ileri-uyum + denetleyici pencere kapsamı ----------
+
+def _full_eylul(students, units):
+    """s0,s1 BİRLİKTE (1.KAT CERR.) olacak şekilde geçerli, tam bir EYLÜL."""
+    cerr = by_name(units, "1.KAT CERR.")
+    ftr_k = by_name(units, "FTR.ÜNİT", "K")
+    ftr_e = by_name(units, "FTR.ÜNİT", "E")
+    dah = by_name(units, "4.KAT DAH.")
+    yb = by_name(units, "YB/A")
+    dis = by_name(units, "DİŞ")
+    dog = by_name(units, "DOĞ.SAL-Y.DOĞ")
+    s = students
+    return [
+        make_assignment(s[0], cerr, "EYLÜL"), make_assignment(s[1], cerr, "EYLÜL"),
+        make_assignment(s[2], ftr_k, "EYLÜL"), make_assignment(s[3], dah, "EYLÜL"),
+        make_assignment(s[4], ftr_e, "EYLÜL"), make_assignment(s[5], yb, "EYLÜL"),
+        make_assignment(s[6], dis, "EYLÜL"), make_assignment(s[7], dog, "EYLÜL"),
+    ]
+
+
+def test_midseason_rule_solver_output_passes_checker(small_world, settings):
+    """Sezon ortasında eklenen 'ayrı tut' (KASIM'dan) round-trip tutarlılığı:
+    solver KASIM'ı kurala UYARAK çözer, aynı kuralla çalışan denetleyici
+    hem KASIM'ı temiz bulur hem de PENCERE ÖNCESİ (EYLÜL, birlikteyken)
+    geriye dönük ihlal ÜRETMEZ. Yani solver ↔ check_all akış boyunca aynı
+    zaman penceresinde anlaşır."""
+    settings["season_requirements"] = []
+    students, units, _ = small_world
+    s0, s1 = students[0], students[1]
+    history = _full_eylul(students, units)  # s0,s1 EYLÜL'de birlikte
+    rule = CustomRule(
+        type=RULE_AYRI_TUT, student_ids=[s0.id, s1.id], start_month="KASIM",
+    )
+
+    # Pencere öncesi EYLÜL, birliktelerken bile ihlal değil
+    assert not any(
+        x.rule_no == -1
+        for x in check_all(students, units, history, DEFAULT_MONTHS, [rule])
+    )
+
+    # EKİM'i çöz (kural henüz pasif) → geçmiş büyür
+    r_ekim = solve_month(
+        students, units, "EKİM", history=history, settings=settings,
+        custom_rules=[rule],
+    )
+    assert r_ekim.ok, r_ekim.infeasible_reasons
+    history += [
+        make_assignment(
+            next(s for s in students if s.id == sid),
+            next(u for u in units if u.id == uid), "EKİM",
+        )
+        for sid, uid in r_ekim.assignments.items()
+    ]
+
+    # KASIM'ı çöz (kural aktif) → solver s0,s1'i AYIRIR
+    r_kasim = solve_month(
+        students, units, "KASIM", history=history, settings=settings,
+        custom_rules=[rule],
+    )
+    assert r_kasim.ok, r_kasim.infeasible_reasons
+    assert r_kasim.assignments[s0.id] != r_kasim.assignments[s1.id]
+
+    # Tüm sezon (EYLÜL+EKİM+KASIM) aynı kuralla denetlenir → sıfır ERROR,
+    # sıfır özel-kural (-1) ihlali
+    full = history + [
+        make_assignment(
+            next(s for s in students if s.id == sid),
+            next(u for u in units if u.id == uid), "KASIM",
+        )
+        for sid, uid in r_kasim.assignments.items()
+    ]
+    v = check_all(students, units, full, DEFAULT_MONTHS, [rule], settings=settings)
+    assert [x for x in v if x.severity == ERROR] == [], [
+        x.message for x in v if x.severity == ERROR
+    ]
+    assert not any(x.rule_no == -1 for x in v)
