@@ -27,7 +27,7 @@ from .models import (
     PROGRAM_HEMSIRELIK,
     PROGRAM_SAGLIK_BAKIM,
 )
-from .normalize import normalize_key, tr_upper
+from .normalize import normalize_key, normalize_unit_name, tr_upper
 
 # Otomatik sınıf renkleri (metin sınıf sütunundan içe aktarımda sırayla atanır)
 DEFAULT_CLASS_PALETTE = [
@@ -145,7 +145,7 @@ def build_dataset(result: ImportResult) -> Dataset:
     unit_by_key: dict[tuple[int, str, str], Unit] = {}
     for iu in result.units:
         unit = Unit(
-            name=iu.name,
+            name=normalize_unit_name(iu.name),
             group=iu.group,
             quota=iu.quota,
             gender_restriction=iu.gender_restriction,
@@ -221,7 +221,7 @@ def build_dataset(result: ImportResult) -> Dataset:
             # Kontenjan listesinde olmayan (muhtemelen eski/birleşik) birim:
             # geçmişi koruyabilmek için pasif birim olarak eklenir.
             unit = Unit(
-                name=ia.cell.base_name,
+                name=normalize_unit_name(ia.cell.base_name),
                 group=ia.group,
                 quota=0,
                 gender_restriction=ia.cell.gender_suffix,

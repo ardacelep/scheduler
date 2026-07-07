@@ -1,4 +1,25 @@
-from rotasyon.normalize import AliasTable, normalize_key, parse_cell
+from rotasyon.normalize import (
+    AliasTable,
+    normalize_key,
+    normalize_unit_name,
+    parse_cell,
+)
+
+
+def test_normalize_unit_name_cleans_spacing_and_dots():
+    assert normalize_unit_name("FTR. ÜNİT.") == "FTR.ÜNİT"
+    assert normalize_unit_name("1.KAT CERR.") == "1.KAT CERR"
+    assert normalize_unit_name("ECZ . SARF") == "ECZ.SARF"
+    assert normalize_unit_name("  ÇOK   BOŞLUK ") == "ÇOK BOŞLUK"
+
+
+def test_normalize_unit_name_preserves_case_and_inner_dots():
+    # normalize_key büyük harfe çevirir; bu ise özgün büyüklüğü korur
+    assert normalize_unit_name("2.KAT ÇOcuk") == "2.KAT ÇOcuk"
+    # ama karşılaştırma anahtarı ikisinde de aynı → eşleşme bozulmaz
+    assert normalize_key("FTR. ÜNİT.") == normalize_key(
+        normalize_unit_name("FTR. ÜNİT.")
+    )
 
 
 def test_gender_suffix_k():

@@ -28,6 +28,21 @@ def normalize_key(s: str) -> str:
     return s
 
 
+def normalize_unit_name(name: str) -> str:
+    """Birim adının GÖSTERİM biçimini temizler (büyük harfe çevirmeden).
+
+    normalize_key ile aynı temizliği yapar ama özgün harf büyüklüğünü korur:
+    çoklu boşluk tek boşluğa iner, nokta çevresindeki boşluklar silinir
+    ("FTR. ÜNİT." -> "FTR.ÜNİT"), baştaki/sondaki boşluk ve noktalar atılır.
+    İç noktalar korunur ("1.KAT" aynı kalır). Kimlik/eşleşme normalize_key
+    ile yapıldığından bu temizlik atama çözümlemesini etkilemez.
+    """
+    s = str(name).strip()
+    s = re.sub(r"\s+", " ", s)
+    s = re.sub(r"\s*\.\s*", ".", s)
+    return s.strip(" .")
+
+
 @dataclass
 class ParsedCell:
     """Bir rotasyon hücresinin ayrıştırılmış hali."""

@@ -31,6 +31,7 @@ from rotasyon.models import (
     Student,
     Unit,
 )
+from rotasyon.normalize import normalize_unit_name
 from .common import data_fingerprint, gender_label, unit_label
 
 _GENDER_OPTIONS = ["", "Kız", "Erkek"]
@@ -359,7 +360,7 @@ def _units_tab(store) -> None:
     )
     if st.button("💾 Tablodaki değişiklikleri kaydet", type="primary", key="save_units"):
         for u, (_, row) in zip(ordered, edited.iterrows()):
-            u.name = str(row["Birim"]).strip() or u.name
+            u.name = normalize_unit_name(str(row["Birim"])) or u.name
             u.group = _GROUP_TO_CODE.get(row["Grup"], u.group)
             u.quota = int(row["Kontenjan"])
             u.gender_restriction = _GENDER_TO_CODE.get(row["Cinsiyet"] or "", "")
@@ -462,7 +463,7 @@ def _new_unit_form(store, units) -> None:
         if st.form_submit_button("Ekle") and name.strip():
             units.append(
                 Unit(
-                    name=name.strip(),
+                    name=normalize_unit_name(name),
                     group=group,
                     quota=int(quota),
                     gender_restriction=_GENDER_TO_CODE.get(gender, ""),

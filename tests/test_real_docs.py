@@ -125,9 +125,10 @@ class TestRealRotation:
             for u in ds.units
             if u.active
         }
-        assert by[(1, "1.KAT CERR.", "")] == 3
+        # birim adları içe aktarımda normalize edilir ("FTR. ÜNİT." → "FTR.ÜNİT")
+        assert by[(1, "1.KAT CERR", "")] == 3
         assert by[(1, "DİŞ", "")] == 4
-        assert by[(2, "FTR. ÜNİT.", "")] == 4
+        assert by[(2, "FTR.ÜNİT", "")] == 4
 
     def test_gender_inferred_for_most_students(self, ds):
         inferred = sum(1 for s in ds.students if s.gender)
