@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .models import Assignment, Student, Unit, GENDER_LABELS
+from .models import Assignment, Student, Unit
 from .normalize import normalize_key
 
 ERROR = "hata"
@@ -83,11 +83,12 @@ def season_capacity_findings(
                     group=g,
                     message=(
                         f"Grup {g}: toplam kontenjan ({total_quota}) öğrenci "
-                        f"sayısına TAM eşit — her birim her ay dolmak zorunda "
-                        "kalır ve tekrar yasağı geniş kontenjanlı birimleri "
-                        "birkaç ayda tüketir. En az birkaç kişilik pay "
-                        "bırakın (bir birimin kontenjanını artırın veya "
-                        "yedek birim açın)."
+                        f"sayısıyla ({n}) TAM eşit. Böyle olunca her birim her "
+                        "ay dolmak zorunda kalır; kimse aynı birime iki kez "
+                        "gidemediği için geniş kontenjanlı birimler birkaç ayda "
+                        "uygun öğrenci bırakmaz. En az birkaç kişilik boşluk "
+                        "bırakın: bir birimin kontenjanını artırın ya da yedek "
+                        "birim ekleyin."
                     ),
                 )
             )
@@ -108,34 +109,31 @@ def season_capacity_findings(
             have = _eligible_unvisited(u, g_students, visited_names)
             if have < need:
                 fits = have // u.quota if u.quota else 0
-                gender_note = (
-                    f" (yalnız {GENDER_LABELS[u.gender_restriction].lower()})"
-                    if u.gender_restriction
-                    else ""
-                )
                 why = (
-                    "her ay 1 kız 1 erkek dolmak zorunda (madde 17)"
+                    "bu birim her ay dolmak zorunda (çiftte her ay bir kız bir "
+                    "erkek bulunmalı)"
                     if u.must_fill
-                    else "toplam kontenjan öğrenci sayısına eşit olduğundan dolmak zorunda"
+                    else "toplam kontenjan öğrenci sayısına eşit olduğu için her "
+                    "birim her ay dolmak zorunda"
                 )
                 max_q = have // len(remaining)
                 suggestion = (
-                    f"kontenjanı en fazla {max_q} yapın"
+                    f"bu birimin kontenjanını en fazla {max_q} yapın"
                     if max_q >= 1
-                    else "bu birimi doldurma zorunluluğundan çıkarın "
-                    "(kontenjan payı bırakın veya kısıtları gevşetin)"
+                    else "bu birimin 'her ay dolmalı' zorunluluğunu kaldırın ya "
+                    "da uygun öğrenci sayısını artırın (kontenjan payı bırakın "
+                    "veya kısıtları gevşetin)"
                 )
                 findings.append(
                     CapacityFinding(
                         level=ERROR,
                         group=g,
                         message=(
-                            f"Grup {g} — {u.display_name}: kalan "
-                            f"{len(remaining)} ay için {len(remaining)}×"
-                            f"{u.quota}={need} FARKLI öğrenci{gender_note} "
-                            f"gerekir ama uygun yalnız {have} kişi var — "
-                            f"{why}; en fazla {fits} ay taşır. Öneri: "
-                            f"{suggestion}."
+                            f"Grup {g} · {u.friendly_name}: {why}. Kimse aynı "
+                            "birime iki kez gidemediği için kalan "
+                            f"{len(remaining)} ayda {need} FARKLI uygun öğrenci "
+                            f"gerekir; uygun yalnız {have} kişi var (en çok "
+                            f"{fits} ay dolar). Çözüm: {suggestion}."
                         ),
                     )
                 )

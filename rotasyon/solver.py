@@ -85,10 +85,10 @@ _REASON_LABELS = {
               "cinsiyette yeterli öğrenci bulunamıyor olabilir.",
     "banned": "Madde 8 (yasaklı birimler): yasak listeleri atama seçeneklerini "
               "aşırı daraltıyor olabilir.",
-    "dis": "Madde 9 (Diş Pol muafiyeti): Diş kontenjanı, muaf olmayan "
+    "dis": "Madde 9 (Diş Polikliniği muafiyeti): Diş kontenjanı, muaf olmayan "
            "öğrencilerle doldurulamıyor olabilir.",
-    "must_fill": "Madde 17 (FTR'ye 1 kız 1 erkek): FTR çifti için uygun kız/erkek "
-                 "öğrenci kalmamış olabilir.",
+    "must_fill": "Madde 17 (FTR çiftinde her ay bir kız bir erkek): uygun "
+                 "kız/erkek öğrenci kalmamış olabilir.",
     "deadline_core": "Sezon zorunlulukları (her öğrenci sezon boyunca cerrahi/"
                      "dahili/yoğun bakım/palyatif görmeli): kalan aylarda bu "
                      "birimlerde yeterli kontenjan yok.",

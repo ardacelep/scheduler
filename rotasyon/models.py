@@ -136,11 +136,22 @@ class Unit:
 
     @property
     def display_name(self) -> str:
-        """Kullanıcıya/Excel'e gösterilen ad: cinsiyet kısıtı ekiyle."""
+        """Excel'e/tabloya yazılan ad: cinsiyet kısıtı 'k'/'e' ekiyle
+        (gerçek rotasyon belgelerinin biçimi)."""
         if self.gender_restriction == "K":
             return f"{self.name} k"
         if self.gender_restriction == "E":
             return f"{self.name} e"
+        return self.name
+
+    @property
+    def friendly_name(self) -> str:
+        """Uyarı/ihlal metinleri için okunur ad: cinsiyet kısıtı açık yazılır
+        ('FTR.ÜNİT (yalnız erkek)') — mesajlarda 'FTR.ÜNİT e'den anlaşılır."""
+        if self.gender_restriction == "K":
+            return f"{self.name} (yalnız kız)"
+        if self.gender_restriction == "E":
+            return f"{self.name} (yalnız erkek)"
         return self.name
 
     def to_dict(self) -> dict:

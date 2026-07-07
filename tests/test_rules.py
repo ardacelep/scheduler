@@ -281,3 +281,30 @@ def test_blocking_errors_structural_always_blocks():
 
     v = Violation(rule_no=0, severity=ERROR, message="bozuk veri")
     assert blocking_errors([v], {"EKİM"}, set()) == [v]
+
+
+def test_unit_friendly_name_and_message():
+    """friendly_name mesajlarda ' e'/' k' eki yerine okunur kısıt yazar;
+    display_name (Excel biçimi) değişmez."""
+    from rotasyon.models import Unit, MALE
+
+    u = Unit(name="FTR.ÜNİT", group=1, quota=1, gender_restriction=MALE)
+    assert u.friendly_name == "FTR.ÜNİT (yalnız erkek)"
+    assert u.display_name == "FTR.ÜNİT e"
+    assert Unit(name="DİŞ", group=1, quota=1).friendly_name == "DİŞ"
+
+
+def test_gender_restricted_quota_message_is_readable(small_world):
+    """Cinsiyet kısıtlı birimin kontenjan aşımı mesajı 'yalnız erkek' içerir."""
+    students, units, _ = small_world
+    ftr_e = by_name(units, "FTR.ÜNİT", "E")
+    v = check_all(
+        students, units,
+        [
+            make_assignment(students[4], ftr_e, "EYLÜL"),
+            make_assignment(students[5], ftr_e, "EYLÜL"),  # kontenjan 1 → aşım
+        ],
+        DEFAULT_MONTHS,
+    )
+    msg = next(x.message for x in v if x.rule_no == 12)
+    assert "yalnız erkek" in msg

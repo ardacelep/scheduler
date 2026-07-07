@@ -191,9 +191,10 @@ def _check_custom_rules(assignments, students_by_id, units_by_id, custom_rules, 
                                 rule_no=CUSTOM_RULE_NO,
                                 severity=ERROR,
                                 message=(
-                                    f"Özel kural (birim yasağı) ihlali: "
-                                    f"{_name(sid)} {month} ayında yasaklı "
-                                    f"birimde: {units_by_id[uid].name}."
+                                    f"{_name(sid)}, {month} ayında yasaklı "
+                                    "birime atanmış: "
+                                    f"{units_by_id[uid].friendly_name} "
+                                    "(özel kural: birim yasağı)."
                                 ),
                                 student_id=sid,
                                 month=month,
@@ -218,10 +219,10 @@ def _check_custom_rules(assignments, students_by_id, units_by_id, custom_rules, 
                                 rule_no=CUSTOM_RULE_NO,
                                 severity=ERROR,
                                 message=(
-                                    "Özel kural (ayrı tut) ihlali: "
-                                    + " ile ".join(_name(s) for s in together)
-                                    + f" {month} ayında aynı birimde: "
-                                    + units_by_id[uid].name + "."
+                                    " ile ".join(_name(s) for s in together)
+                                    + f" {month} ayında aynı birimde ("
+                                    + units_by_id[uid].friendly_name
+                                    + ") — 'ayrı tut' özel kuralına aykırı."
                                 ),
                                 month=month,
                                 unit_id=uid,
@@ -241,9 +242,9 @@ def _check_custom_rules(assignments, students_by_id, units_by_id, custom_rules, 
                             rule_no=CUSTOM_RULE_NO,
                             severity=ERROR,
                             message=(
-                                "Özel kural (birlikte tut) ihlali: "
-                                + ", ".join(_name(s) for s in ids)
-                                + f" {month} ayında farklı birimlerde."
+                                ", ".join(_name(s) for s in ids)
+                                + f" {month} ayında farklı birimlerde — "
+                                "'birlikte tut' özel kuralına aykırı."
                             ),
                             month=month,
                         )
@@ -258,10 +259,9 @@ def _check_custom_rules(assignments, students_by_id, units_by_id, custom_rules, 
                             rule_no=CUSTOM_RULE_NO,
                             severity=ERROR,
                             message=(
-                                f"Özel kural (sabit atama) ihlali: {_name(sid)} "
-                                f"{rule.month} ayında "
-                                f"{expected.name if expected else '?'} biriminde "
-                                "olmalıydı."
+                                f"{_name(sid)}, {rule.month} ayında "
+                                f"{expected.friendly_name if expected else '?'} "
+                                "biriminde olmalıydı (özel kural: sabit atama)."
                             ),
                             student_id=sid,
                             month=rule.month,
@@ -501,7 +501,7 @@ def _check_rule8_banned(assignments, students_by_id, units_by_id):
                     severity=ERROR,
                     message=(
                         f"{s.full_name}, yasaklı olduğu birime atanmış: "
-                        f"{units_by_id[a.unit_id].name} ({a.month})."
+                        f"{units_by_id[a.unit_id].friendly_name} ({a.month})."
                     ),
                     student_id=s.id,
                     month=a.month,
@@ -547,8 +547,8 @@ def _check_rule12_quota(assignments, students_by_id, units_by_id):
                     rule_no=12,
                     severity=ERROR,
                     message=(
-                        f"{u.name} biriminin {month} kontenjanı aşılmış "
-                        f"({count}/{u.quota})."
+                        f"{u.friendly_name} biriminin {month} kontenjanı "
+                        f"aşılmış ({count}/{u.quota})."
                     ),
                     month=month,
                     unit_id=uid,
@@ -581,9 +581,9 @@ def _check_rule17_must_fill(assignments, students_by_id, units_by_id):
                         rule_no=17,
                         severity=ERROR,
                         message=(
-                            f"{u.name} ({GENDER_LABELS.get(u.gender_restriction, '?')}) "
-                            f"biriminin {month} kontenjanı tam dolmalı "
-                            f"({count}/{u.quota}) — FTR'ye her ay 1 kız 1 erkek kuralı."
+                            f"{u.friendly_name}: {month} ayında tam dolmamış "
+                            f"({count}/{u.quota}). Bu birim her ay tam dolmalı "
+                            "— FTR çiftinde her ay bir kız bir erkek bulunmalı."
                         ),
                         month=month,
                         unit_id=u.id,
@@ -670,8 +670,9 @@ def _check_rule18_ebelik_priority(assignments, students_by_id, units_by_id, mont
                         rule_no=18,
                         severity=WARNING,
                         message=(
-                            f"{u.name} ({month}) ebelik öncelikli olduğu halde "
-                            f"{s.full_name} (ebelik değil) atanmış; uygun ebelik "
+                            f"{u.friendly_name} ({month}) ebelik öğrencilerine "
+                            f"öncelikli; ama {s.full_name} (ebelik değil) "
+                            "atanmış. Bu birime uygun boştaki ebelik "
                             f"öğrencileri: {', '.join(idle_ebelik[:3])}."
                         ),
                         student_id=s.id,
@@ -701,8 +702,9 @@ def _check_rule19_repeat_pairs(assignments, students_by_id, units_by_id):
                     rule_no=19,
                     severity=WARNING,
                     message=(
-                        f"{n1} ile {n2} birden fazla ay aynı birimde: "
-                        f"{', '.join(sorted(months_together))}."
+                        f"{n1} ile {n2} birden fazla ay aynı birimde "
+                        f"({', '.join(sorted(months_together))}) — farklı "
+                        "eşleşmeler tercih edilir."
                     ),
                     student_id=s1,
                 )
