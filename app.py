@@ -17,6 +17,7 @@ st.set_page_config(
 from ui import dashboard, data_management, history, rotation, violations  # noqa: E402
 from ui import excel_screen, season_grid  # noqa: E402
 from ui.common import (  # noqa: E402
+    UNITS_CATALOG,
     create_season_with_units,
     get_manager,
     unit_source_options,
@@ -55,14 +56,17 @@ def _season_sidebar(manager) -> None:
     with st.sidebar.expander("➕ Yeni sezon oluştur"):
         with st.form("new_season", clear_on_submit=True):
             name = st.text_input("Sezon adı", placeholder="örn. 2025-2026")
+            options = unit_source_options(seasons)
+            default_idx = (
+                options.index(UNITS_CATALOG) if UNITS_CATALOG in options else 0
+            )
             source = st.selectbox(
                 "Birimler nereden gelsin?",
-                unit_source_options(seasons),
-                index=max(len(seasons) - 1, 0),  # varsayılan: en son sezon
-                help="Birim tanımları genelde sezondan sezona aynı kalır; "
-                "sezondan kopyalamak en pratiğidir. Hiç sezon yoksa "
-                "varsayılan katalog hazır bir başlangıç sunar. Öğrenci ve "
-                "atamalar asla kopyalanmaz.",
+                options,
+                index=default_idx,  # varsayılan: hazır birim kataloğu
+                help="Varsayılan olarak hazır birim kataloğu gelir. Dilerseniz "
+                "önceki bir sezonun birimlerini de kopyalayabilirsiniz "
+                "(öğrenci ve atamalar asla kopyalanmaz).",
             )
             if st.form_submit_button("Oluştur") and name.strip():
                 try:

@@ -23,7 +23,12 @@ from rotasyon.gender_guess import fill_missing_genders, guess_gender
 from rotasyon.importer import build_dataset, build_roster_dataset
 from rotasyon.models import FEMALE, MALE, GENDER_LABELS, PROGRAM_LABELS
 from rotasyon.pdf_io import read_student_list_pdf
-from .common import create_season_with_units, get_manager, unit_source_options
+from .common import (
+    UNITS_CATALOG,
+    create_season_with_units,
+    get_manager,
+    unit_source_options,
+)
 
 
 def render(store) -> None:
@@ -252,13 +257,15 @@ def roster_import_flow(ds, warns, gender_counts=None) -> None:
     )
     if target == "Yeni sezon oluştur":
         season_name = st.text_input("Yeni sezon adı", value="", placeholder="örn. 2025-2026")
+        options = unit_source_options(seasons)
+        default_idx = options.index(UNITS_CATALOG) if UNITS_CATALOG in options else 0
         source = st.selectbox(
             "Birimler nereden gelsin?",
-            unit_source_options(seasons),
-            index=max(len(seasons) - 1, 0),  # varsayılan: en son sezon
-            help="Birimler genelde sezondan sezona aynı kalır; önceki sezondan "
-            "kopyalamak en hızlısıdır. Hiç sezon yoksa varsayılan katalog "
-            "hazır bir başlangıç sunar. Öğrenci ve atamalar kopyalanmaz.",
+            options,
+            index=default_idx,  # varsayılan: hazır birim kataloğu
+            help="Varsayılan olarak hazır birim kataloğu gelir. Dilerseniz "
+            "önceki bir sezonun birimlerini de kopyalayabilirsiniz "
+            "(öğrenci ve atamalar kopyalanmaz).",
         )
         if st.button(
             "🚀 Sezonu oluştur ve öğrencileri aktar",
