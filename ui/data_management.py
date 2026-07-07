@@ -545,11 +545,11 @@ uygulanır.
 def _window_text(rule) -> str:
     """Kuralın zaman penceresini insan diline çevirir."""
     if rule.start_month and rule.end_month:
-        return f" _( {rule.start_month}–{rule.end_month} ayları)_"
+        return f" _( {rule.start_month}–{rule.end_month} ayları dahil)_"
     if rule.start_month:
-        return f" _( {rule.start_month} ayından itibaren)_"
+        return f" _( {rule.start_month} ayından itibaren, bu ay dahil)_"
     if rule.end_month:
-        return f" _( {rule.end_month} ayına kadar)_"
+        return f" _( {rule.end_month} ayına kadar, bu ay dahil)_"
     return ""
 
 
@@ -586,28 +586,56 @@ def _next_unplanned_month(months, assignments) -> str:
 
 
 def _window_pickers(months, default_start):
-    """Ortak 'şu aydan itibaren / şu aya kadar' seçicileri; (start, end) döner."""
+    """Ortak başlangıç/bitiş ayı seçicileri; (start, end) döner.
+
+    Seçilen aylar DAHİLDİR (başlangıç ayının kendisi ve bitiş ayının kendisi
+    de kuralın geçerli olduğu aylardır). Altına, kuralın hangi aylarda etkin
+    olacağını canlı gösteren bir bilgi satırı basar.
+    """
     START_ALL = "Sezon başı (tüm sezon)"
     END_ALL = "Sezon sonuna kadar"
     c1, c2 = st.columns(2)
     start_opts = [START_ALL] + months
     default_idx = start_opts.index(default_start) if default_start in months else 0
     start = c1.selectbox(
-        "Şu aydan itibaren geçerli",
+        "Başlangıç ayı — bu ay **dahil**",
         start_opts,
         index=default_idx,
         key="rule_start_month",
-        help="Sezon ortasında eklenen kural yalnız bu aydan itibaren "
-        "uygulanır; tamamlanmış geçmiş aylar etkilenmez ve ihlal sayılmaz.",
+        help="Kural bu aydan itibaren (bu ay DAHİL) uygulanır. Sezon "
+        "ortasında eklenen kural, tamamlanmış geçmiş ayları etkilemez ve "
+        "orada ihlal sayılmaz.",
     )
     end_opts = [END_ALL] + months
     end = c2.selectbox(
-        "Şu aya kadar (isteğe bağlı)", end_opts, index=0, key="rule_end_month"
+        "Bitiş ayı — bu ay **dahil** (isteğe bağlı)",
+        end_opts,
+        index=0,
+        key="rule_end_month",
+        help="Kural bu aya kadar (bu ay DAHİL) geçerlidir; boş bırakılırsa "
+        "sezon sonuna kadar sürer.",
     )
-    return (
-        "" if start == START_ALL else start,
-        "" if end == END_ALL else end,
-    )
+    start_val = "" if start == START_ALL else start
+    end_val = "" if end == END_ALL else end
+    # Kuralın etkin olacağı ayları canlı göster (seçilenler dahil)
+    active = _window_months(months, start_val, end_val)
+    if active:
+        st.caption(
+            "📆 Bu kural şu aylarda geçerli olacak (seçtiğiniz aylar **dahil**): "
+            + " · ".join(active)
+        )
+    else:
+        st.caption(
+            "⚠️ Seçilen aralık boş — başlangıç ayı bitiş ayından sonra."
+        )
+    return start_val, end_val
+
+
+def _window_months(months, start, end) -> list[str]:
+    """Verilen pencereye (dahil sınırlar) düşen ayların listesi."""
+    s = months.index(start) if start in months else 0
+    e = months.index(end) if end in months else len(months) - 1
+    return months[s : e + 1] if s <= e else []
 
 
 def _rules_tab(store) -> None:
