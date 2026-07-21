@@ -1,8 +1,9 @@
 """Veri Yönetimi — uygulamanın esneklik merkezi.
 
-Dört sekme: Öğrenciler (toplu düzenleme + Excel'den içe aktarma),
-Birimler (toplu düzenleme + ekleme), Sınıflar, Kurallar (kullanıcı tanımlı
-ayrı tut / birlikte tut / sabit atama kuralları).
+Beş sekme: Öğrenciler (toplu düzenleme + Excel'den içe aktarma), Birimler
+(toplu düzenleme + ekleme), Sınıflar, Kurallar (kullanıcı tanımlı ayrı tut /
+birlikte tut / sabit atama kuralları) ve Yedekleme (tek düğmeyle yedek
+indirme / yedekten geri yükleme).
 
 Toplu düzenlemeler st.data_editor ile yapılır: 70 öğrencinin cinsiyetini
 tek tek form açmadan, tabloda hücre hücre girmek mümkündür.
@@ -46,8 +47,8 @@ _INTENSITY_TO_CODE = {v: k for k, v in INTENSITY_LABELS.items()}
 
 def render(store) -> None:
     st.header("📋 Veri Yönetimi")
-    tab_students, tab_units, tab_classes, tab_rules = st.tabs(
-        ["👤 Öğrenciler", "🏥 Birimler", "🎨 Sınıflar", "📏 Kurallar"]
+    tab_students, tab_units, tab_classes, tab_rules, tab_backup = st.tabs(
+        ["👤 Öğrenciler", "🏥 Birimler", "🎨 Sınıflar", "📏 Kurallar", "💾 Yedekleme"]
     )
     with tab_students:
         _students_tab(store)
@@ -57,6 +58,8 @@ def render(store) -> None:
         _classes_tab(store)
     with tab_rules:
         _rules_tab(store)
+    with tab_backup:
+        _backup_tab(store)
 
 
 # ======================= ÖĞRENCİLER =======================
@@ -783,3 +786,115 @@ def _rules_tab(store) -> None:
             store.save_custom_rules(rules)
             st.success("Kural eklendi. ✅")
             st.rerun()
+
+
+# ======================= YEDEKLEME =======================
+
+def _backup_tab(store) -> None:
+    """Tek düğmeyle yedek indirme / yedekten geri yükleme.
+
+    Kullanıcı `data/` klasörünü ne bulur ne kopyalar; yedek almanın da
+    geri yüklemenin de dosya sistemine dokunmadan yapılabilmesi gerekir.
+    Geri yükleme ASLA üzerine yazmaz: yedek her zaman YENİ sezon açar.
+    """
+    from rotasyon.backup import (
+        BackupError,
+        backup_filename,
+        full_backup_bytes,
+        inspect_backup,
+        restore_into,
+    )
+    from .common import DATA_DIR, get_manager
+
+    manager = get_manager()
+    seasons = manager.list_seasons()
+    active = manager.active_season()
+
+    st.subheader("💾 Yedek al")
+    st.caption(
+        "Yedek dosyasını bilgisayarınıza indirir. Ayda bir yedek alıp "
+        "e-postanıza ya da bir USB belleğe kopyalamanız önerilir — "
+        "bilgisayar değişse bile veriniz kaybolmaz."
+    )
+    col_one, col_all = st.columns(2)
+    with col_one:
+        try:
+            data = _season_backup(store, active or "sezon")
+        except BackupError as exc:
+            st.info(str(exc))
+        else:
+            st.download_button(
+                f"📥 Bu sezonu indir ({active})",
+                data=data,
+                file_name=backup_filename(active),
+                mime="application/zip",
+                type="primary",
+                use_container_width=True,
+            )
+    with col_all:
+        st.download_button(
+            f"📦 Tüm sezonları indir ({len(seasons)} sezon)",
+            data=full_backup_bytes(DATA_DIR, seasons),
+            file_name=backup_filename(None),
+            mime="application/zip",
+            disabled=not seasons,
+            use_container_width=True,
+        )
+
+    st.divider()
+    st.subheader("♻️ Yedekten geri yükle")
+    st.caption(
+        "Yedek dosyasındaki veriler **yeni bir sezon** olarak açılır; "
+        "şu anki sezonlarınızın hiçbiri değişmez veya silinmez."
+    )
+    upload = st.file_uploader(
+        "Yedek dosyası (.zip)", type=["zip"], key="backup_restore_upload"
+    )
+    if upload is None:
+        return
+    payload = upload.getvalue()
+    try:
+        info = inspect_backup(payload)
+    except BackupError as exc:
+        st.error(str(exc))
+        return
+
+    st.success(
+        f"Yedek okundu — {len(info['sezonlar'])} sezon"
+        + (f", tarih: {info['tarih'][:16].replace('T', ' ')}" if info["tarih"] else "")
+    )
+    for season in info["sezonlar"]:
+        counts = season["kayit"]
+        st.markdown(
+            f"- **{season['ad']}** — "
+            f"{counts.get('students', 0)} öğrenci, "
+            f"{counts.get('units', 0)} birim, "
+            f"{counts.get('assignments', 0)} atama"
+        )
+    single = len(info["sezonlar"]) == 1
+    new_name = ""
+    if single:
+        new_name = st.text_input(
+            "Yeni sezonun adı",
+            value=info["sezonlar"][0]["ad"],
+            help="Aynı adlı bir sezon varsa sonuna (2) eklenir.",
+            key="backup_restore_name",
+        )
+    if st.button("♻️ Geri yükle", type="primary", key="backup_restore_go"):
+        try:
+            created = restore_into(
+                payload, DATA_DIR, seasons, rename_to=new_name if single else None
+            )
+        except BackupError as exc:
+            st.error(str(exc))
+            return
+        if created:
+            manager.set_active(created[0])
+        st.toast(f"Geri yüklendi: {', '.join(created)} ✅", icon="♻️")
+        st.rerun()
+
+
+def _season_backup(store, season_name: str) -> bytes:
+    from rotasyon.backup import season_backup_bytes
+
+    return season_backup_bytes(store.data_dir, season_name)

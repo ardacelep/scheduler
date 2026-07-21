@@ -15,7 +15,7 @@ st.set_page_config(
 )
 
 from ui import dashboard, data_management, history, rotation, violations  # noqa: E402
-from ui import excel_screen, season_grid  # noqa: E402
+from ui import excel_screen, help as help_screen, season_grid  # noqa: E402
 from ui.common import (  # noqa: E402
     UNITS_CATALOG,
     create_season_with_units,
@@ -136,6 +136,12 @@ def main() -> None:
             st.Page(
                 _page(excel_screen.render, "excel"),
                 title="Excel İçe/Dışa Aktarım", icon="📊", url_path="excel",
+            ),
+        ],
+        "Destek": [
+            st.Page(
+                _page(help_screen.render, "yardim"),
+                title="Yardım", icon="❓", url_path="yardim",
             ),
         ],
     }

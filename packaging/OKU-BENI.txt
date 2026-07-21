@@ -1,0 +1,80 @@
+﻿====================================================================
+  STAJ ROTASYONU — Kullanım Bilgileri
+====================================================================
+
+Bu program, öğrencilerin aylık staj rotasyonlarını kurallara uygun
+şekilde otomatik hazırlar. Kurulum gerektirmez, internet gerektirmez.
+Öğrenci bilgileri bilgisayarınızdan hiçbir yere gönderilmez.
+
+
+1) NASIL BAŞLATILIR?
+--------------------------------------------------------------------
+  Bu klasördeki   "Staj Rotasyonu.exe"   dosyasına çift tıklayın.
+
+  * Siyah bir pencere açılır — bu normaldir, KAPATMAYIN.
+  * Birkaç saniye sonra program tarayıcınızda (Chrome/Edge) açılır.
+  * İlk açılış biraz uzun sürebilir, bekleyin.
+
+  Kolaylık olsun diye "Masaustune kisayol olustur.bat" dosyasına bir
+  kez çift tıklarsanız, masaüstünüze kısayol eklenir; bundan sonra
+  programı oradan açabilirsiniz.
+
+
+2) "WINDOWS BİLGİSAYARINIZI KORUDU" UYARISI ÇIKARSA
+--------------------------------------------------------------------
+  Program dijital olarak imzalanmadığı için Windows ilk açılışta
+  uyarabilir. Bu bir virüs uyarısı değildir.
+
+      "Daha fazla bilgi"  ->  "Yine de çalıştır"
+
+  demeniz yeterlidir. Bu uyarı yalnızca ilk seferde çıkar.
+
+
+3) PROGRAMI NASIL KAPATIRIM?
+--------------------------------------------------------------------
+  Tarayıcı sekmesini kapatmak programı kapatmaz.
+  Kapatmak için SİYAH PENCEREYİ kapatın.
+
+  Tarayıcı sekmesini yanlışlıkla kapattıysanız, program hâlâ
+  çalışıyordur: exe'ye tekrar çift tıklayın, sekme yeniden açılır.
+
+
+4) VERİLERİM NEREDE? YEDEK NASIL ALIRIM?
+--------------------------------------------------------------------
+  Tüm veriler bu klasördeki  "data"  klasöründe tutulur.
+
+  ÖNEMLİ: Program içindeki
+      Veri Yönetimi  ->  "💾 Yedekleme" sekmesi
+  üzerinden tek tıkla yedek dosyası indirebilirsiniz. Ayda bir yedek
+  alıp e-postanıza/USB'ye kopyalamanız önerilir.
+
+  Programın yeni bir sürümü geldiğinde: yeni klasörü çıkarın ve
+  ESKİ klasördeki "data" klasörünü yeni klasöre kopyalayın.
+
+
+5) BU KLASÖRÜ TAŞIYABİLİR MİYİM?
+--------------------------------------------------------------------
+  Evet — ama TAMAMINI birlikte taşıyın. Sadece exe dosyasını
+  kopyalarsanız program çalışmaz.
+
+  Klasörü Masaüstü veya Belgeler altında tutun. "Program Files"
+  içine koymayın (Windows oraya veri yazdırmaz).
+
+
+6) SORUN GİDERME
+--------------------------------------------------------------------
+  Program açılmıyor / hata veriyor:
+    -> Bilgisayarı yeniden başlatıp tekrar deneyin.
+    -> Sorun sürerse  data\gunluk\uygulama.log  dosyasını
+       programı size veren kişiye gönderin.
+
+  Tarayıcı açılmıyor:
+    -> Tarayıcınızı elle açıp adres çubuğuna şunu yazın:
+       http://localhost:8501
+
+  Program donmuş gibi görünüyor:
+    -> Siyah pencerenin içine tıkladıysanız ESC tuşuna basın.
+    -> Rotasyon üretimi birkaç dakika sürebilir; bekleyin.
+
+  Yardım: Programın içindeki "❓ Yardım" sayfasında adım adım
+  kullanım kılavuzu vardır.

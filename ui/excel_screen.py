@@ -382,7 +382,7 @@ def _export_tab(store) -> None:
     st.subheader("Yıllık grup görünümü (renkli)")
     st.caption(
         "Her grup ayrı sayfada; öğrenci adları sınıf renginde (madde 14), "
-        "cinsiyet kısıtlı birimler kırmızı k/e ekli."
+        "cinsiyet kısıtlı birimler kırmızı ve yanında (Kız)/(Erkek) yazılı."
     )
     st.download_button(
         "📤 Yıllık görünümü indir",

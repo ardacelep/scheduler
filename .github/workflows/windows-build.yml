@@ -1,0 +1,77 @@
+name: Windows .exe
+
+# Elle (Actions sekmesindeki "Run workflow") veya v1.2.3 gibi bir etiket
+# gönderince çalışır. Her push'ta çalışmaz — özel depoda dakika harcamasın.
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Bağımlılıkları kur
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-build.txt
+
+      - name: Testler
+        run: python -m pytest -q
+
+      - name: .exe üret
+        run: pyinstaller --noconfirm --clean packaging/rotasyon.spec
+
+      - name: Kullanıcı dosyalarını ekle
+        shell: pwsh
+        run: |
+          Copy-Item "packaging/OKU-BENI.txt" "dist/StajRotasyonu/"
+          Copy-Item "packaging/Masaustune kisayol olustur.bat" "dist/StajRotasyonu/"
+
+      - name: Açılış dumanı testi (exe gerçekten kalkıyor mu?)
+        shell: pwsh
+        run: |
+          $exe = "dist/StajRotasyonu/Staj Rotasyonu.exe"
+          $p = Start-Process -FilePath $exe -PassThru
+          $ok = $false
+          foreach ($i in 1..60) {
+            Start-Sleep -Seconds 2
+            try {
+              $r = Invoke-WebRequest "http://127.0.0.1:8501/_stcore/health" -UseBasicParsing -TimeoutSec 3
+              if ($r.StatusCode -eq 200) { $ok = $true; break }
+            } catch { }
+          }
+          Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+          if (-not $ok) {
+            Write-Host "--- gunluk ---"
+            Get-Content "dist/StajRotasyonu/data/gunluk/uygulama.log" -ErrorAction SilentlyContinue
+            throw "exe 2 dakika icinde acilmadi"
+          }
+          Write-Host "exe acildi ve yanit verdi."
+
+      - name: Deneme verisini temizle
+        shell: pwsh
+        run: Remove-Item "dist/StajRotasyonu/data" -Recurse -Force -ErrorAction SilentlyContinue
+
+      - name: Zip paketle
+        shell: pwsh
+        run: Compress-Archive -Path "dist/StajRotasyonu" -DestinationPath "dist/StajRotasyonu-windows.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: StajRotasyonu-windows
+          path: dist/StajRotasyonu-windows.zip
+          retention-days: 30
+
+      - name: Etiketliyse sürüm oluştur
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/StajRotasyonu-windows.zip

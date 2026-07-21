@@ -16,8 +16,8 @@ gerektirmeden planlayan masaüstü uygulaması.
 [Kurallar](#kurallar) · [Çözücü](#çözücü-nasıl-çalışır) ·
 [Kapasite denetimi](#kapasite-ön-denetimi) ·
 [Dinamik değişiklikler](#sezon-ortası-dinamik-değişiklikler) ·
-[Excel](#excel-içedışa-aktarım) · [Testler](#testler) ·
-[Windows .exe](#windows-için-tek-exe-üretme) · [Klasör yapısı](#klasör-yapısı)
+[Excel](#excel-içedışa-aktarım) · [Yedekleme](#yedekleme) · [Testler](#testler) ·
+[Windows dağıtımı](#windows-dağıtımı) · [Klasör yapısı](#klasör-yapısı)
 
 ---
 
@@ -51,8 +51,12 @@ Tarayıcıda `http://localhost:8501` açılır. Hiç veri yoksa **"Örnek veriyl
 başla"** düğmesi hazır bir başlangıç doldurur; sıfırdan başlamak için doğrudan
 **Veri Yönetimi** veya **Excel İçe/Dışa Aktarım** ekranını kullanın.
 
-Son kullanıcı (eğitim hemşiresi) için amaç, kurulum gerektirmeyen tek bir
-`.exe`'dir — bkz. [Windows için tek .exe üretme](#windows-için-tek-exe-üretme).
+Alternatif olarak `python run_app.py` de çalışır: son kullanıcı başlatıcısının
+tamamını (boş port bulma, tarayıcı açma, günlük dosyası) kaynaktan da kullanır.
+
+Son kullanıcı (eğitim hemşiresi) hiçbir şey kurmaz; kendisine zip'lenmiş bir
+Windows paketi verilir — bkz. [Windows dağıtımı](#windows-dağıtımı). Uygulamanın
+içinde ayrıca Türkçe bir **❓ Yardım** ekranı vardır.
 
 ---
 
@@ -88,9 +92,10 @@ Sol kenar çubuğundan **sezon** seçilir, yeni sezon oluşturulur veya silinir
 | **Rotasyon Oluştur** | Tek akışlı üretim + toplu oluşturma (aşağıda ayrıntı) |
 | **Yıllık Tablo** | Sezonun tamamı tek tabloda (öğrenci × ay); aynı ekrandan ay oluşturma/elle düzeltme, düzeltirken herkesin geçmişi görünür (aşağıda ayrıntı) |
 | **Kural Kontrolü** | Kayıtlı tüm atamaların bütün kurallara karşı denetimi (hata / uyarı) |
-| **Veri Yönetimi** | Öğrenci, birim, sınıf ve özel kuralları toplu düzenleme; Excel içe aktarma; cinsiyet tahmini |
+| **Veri Yönetimi** | Öğrenci, birim, sınıf ve özel kuralları toplu düzenleme; Excel içe aktarma; cinsiyet tahmini; **yedekleme/geri yükleme** |
 | **Öğrenci Geçmişi** | Bir öğrencinin sezon boyunca gittiği birimler, ay sırasıyla |
 | **Excel İçe/Dışa Aktarım** | Rotasyon veya öğrenci listesi içe aktarma; yıllık renkli ve tek-ay renksiz dışa aktarma |
+| **Yardım** | Uygulama içi Türkçe kılavuz: adım adım başlangıç, ekran rehberi, sık sorulanlar, sorun giderme |
 
 ### Rotasyon Oluştur akışı
 
@@ -296,12 +301,33 @@ değiştirir**:
 Her ikisi de kırmızı uyarı + onay kutusu ister; eski veri `.json.bak`
 dosyalarında tutulur.
 
-**Dışa aktarım:** yıllık renkli grup görünümü (sınıf renkleri + kırmızı k/e
-ekleri) ve tek-ay renksiz görünüm.
+**Dışa aktarım:** yıllık renkli grup görünümü (sınıf renkleri + cinsiyet
+kısıtlı birimlerde kırmızı `(Kız)`/`(Erkek)` eki) ve tek-ay renksiz görünüm.
+Yıllık dosya **tekrar içe aktarılabilir**; tek-ay görünümü yazdırma amaçlıdır.
 
 Birim özellikleri (yoğunluk, yedeklik, branş) içe aktarılan dosyalarda
 bulunmadığında, `BÖLÜMLER VE ÖZELLİKLERİ.xlsx` kaynaklı **varsayılan katalog**
 ile isim eşleşmesinden otomatik zenginleştirilir.
+
+---
+
+## Yedekleme
+
+*Veri Yönetimi ▸ 💾 Yedekleme* sekmesi, kullanıcıyı dosya sistemine hiç
+sokmadan yedek aldırır: tek sezon veya tüm sezonlar tek `.zip` olarak indirilir,
+aynı sekmeden geri yüklenir. Mantık `rotasyon/backup.py` içinde saftır ve
+testlidir.
+
+Tasarım kararları:
+
+- **Geri yükleme asla üzerine yazmaz.** Yedek her zaman **yeni sezon** açar; ad
+  çakışırsa sonuna `(2)` eklenir. Yanlış dosyayı yüklemek mevcut veriyi bozamaz.
+- Zip'e yalnız gerçek veri dosyaları girer; türetilmişler (`.bak`, `.tmp`,
+  `draft_bulk`, günlükler, kilit dosyası) dışarıda kalır.
+- Zip içinde `yedek.json` künyesi bulunur (tür, sezon, tarih). Künyesi olmayan,
+  kullanıcının elle zip'lediği sezon klasörü de kabul edilir.
+- Geri yüklemeden önce içerik özeti gösterilir (kaç öğrenci / birim / atama).
+- Bozuk JSON içeren yedek reddedilir, yarım sezon oluşturulmaz.
 
 ---
 
@@ -311,34 +337,69 @@ ile isim eşleşmesinden otomatik zenginleştirilir.
 .venv/bin/python -m pytest tests/
 ```
 
-Şu an **168 test** yeşildir; her yerleşik kural, özel kurallar, çözücü, ortak
+Şu an **220 test** yeşildir; her yerleşik kural, özel kurallar, çözücü, ortak
 sezon çözücüsü, kapasite denetimi, cinsiyet tahmini, sezon yönetimi, dinamik
-değişiklikler, toplu taslak kalıcılığı ve Excel içe/dışa aktarımı kapsanır.
-`tests/test_e2e.py` referans veriyle gerçek bir ayı çözüp kural denetiminden
-geçirir; `tests/test_real_docs.py` gerçek belge formatlarını okur.
+değişiklikler, toplu taslak kalıcılığı, yedekleme/geri yükleme, başlatıcı
+yardımcıları ve Excel içe/dışa aktarımı kapsanır. `tests/test_e2e.py` referans
+veriyle gerçek bir ayı çözüp kural denetiminden geçirir;
+`tests/test_real_docs.py` gerçek belge formatlarını okur.
 
 ---
 
-## Windows için tek .exe üretme
+## Windows dağıtımı
 
-> PyInstaller çapraz derleme yapmaz; bu adımlar **Windows** üzerinde, Python
-> 3.11+ kurulu bir makinede çalıştırılır.
+Son kullanıcı (eğitim hemşiresi) hiçbir şey kurmaz: kendisine bir **zip**
+verilir, klasörü çıkarır, `Staj Rotasyonu.exe`'ye çift tıklar, uygulama
+tarayıcıda açılır. Zip'in içinde ayrıca `OKU-BENI.txt` (Türkçe kurulum/kullanım
+notu) ve `Masaustune kisayol olustur.bat` bulunur.
 
-```bat
-python -m venv .venv
-.venv\Scripts\pip install -r requirements.txt pyinstaller
-.venv\Scripts\pyinstaller packaging\rotasyon.spec
+### Paketi üretmenin iki yolu
+
+**1) GitHub Actions (önerilen, Windows makinesi gerekmez).**
+`.github/workflows/windows-build.yml` elle (*Actions ▸ Windows .exe ▸ Run
+workflow*) veya `v1.0.0` gibi bir etiket gönderilince çalışır: testleri koşar,
+exe'yi üretir, **exe'yi gerçekten çalıştırıp** sağlık ucundan yanıt aldığını
+doğrular, sonra `StajRotasyonu-windows.zip`'i artefakt (etiketliyse Release)
+olarak yayımlar.
+
+```bash
+git tag v1.0.0 && git push origin v1.0.0
 ```
 
-Çıktı: `dist\StajRotasyonu.exe`. Çift tıklanınca Streamlit başlar ve tarayıcı
-otomatik açılır (başlatıcı: `run_app.py`). Veriler exe'nin yanındaki `data\`
-klasöründe saklanır — exe'yi güncellerken bu klasörü **silmeyin**.
+**2) Windows'ta yerel derleme.** Depoyu Windows'a kopyalayıp
+`packaging\build_windows.bat` dosyasına çift tıklamak yeterlidir: sanal ortamı
+kurar, testleri koşar, exe'yi üretir ve zip'i hazırlar. Elle yapmak isterseniz:
 
-Notlar:
-- İlk sürümde konsol penceresi açık bırakılabilir (`console=True`): bir hata
-  olursa mesaj görünsün. Kararlılık doğrulanınca spec'te `console=False`.
-- Antivirüs, imzasız onefile exe'leri karantinaya alabilir; kurum
-  bilgisayarında istisna tanımlamak gerekebilir.
+```bat
+python -m venv .venv-build
+.venv-build\Scripts\pip install -r requirements-build.txt
+.venv-build\Scripts\pyinstaller --noconfirm packaging\rotasyon.spec
+```
+
+> PyInstaller çapraz derleme yapmaz — exe mutlaka Windows'ta üretilir.
+
+### Paketleme kararları (neden böyle)
+
+| Karar | Gerekçe |
+|---|---|
+| **onedir** (tek dosya değil) | OR-Tools + Streamlit ile tek dosya her açılışta geçici klasöre açılır, başlangıç yarım dakikayı aşar. Klasör sürümü saniyeler içinde açılır. |
+| **Konsol açık** (`console=True`) | Uygulamanın çalıştığının görünür işareti ve kapatma yolu. `run_app.py` konsola Türkçe yönerge basar, başlığı ayarlar ve **QuickEdit**'i kapatır (pencereye tıklayınca donma tuzağı). |
+| **`127.0.0.1`'e bağlanma** | Windows güvenlik duvarı izin penceresi çıkmaz. |
+| **Yazılabilirlik denetimi** | Exe'nin yanındaki klasöre yazılamıyorsa (Program Files, salt-okunur konum) veri sessizce kaybolmaz, `%LOCALAPPDATA%\StajRotasyonu` altına düşer ve kullanıcıya konsolda söylenir. |
+| **Tek örnek (single instance)** | İkinci kez çift tıklanınca ikinci sunucu açılmaz; çalışan örneğin sekmesi açılır (`data\calisiyor.txt`). |
+| **Günlük dosyası** | Her çalışma `data\gunluk\uygulama.log`'a yazılır, bir öncekisi saklanır. Çökmede Türkçe mesaj kutusu günlüğün yerini söyler. |
+
+İmzasız exe olduğu için Windows SmartScreen ilk açılışta uyarır
+(*Daha fazla bilgi ▸ Yine de çalıştır*); bu `OKU-BENI.txt`'de anlatılır. Kod
+imzalama sertifikası alınırsa uyarı tamamen kalkar.
+
+### Sürüm güncelleme
+
+Yeni zip çıkarılır, **eski klasördeki `data\` klasörü yeni klasöre kopyalanır**.
+Kullanıcı bunu yapmak zorunda kalmasın diye asıl yol uygulama içi yedektir:
+*Veri Yönetimi ▸ 💾 Yedekleme* sekmesinden zip indirilir, yeni sürümde aynı
+sekmeden geri yüklenir (geri yükleme mevcut sezonların üzerine **yazmaz**,
+yeni sezon açar).
 
 ---
 
@@ -360,15 +421,18 @@ rotasyon/             çekirdek mantık (arayüzden bağımsız)
   excel_io.py         Excel okuma/yazma (renk/font dahil)
   importer.py         Excel sonucunu veri modeline dönüştürme
   normalize.py        birim adı normalizasyonu / Türkçe küçük harf
+  backup.py           yedek zip üretme / yedekten sezon geri yükleme
   queries.py          salt-okunur yardımcı sorgular
 
 ui/                   ekran modülleri (dashboard, rotation, season_grid,
-                      violations, data_management, history, excel_screen, common)
+                      violations, data_management, history, excel_screen,
+                      help, common)
 
 data/                 çalışma verisi — sezon bazında (gitignore)
 seed_data/            "Örnek veriyle başla" için hazır veri
-scripts/              build_catalog.py, build_seed.py (veri üretim betikleri)
-packaging/            PyInstaller spec
+scripts/              build_catalog.py, build_seed.py, make_icon.py
+packaging/            PyInstaller spec, ikon, OKU-BENI.txt, derleme .bat'ları
+.github/workflows/    Windows .exe derleme iş akışı
 tests/                pytest paketi
 ```
 

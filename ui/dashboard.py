@@ -39,6 +39,9 @@ def render(store) -> None:
             if seed_available() and st.button("Örnek veriyle başla"):
                 load_seed(store)
                 st.rerun()
+        st.divider()
+        st.caption("İlk kez mi kullanıyorsunuz? Adım adım anlatım burada:")
+        _link("yardim", "Yardım sayfasını aç", "❓")
         return
 
     students = store.load_students()
@@ -87,7 +90,7 @@ def render(store) -> None:
     st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 
     st.subheader("Hızlı erişim")
-    c1, c2, c3 = st.columns(3)
+    c1, c2, c3, c4 = st.columns(4)
     with c1:
         _link(
             "rotasyon",
@@ -98,3 +101,5 @@ def render(store) -> None:
         _link("kural-kontrolu", "Kural denetimi çalıştır", "🛡️")
     with c3:
         _link("excel", "Excel'e aktar", "📤")
+    with c4:
+        _link("yardim", "Yardım", "❓")

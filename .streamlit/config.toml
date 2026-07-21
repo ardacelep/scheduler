@@ -1,2 +1,18 @@
+# Son kullanıcıya (teknik olmayan) uygun Streamlit ayarları.
+# Bu dosya KAYNAKTAN çalıştırmak içindir; .exe'de aynı değerleri run_app.py
+# ortam değişkeni olarak verir (bkz. streamlit_env).
+
 [browser]
 gatherUsageStats = false
+
+[server]
+headless = true          # açılışta e-posta soran ekran çıkmasın
+address = "127.0.0.1"    # Windows güvenlik duvarı izin penceresi çıkmasın
+fileWatcherType = "none"
+maxUploadSize = 200
+
+[client]
+toolbarMode = "minimal"  # geliştirici menüsü gizli, "Yazdır" erişilebilir kalır
+
+[theme]
+primaryColor = "#0D6E80"

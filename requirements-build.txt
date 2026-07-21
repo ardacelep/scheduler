@@ -1,0 +1,3 @@
+# Windows .exe derlemesi için ek bağımlılık (uygulamanın çalışması için gerekmez)
+-r requirements.txt
+pyinstaller>=6.6
