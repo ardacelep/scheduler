@@ -35,9 +35,38 @@ def render(store) -> None:
         students, units, assignments, months,
         custom_rules=custom_rules, settings=settings,
     )
+    _orphan_cleanup_panel(store, students, units, assignments, violations)
     # Bu ekran tümüyle kayıtlı (tamamlanmış) veriyi denetler; düzenleme kapsamı
     # yoktur → aya/öğrenciye bağlı her ihlal "geçmişe dönük" sayılır. Ayar
     # kapalıyken yalnız yapısal (aysız) ihlaller kalır, gerisi gizlenir.
     show_violations_scoped(
         violations, empty_message="Tüm atamalar kurallara uygun. ✅"
     )
+
+
+def _orphan_cleanup_panel(store, students, units, assignments, violations) -> None:
+    """Sahipsiz atamalar (kural 0) için tek tıkla temizlik.
+
+    Silinmiş öğrenci/birime işaret eden atamalar normal akışta oluşmaz
+    (silme akışları korunur) ama eski yedeğin kısmi geri yüklenmesi ya da
+    elle düzenlenmiş JSON ile ortaya çıkabilir. Denetleyici bunları hata
+    olarak gösterir; kullanıcı JSON'a giremeyeceği için düzeltme de burada
+    sunulmalıdır.
+    """
+    if not any(v.rule_no == 0 for v in violations):
+        return
+    from rotasyon.maintenance import strip_orphan_assignments
+
+    kept, n_orphans = strip_orphan_assignments(students, units, assignments)
+    if not n_orphans:
+        return
+    st.warning(
+        f"🧹 {n_orphans} atama, artık var olmayan bir öğrenci veya birime "
+        "işaret ediyor (genelde eski bir yedekten kısmi geri yükleme sonucu). "
+        "Bu kayıtlar hiçbir ekranda görünmez ve hiçbir işe yaramaz; güvenle "
+        "temizlenebilir."
+    )
+    if st.button(f"🧹 {n_orphans} sahipsiz atamayı temizle", key="clean_orphans"):
+        store.save_assignments(kept)
+        st.toast(f"{n_orphans} sahipsiz atama temizlendi ✅", icon="🧹")
+        st.rerun()

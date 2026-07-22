@@ -1,9 +1,9 @@
 """Veri Yönetimi — uygulamanın esneklik merkezi.
 
-Beş sekme: Öğrenciler (toplu düzenleme + Excel'den içe aktarma), Birimler
+Altı sekme: Öğrenciler (toplu düzenleme + Excel'den içe aktarma), Birimler
 (toplu düzenleme + ekleme), Sınıflar, Kurallar (kullanıcı tanımlı ayrı tut /
-birlikte tut / sabit atama kuralları) ve Yedekleme (tek düğmeyle yedek
-indirme / yedekten geri yükleme).
+birlikte tut / sabit atama kuralları), Ayarlar (sezon zorunlulukları + çözücü
+ağırlıkları) ve Yedekleme (tek düğmeyle yedek indirme / yedekten geri yükleme).
 
 Toplu düzenlemeler st.data_editor ile yapılır: 70 öğrencinin cinsiyetini
 tek tek form açmadan, tabloda hücre hücre girmek mümkündür.
@@ -47,18 +47,21 @@ _INTENSITY_TO_CODE = {v: k for k, v in INTENSITY_LABELS.items()}
 
 def render(store) -> None:
     st.header("📋 Veri Yönetimi")
-    tab_students, tab_units, tab_classes, tab_rules, tab_backup = st.tabs(
-        ["👤 Öğrenciler", "🏥 Birimler", "🎨 Sınıflar", "📏 Kurallar", "💾 Yedekleme"]
+    tabs = st.tabs(
+        ["👤 Öğrenciler", "🏥 Birimler", "🎨 Sınıflar", "📏 Kurallar",
+         "⚙️ Ayarlar", "💾 Yedekleme"]
     )
-    with tab_students:
+    with tabs[0]:
         _students_tab(store)
-    with tab_units:
+    with tabs[1]:
         _units_tab(store)
-    with tab_classes:
+    with tabs[2]:
         _classes_tab(store)
-    with tab_rules:
+    with tabs[3]:
         _rules_tab(store)
-    with tab_backup:
+    with tabs[4]:
+        _settings_tab(store)
+    with tabs[5]:
         _backup_tab(store)
 
 
@@ -201,14 +204,51 @@ def _students_tab(store) -> None:
             s.banned_unit_ids = banned
             store.save_students(students)
             st.success("Kaydedildi. ✅")
-        if c2.button(
-            "🗑️ Öğrenciyi sil", key=f"del_student_{s.id}",
-            help="Silme, öğrencinin geçmiş atamalarını sahipsiz bırakır. "
-            "Sezon ortasında AYRILAN öğrenci için tablodaki 'Aktif' "
-            "işaretini kaldırmak doğrusudur.",
-        ):
-            store.save_students([x for x in students if x.id != s.id])
-            st.rerun()
+        with c2:
+            _delete_student_flow(store, students, s)
+
+
+def _delete_student_flow(store, students, s) -> None:
+    """Öğrenci silme — atamaları ve kural üyelikleri de birlikte gider.
+
+    Sahipsiz atama bırakılmaz: bırakılırsa Kural Kontrolü kalıcı bir
+    "silinmiş öğrenciye işaret ediyor" hatası gösterir ve teknik olmayan
+    kullanıcının bunu temizleyecek aracı yoktur. Yanlışlıkla tek tıkla
+    geçmiş silinmesin diye ataması olan öğrencide onay kutusu istenir.
+    """
+    from rotasyon.maintenance import remove_student
+
+    assignments = store.load_assignments()
+    n_assign = sum(1 for a in assignments if a.student_id == s.id)
+    if n_assign:
+        st.caption(
+            f"⚠️ {s.full_name} adına {n_assign} aylık atama geçmişi var. "
+            "Sezon ortasında AYRILAN öğrenci için doğrusu tabloda 'Aktif' "
+            "işaretini kaldırmaktır (geçmiş korunur). Silme; öğrenciyi, "
+            "atamalarını ve özel kural üyeliklerini birlikte kaldırır."
+        )
+        sure = st.checkbox(
+            f"{n_assign} atamasıyla birlikte silmek istiyorum",
+            key=f"del_student_sure_{s.id}",
+        )
+    else:
+        sure = True
+    if st.button(
+        "🗑️ Öğrenciyi sil", key=f"del_student_{s.id}", disabled=not sure
+    ):
+        result = remove_student(
+            students, assignments, store.load_custom_rules(), s.id
+        )
+        store.save_students(result.students)
+        store.save_assignments(result.assignments)
+        store.save_custom_rules(result.rules)
+        bits = [f"{s.full_name} silindi"]
+        if result.removed_assignments:
+            bits.append(f"{result.removed_assignments} atama kaldırıldı")
+        if result.removed_rules:
+            bits.append(f"{result.removed_rules} özel kural kaldırıldı")
+        st.toast(" — ".join(bits) + " ✅", icon="🗑️")
+        st.rerun()
 
 
 def _gender_guess_panel(store, students, missing) -> None:
@@ -898,3 +938,155 @@ def _season_backup(store, season_name: str) -> bytes:
     from rotasyon.backup import season_backup_bytes
 
     return season_backup_bytes(store.data_dir, season_name)
+
+
+# ======================= AYARLAR =======================
+
+_WEIGHT_LABELS = {
+    # anahtar: (etiket, açıklama) — models.DEFAULT_SETTINGS["solver"]["weights"]
+    "pool_balance": (
+        "Havuz birimlerine eşit dağılım",
+        "Madde 4: kalan öğrenciler havuz birimlerine olabildiğince eşit dağılır.",
+    ),
+    "repeat_pair": (
+        "Tekrar eden ikili cezası",
+        "Madde 19: iki öğrencinin farklı aylarda tekrar aynı birime düşmesi "
+        "cezalandırılır (yüksek = daha az tekrar eden ikili).",
+    ),
+    "ebelik_priority": (
+        "Ebelik önceliği",
+        "Madde 18: ebelik öğrencileri, ebelik öncelikli birimlere önce yerleşir.",
+    ),
+    "core_branch_early": (
+        "Zorunlu branşları erken karşılama",
+        "Sezon zorunluluklarının (cerrahi/dahili/YB/palyatif) erken aylarda "
+        "görülmesine küçük bir bonus verilir.",
+    ),
+    "single_slot_fill": (
+        "Tekli birimler boş kalmasın",
+        "Madde 4: kontenjanı 1 olan birimlerin doldurulması güçlü teşvik edilir.",
+    ),
+    "reserve_use": (
+        "Yedek birimden kaçınma",
+        "Gri/yedek birimlere yalnız gerçekten gerekiyorsa öğrenci verilir "
+        "(yüksek = daha güçlü kaçınma).",
+    ),
+    "gender_balance": (
+        "Kız/erkek dengesi",
+        "Havuz birimlerinde cinsiyet dağılımının dengeli olması teşvik edilir.",
+    ),
+    "intensive_surplus": (
+        "Fazlalık yoğun birime",
+        "Eşit dağılımda tam bölünmeyen fazlalık öğrenciler yoğun etiketli "
+        "birimlere yönlendirilir. Eşit dağılımdan DÜŞÜK kalmalıdır ki dengeyi "
+        "bozmasın, yalnız eşit çözümler arasında tercih yapsın.",
+    ),
+}
+
+
+def _settings_tab(store) -> None:
+    """Sezon zorunlulukları + çözücü ayarları — JSON'a girmeden düzenleme.
+
+    Çözücü ve denetleyici ayarları HER koşuda yeniden okur; buradaki bir
+    değişiklik bir sonraki üretimden/denetimden itibaren geçerlidir, geçmiş
+    kayıtlı aylar kendiliğinden değişmez.
+    """
+    from rotasyon.models import BRANCH_DIGER, DEFAULT_SETTINGS
+
+    settings = store.load_settings()
+
+    st.subheader("🎓 Sezon zorunlulukları")
+    st.caption(
+        "Her öğrencinin sezon SONUNA kadar en az bir kez görmesi gereken "
+        "branşlar. Denetleyici bunu ancak dönemin son ayı da atandığında hata "
+        "sayar; çözücü ise erken aylardan itibaren karşılamaya çalışır. "
+        "Değişiklik bir sonraki rotasyon üretiminden itibaren geçerlidir."
+    )
+    branch_options = [b for b in BRANCH_CATEGORIES if b != BRANCH_DIGER]
+    current_req = [
+        r["branch"]
+        for r in settings.get("season_requirements", [])
+        if r.get("branch") in branch_options
+    ]
+    picked = st.multiselect(
+        "Zorunlu branşlar",
+        branch_options,
+        default=current_req,
+        format_func=lambda b: BRANCH_LABELS.get(b, b),
+        help="Ebelik → doğum salonu zorunluluğu (madde 7) bu listeden bağımsız, "
+        "her zaman uygulanır.",
+        key="set_req_branches",
+    )
+
+    st.divider()
+    st.subheader("🧮 Çözücü ayarları")
+    st.caption(
+        "Varsayılanlar gerçek sezon verisiyle ölçülüp seçildi; genelde "
+        "dokunmak gerekmez. Ağırlık = kuralın çözüm seçiminde ne kadar söz "
+        "sahibi olduğu (yalnız birbirine GÖRE anlamlıdır)."
+    )
+    solver = settings.get("solver", {})
+    c1, c2 = st.columns(2)
+    time_limit = c1.number_input(
+        "Aylık çözüm süresi (saniye)",
+        min_value=1, max_value=120,
+        value=int(solver.get("time_limit_seconds", 5)),
+        help="Tek ay üretiminin süre sınırı. En iyi çözüm ilk saniyelerde "
+        "bulunur; yükseltmek nadiren fark yaratır.",
+        key="set_time_limit",
+    )
+    season_limit = c2.number_input(
+        "Sezon (toplu) çözüm süresi (saniye)",
+        min_value=10, max_value=600,
+        value=int(solver.get("season_time_limit_seconds", 60)),
+        help="Tüm sezonu tek modelde çözen emniyet ağının süre sınırı.",
+        key="set_season_limit",
+    )
+
+    weights = dict(solver.get("weights", {}))
+    new_weights = {}
+    cols = st.columns(2)
+    for i, (key, (label, help_text)) in enumerate(_WEIGHT_LABELS.items()):
+        default = DEFAULT_SETTINGS["solver"]["weights"].get(key, 0)
+        new_weights[key] = cols[i % 2].number_input(
+            label,
+            min_value=0, max_value=100,
+            value=int(weights.get(key, default)),
+            help=help_text + f" (Varsayılan: {default})",
+            key=f"set_w_{key}",
+        )
+    # bilinmeyen/eski anahtarlar korunur (ileri sürüm geriye uyum)
+    for key, val in weights.items():
+        new_weights.setdefault(key, val)
+
+    if new_weights.get("intensive_surplus", 0) >= new_weights.get("pool_balance", 1):
+        st.warning(
+            "⚠️ 'Fazlalık yoğun birime' ağırlığı, 'eşit dağılım'dan küçük "
+            "olmalıdır; aksi halde çözücü eşit dağılımı bozup öğrencileri "
+            "yoğun birimlere yığabilir."
+        )
+
+    c_save, c_reset = st.columns(2)
+    if c_save.button("💾 Ayarları kaydet", type="primary", key="save_settings_tab"):
+        settings["season_requirements"] = [{"branch": b} for b in picked]
+        settings.setdefault("solver", {})
+        settings["solver"]["time_limit_seconds"] = int(time_limit)
+        settings["solver"]["season_time_limit_seconds"] = int(season_limit)
+        settings["solver"]["weights"] = {k: int(v) for k, v in new_weights.items()}
+        store.save_settings(settings)
+        st.toast("Ayarlar kaydedildi ✅", icon="⚙️")
+        st.rerun()
+    if c_reset.button("↩️ Varsayılanlara dön", key="reset_settings_tab"):
+        settings["season_requirements"] = json_copy(
+            DEFAULT_SETTINGS["season_requirements"]
+        )
+        settings["solver"] = json_copy(DEFAULT_SETTINGS["solver"])
+        store.save_settings(settings)
+        st.toast("Çözücü ayarları varsayılanlara döndü ✅", icon="↩️")
+        st.rerun()
+
+
+def json_copy(obj):
+    import json
+
+    return json.loads(json.dumps(obj))

@@ -393,13 +393,64 @@ python -m venv .venv-build
 (*Daha fazla bilgi ▸ Yine de çalıştır*); bu `OKU-BENI.txt`'de anlatılır. Kod
 imzalama sertifikası alınırsa uyarı tamamen kalkar.
 
-### Sürüm güncelleme
+### Sürüm güncelleme (zip/exe yolu)
 
 Yeni zip çıkarılır, **eski klasördeki `data\` klasörü yeni klasöre kopyalanır**.
 Kullanıcı bunu yapmak zorunda kalmasın diye asıl yol uygulama içi yedektir:
 *Veri Yönetimi ▸ 💾 Yedekleme* sekmesinden zip indirilir, yeni sürümde aynı
 sekmeden geri yüklenir (geri yükleme mevcut sezonların üzerine **yazmaz**,
 yeni sezon açar).
+
+---
+
+## Uzaktan güncellenebilir kurulum (kaynaktan, önerilen)
+
+Geliştirici uzaktayken uygulamayı güncellemenin exe'den daha iyi bir yolu:
+hedef bilgisayara **Python + git** kurup uygulamayı **kaynaktan** çalıştırmak.
+Kullanıcı yine tek kısayola çift tıklar; fark, uygulamanın **her açılışta
+GitHub'dan güncellemeleri kendi almasıdır**. Geliştirici `main`'e push'lar,
+kullanıcı uygulamayı bir sonraki açışında yeni sürümü kullanır — kimse kimseyi
+aramaz.
+
+| Dosya | Kim, ne zaman |
+|---|---|
+| `packaging/kur.bat` | Geliştirici, hedef makinede **bir kez**: depoyu `%USERPROFILE%\StajRotasyonu`'a klonlar, ortamı kurar, masaüstüne kısayol koyar |
+| `baslat.bat` | Kullanıcının çift tıkladığı şey (kısayolun hedefi): güncelle + başlat |
+| `guncelle.bat` | Yalnız güncelle, başlatma — telefonla "şuna çift tıkla" demek için |
+| `scripts/updater.py` | Asıl iş: fetch → karşılaştır → `reset --hard origin/main` → gerekirse pip → uygulamayı başlat |
+
+### Güvenlik ağları (`scripts/updater.py`, testli: `tests/test_updater.py`)
+
+- **Kullanıcı verisine dokunulmaz:** `data/` git dışıdır; `reset --hard` onu
+  görmez ve `git clean` **hiçbir zaman** çalıştırılmaz.
+- **Çevrimdışıysa** fetch zaman aşımıyla kesilir, mevcut sürümle açılır.
+- **`git pull` değil `reset --hard origin/main`:** sahada kod düzenlenmediği
+  için çakışma diye bir durum olamaz; depo her açılışta GitHub'daki hâle
+  birebir eşitlenir (bozulan dosya bile kendini onarır).
+- **requirements.txt değiştiyse** pip kurulumu denenir; **başarısızsa kod eski
+  sürüme geri alınır** — "kod yeni ama paket eksik, uygulama hiç açılmıyor"
+  durumu oluşamaz.
+- **Uygulama açıkken güncelleme atlanır** (dosyalar kullanımdayken yazılmaz).
+- Güncelleme mantığı .bat'ta değil Python'dadır: çalışan bir .bat'ın üzerine
+  yazmak cmd'de tanımsız davranıştır (bayt ofsetinden okumaya devam eder);
+  Python dosyayı baştan belleğe yükler, kendi üzerine yazılması güvenlidir.
+  `baslat.bat` bu yüzden bilerek incecik bir köprüdür.
+
+### Özel (private) depo erişimi
+
+Depo private olduğu için hedef makinenin salt-okunur erişimi olmalı. Önerilen:
+GitHub **fine-grained personal access token** — yalnız bu depo, yalnız
+*Contents: Read* izni, istenirse süreli. `kur.bat` depo adresini sorar; token
+adrese gömülü verilir ve yalnız o makinenin `.git\config`'inde durur:
+
+```text
+https://x-access-token:TOKEN@github.com/KULLANICI/scheduler.git
+```
+
+Token süresi dolarsa güncelleme sessizce "çevrimdışı" durumuna düşer —
+uygulama çalışmaya devam eder, yalnız yeni sürüm alamaz (yenisini uzaktan
+söyleyip `.git\config`'i telefonla düzelttirmek yerine kısa süreliğine repoyu
+public yapıp `guncelle.bat` da çalıştırtabilirsiniz).
 
 ---
 
