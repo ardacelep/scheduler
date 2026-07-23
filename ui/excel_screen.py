@@ -217,7 +217,8 @@ def _class_group_mapping(class_names) -> dict:
     st.markdown("**Sınıf → grup eşleştirmesi**")
     st.caption(
         "Her şubenin hangi gruba ait olacağını seçin. Rotasyonlar grup grup "
-        "oluşturulur; bu eşleştirmeyi sonradan Veri Yönetimi'nden de "
+        "oluşturulur. Kalıcı değildir: sonradan **Veri Yönetimi ▸ 🎨 Sınıflar** "
+        "sekmesindeki “Sınıf → grup eşleştirmesi” bölümünden topluca "
         "değiştirebilirsiniz."
     )
     defaults = default_class_group(class_names)

@@ -527,6 +527,9 @@ def _new_unit_form(store, units) -> None:
 
 def _classes_tab(store) -> None:
     classes = store.load_classes()
+    _class_group_panel(store, classes)
+    st.divider()
+    st.subheader("🎨 Sınıflar ve renkleri")
     st.caption(
         "Sınıf sayısı ve adları serbesttir (madde 13); renk, yıllık Excel "
         "görünümünde öğrenci adını vurgular (madde 14)."
@@ -560,6 +563,107 @@ def _classes_tab(store) -> None:
                 classes.append(ClassGroup(name=name.strip(), color_hex=color))
                 store.save_classes(classes)
                 st.rerun()
+
+
+def _class_group_panel(store, classes) -> None:
+    """Sınıf → grup eşleştirmesini sonradan değiştirme.
+
+    Eşleştirme öğrenci içe aktarımında bir kez soruluyordu; sezon başında
+    ya da ortasında değişebildiği için (şube birleşmesi, grup dengesi)
+    kalıcı bir yerden de yapılabilmeli. Öğrencinin grubu tek tek Öğrenciler
+    tablosundan da değiştirilebilir; buradaki panel ŞUBE BAZINDA topluca
+    yapar — asıl ihtiyaç budur.
+    """
+    students = store.load_students()
+    st.subheader("🔀 Sınıf → grup eşleştirmesi")
+    if not students:
+        st.info(
+            "Henüz öğrenci yok. Öğrencileri içe aktardıktan sonra şube-grup "
+            "eşleştirmesini buradan istediğiniz zaman değiştirebilirsiniz."
+        )
+        return
+
+    st.caption(
+        "Rotasyonlar grup grup üretilir. Bir şubenin hangi gruba ait "
+        "olduğunu buradan topluca değiştirebilirsiniz — içe aktarımda "
+        "yaptığınız seçim kalıcı değildir."
+    )
+
+    from rotasyon.maintenance import (
+        apply_class_group,
+        class_group_state,
+        students_changed_by,
+    )
+
+    states = class_group_state(students, [c.name for c in classes])
+    if not states:
+        st.info("Öğrencilerde sınıf bilgisi yok.")
+        return
+
+    def _durum(st_: "object") -> str:
+        if not st_.groups:
+            return "— (öğrencisi yok)"
+        if not st_.is_mixed:
+            return f"{st_.groups[0]}. Grup"
+        parts = ", ".join(
+            f"{g}. grupta {sum(1 for s in students if s.class_name == st_.name and s.group == g)}"
+            for g in st_.groups
+        )
+        return f"⚠️ karışık: {parts}"
+
+    st.dataframe(
+        pd.DataFrame(
+            [
+                {
+                    "Şube": s.name,
+                    "Öğrenci": s.student_count,
+                    "Şu anki grup": _durum(s),
+                }
+                for s in states
+            ]
+        ),
+        use_container_width=True,
+        hide_index=True,
+    )
+
+    picks = {}
+    cols = st.columns(min(len(states), 4) or 1)
+    for i, s in enumerate(states):
+        picks[s.name] = cols[i % len(cols)].selectbox(
+            f"{s.name} şubesi",
+            [1, 2],
+            index=s.suggested - 1,
+            format_func=lambda g: f"{g}. Grup",
+            key=f"cg_pick_{s.name}",
+        )
+
+    changed = students_changed_by(students, picks)
+    counts = {g: sum(1 for v in picks.values() if v == g) for g in (1, 2)}
+    if 0 in counts.values():
+        st.warning(
+            "⚠️ Bir grupta hiç şube kalmıyor. Genelde her iki gruba da şube "
+            "atanır; yine de uygulayabilirsiniz."
+        )
+    if not changed:
+        st.caption("Değişiklik yok — seçimler mevcut durumla aynı.")
+        return
+
+    st.info(f"↔️ Bu değişiklik **{len(changed)} öğrencinin** grubunu değiştirir.")
+    assignments = store.load_assignments()
+    touched = {a.student_id for a in assignments} & {s.id for s in changed}
+    if touched:
+        st.warning(
+            f"⚠️ Bu öğrencilerden **{len(touched)} tanesinin kayıtlı ataması "
+            "var**. Birimler gruba özel olduğu için, geçmiş aylar Kural "
+            "Kontrolü'nde artık uyumsuz görünebilir. Geçmiş atamalar "
+            "kendiliğinden değişmez ve silinmez; grup değişikliği asıl "
+            "olarak BUNDAN SONRA üretilecek ayları etkiler."
+        )
+    if st.button("🔀 Eşleştirmeyi uygula", type="primary", key="apply_class_group"):
+        updated, n = apply_class_group(students, picks)
+        store.save_students(updated)
+        st.toast(f"{n} öğrencinin grubu güncellendi ✅", icon="🔀")
+        st.rerun()
 
 
 # ======================= KURALLAR =======================

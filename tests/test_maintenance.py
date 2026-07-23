@@ -2,9 +2,12 @@
 import pytest
 
 from rotasyon.maintenance import (
+    apply_class_group,
+    class_group_state,
     orphan_assignments,
     remove_student,
     strip_orphan_assignments,
+    students_changed_by,
 )
 from rotasyon.models import (
     Assignment,
@@ -88,3 +91,67 @@ def test_no_orphans_is_noop(world):
     students, units, assignments, _rules = world
     kept, removed = strip_orphan_assignments(students, units, assignments)
     assert removed == 0 and len(kept) == 3
+
+
+# ---------------- sınıf → grup yeniden eşleştirme ----------------
+
+def _class_world():
+    return [
+        Student(id="a1", full_name="A Bir", gender="K", group=1, class_name="A"),
+        Student(id="a2", full_name="A İki", gender="E", group=1, class_name="A"),
+        Student(id="b1", full_name="B Bir", gender="K", group=2, class_name="B"),
+        # karışık şube: C'nin biri 1. biri 2. grupta, çoğunluk 1
+        Student(id="c1", full_name="C Bir", gender="K", group=1, class_name="C"),
+        Student(id="c2", full_name="C İki", gender="E", group=1, class_name="C"),
+        Student(id="c3", full_name="C Üç", gender="K", group=2, class_name="C"),
+    ]
+
+
+def test_class_group_state_reports_groups_and_counts():
+    states = {s.name: s for s in class_group_state(_class_world())}
+    assert states["A"].student_count == 2
+    assert states["A"].groups == [1] and not states["A"].is_mixed
+    assert states["B"].groups == [2]
+
+
+def test_class_group_state_detects_mixed_and_suggests_majority():
+    states = {s.name: s for s in class_group_state(_class_world())}
+    assert states["C"].is_mixed and states["C"].groups == [1, 2]
+    assert states["C"].suggested == 1  # 2 kişi 1. grupta, 1 kişi 2. grupta
+
+
+def test_class_group_state_includes_classes_without_students():
+    states = {s.name: s for s in class_group_state(_class_world(), ["D"])}
+    assert states["D"].student_count == 0
+    assert states["D"].suggested == 1  # öğrencisi yokken makul varsayılan
+
+
+def test_students_changed_by_only_lists_real_changes():
+    students = _class_world()
+    changed = students_changed_by(students, {"A": 2, "B": 2, "C": 1})
+    # A'nın ikisi değişir, B zaten 2, C'nin yalnız 2. gruptaki üyesi değişir
+    assert sorted(s.id for s in changed) == ["a1", "a2", "c3"]
+
+
+def test_apply_class_group_moves_students_and_counts():
+    students = _class_world()
+    updated, n = apply_class_group(students, {"A": 2, "C": 1})
+    assert n == 3
+    by_id = {s.id: s for s in updated}
+    assert by_id["a1"].group == 2 and by_id["a2"].group == 2
+    assert by_id["c3"].group == 1  # karışık şube tek gruba toplandı
+    assert by_id["b1"].group == 2  # eşleştirmede yok, dokunulmadı
+
+
+def test_apply_class_group_does_not_mutate_input():
+    students = _class_world()
+    apply_class_group(students, {"A": 2})
+    assert students[0].group == 1  # orijinal nesne korundu
+
+
+def test_apply_class_group_is_idempotent():
+    students = _class_world()
+    once, n1 = apply_class_group(students, {"A": 2})
+    twice, n2 = apply_class_group(once, {"A": 2})
+    assert n1 == 2 and n2 == 0
+    assert [s.group for s in once] == [s.group for s in twice]

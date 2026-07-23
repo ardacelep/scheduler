@@ -418,6 +418,21 @@ aramaz.
 | `baslat.bat` | Kullanıcının çift tıkladığı şey (kısayolun hedefi): güncelle + başlat |
 | `guncelle.bat` | Yalnız güncelle, başlatma — telefonla "şuna çift tıkla" demek için |
 | `scripts/updater.py` | Asıl iş: fetch → karşılaştır → `reset --hard origin/main` → gerekirse pip → uygulamayı başlat |
+| `tanila.bat` | **Uzaktan destek aracı:** sorun çıktığında kullanıcı buna çift tıklar, çıkan metni gönderir |
+
+### Uzaktan teşhis (`tanila.bat` → `scripts/tanila.py`)
+
+Uzaktaki bir makinede "açılmıyor / kapanıyor" durumunu telefonla kovalamak
+yerine tek çalıştırmada rapor alır: Python sürümü ve konumu, her paketin
+sürümü, **OR-Tools'un gerçekten bir model çözüp çözemediği**, uygulamanın
+kendi çözücüsüyle küçük bir deneme, sezon listesi ve günlüğün son satırları.
+
+Özellikle şu tuzağı yakalamak için: paket içe aktarılabildiği hâlde native
+kütüphane uyumsuzluğu yüzünden CP-SAT çözüm sırasında **süreci Python hatası
+vermeden komple çökertebilir**. Bu durumda tarayıcıda "Failed to fetch
+dynamically imported module" gibi alakasız görünen bir hata çıkar (sunucu
+öldüğü için sonraki JS parçası indirilemez) — asıl sebep çözücüdür.
+Python 3.13+ ile bu riskin arttığı `tanila.py` çıktısında ayrıca uyarılır.
 
 ### Güvenlik ağları (`scripts/updater.py`, testli: `tests/test_updater.py`)
 

@@ -178,6 +178,16 @@ _FAQ = [
         "uyarıları göster* kutusunu kapatabilirsiniz.",
     ),
     (
+        "Bir şubeyi (sınıfı) diğer gruba almam gerekiyor.",
+        "Veri Yönetimi ▸ 🎨 Sınıflar sekmesindeki **“Sınıf → grup "
+        "eşleştirmesi”** bölümünden şubenin grubunu seçip uygulayın; o "
+        "şubedeki tüm öğrenciler birlikte taşınır. İçe aktarımda yaptığınız "
+        "seçim kalıcı değildir, istediğiniz zaman değiştirebilirsiniz. "
+        "Kayıtlı atamaları olan öğrenciler taşınırsa geçmiş aylar Kural "
+        "Kontrolü'nde uyumsuz görünebilir; geçmiş silinmez, değişiklik asıl "
+        "olarak sonraki ayları etkiler.",
+    ),
+    (
         "Zorunlu branşlar veya çözücünün davranışı değişebilir mi?",
         "Evet. Veri Yönetimi ▸ ⚙️ Ayarlar sekmesinden hem sezon "
         "zorunluluklarını (her öğrencinin görmesi gereken branşlar) hem de "
@@ -244,6 +254,11 @@ açıktır: kısayola tekrar çift tıklayın, sekme yeniden açılır.
 
 **Siyah pencerede uygulama donmuş gibi görünüyor.**
 Pencerenin içine tıkladıysanız **Esc** tuşuna basın.
+
+**Uygulama kapanıyor / "modül yüklenemedi" hatası çıkıyor.**
+Uygulama klasöründeki **`tanila.bat`** dosyasına çift tıklayın; çıkan
+metnin tamamını kopyalayıp uygulamayı size veren kişiye gönderin. Sorunun
+nedenini o metin söyler.
         """
     )
     if getattr(sys, "frozen", False):

@@ -77,6 +77,80 @@ def _prune_rules(
     return kept, dropped
 
 
+@dataclass
+class ClassGroupState:
+    """Bir şubenin grup durumu (UI tablosu ve varsayılan seçim için)."""
+
+    name: str
+    student_count: int
+    groups: list[int]  # şubede fiilen bulunan gruplar (sıralı)
+    suggested: int  # seçicinin varsayılanı: tek grup ya da çoğunluk
+
+    @property
+    def is_mixed(self) -> bool:
+        return len(self.groups) > 1
+
+
+def class_group_state(students: list[Student], extra_names=()) -> list[ClassGroupState]:
+    """Şube başına grup durumunu çıkarır.
+
+    Bir şubenin öğrencileri iki gruba bölünmüş olabilir (elle düzenleme ya
+    da eski içe aktarım); bu durum gizlenmez, "karışık" olarak gösterilir
+    ve varsayılan olarak çoğunluğun grubu önerilir.
+    """
+    names = sorted(
+        {s.class_name for s in students if s.class_name}
+        | {n for n in extra_names if n}
+    )
+    out = []
+    for name in names:
+        in_class = [s for s in students if s.class_name == name]
+        groups = sorted({s.group for s in in_class})
+        if groups:
+            suggested = max(
+                groups, key=lambda g: sum(1 for s in in_class if s.group == g)
+            )
+        else:
+            suggested = 1
+        out.append(
+            ClassGroupState(
+                name=name,
+                student_count=len(in_class),
+                groups=groups,
+                suggested=suggested,
+            )
+        )
+    return out
+
+
+def students_changed_by(students: list[Student], mapping: dict[str, int]):
+    """Verilen şube→grup eşleştirmesiyle grubu DEĞİŞECEK öğrenciler."""
+    return [
+        s
+        for s in students
+        if s.class_name in mapping and s.group != mapping[s.class_name]
+    ]
+
+
+def apply_class_group(
+    students: list[Student], mapping: dict[str, int]
+) -> tuple[list[Student], int]:
+    """Şube→grup eşleştirmesini uygular. Dönüş: (öğrenciler, değişen sayısı).
+
+    Girdiyi değiştirmez; grubu değişenlerin kopyasını içeren yeni liste
+    döndürür (çağıran doğrudan kaydedebilir).
+    """
+    changed = 0
+    out = []
+    for s in students:
+        target = mapping.get(s.class_name)
+        if target is not None and s.group != target:
+            s = Student.from_dict({**s.to_dict(), "group": target})
+            changed += 1
+        out.append(s)
+    return out, changed
+
+
 def orphan_assignments(
     students: list[Student],
     units: list[Unit],
