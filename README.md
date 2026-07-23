@@ -39,6 +39,16 @@ tüm atamaları kurallara karşı bağımsızca doğrular.
 
 ## Kurulum ve çalıştırma
 
+> **Python sürümü önemlidir: 3.11 – 3.13 kullanın.**
+> OR-Tools **Python 3.14'te kuruluyor ve içe aktarılıyor, ama çözüm anında
+> süreci sessizce çökertiyor** (Windows'ta `0xC0000005` erişim ihlali).
+> Python seviyesinde hiçbir hata görünmez: uygulama aniden kapanır,
+> tarayıcıda alakasız bir "Failed to fetch dynamically imported module"
+> hatası çıkar. Sahada bir kez yaşandı; `baslat.bat` artık kurulumdan
+> hemen sonra çözücüyü sınayıp bu durumda net uyarı veriyor.
+> python.org 3.11/3.12 için artık kurulum dosyası yayınlamıyorsa
+> [uv](https://docs.astral.sh/uv/) ile kurun: `uv python install 3.12`.
+
 Geliştirme ortamında (Mac / Linux / Windows), Python 3.11+ ile:
 
 ```bash

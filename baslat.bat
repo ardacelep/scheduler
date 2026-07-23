@@ -43,6 +43,38 @@ if errorlevel 1 (
   exit /b 1
 )
 
+REM Cozucu gercekten calisiyor mu? OR-Tools bazi Python surumlerinde
+REM (orn. 3.14) kurulur, ice aktarilir ama COZUM ANINDA sureci sessizce
+REM cokertir. Bunu simdi yakalamazsak kullanici ancak ilk rotasyon
+REM denemesinde, uygulama aniden kapaninca fark eder.
+echo Cozucu dogrulaniyor...
+"%PY%" -c "from ortools.sat.python import cp_model; m=cp_model.CpModel(); x=m.NewIntVar(0,5,'x'); m.Add(x==3); s=cp_model.CpSolver(); s.parameters.num_workers=1; s.Solve(m)" >nul 2>&1
+if errorlevel 1 (
+  echo.
+  echo ================================================================
+  echo  KURULUM TAMAMLANAMADI: cozucu bu Python surumunde calismiyor
+  echo ================================================================
+  for /f "delims=" %%v in ('"%PY%" -c "import sys;print(sys.version.split()[0])"') do set "PYVER=%%v"
+  echo  Kurulan Python surumu: %PYVER%
+  echo.
+  echo  OR-Tools kuruldu ama cozum aninda cokuyor. Cozum: Python 3.12
+  echo  ile yeniden kurmak. Asagidakileri sirayla calistirin:
+  echo.
+  echo    winget install --id=astral-sh.uv -e
+  echo    ^(sonra bu pencereyi kapatip yeni bir cmd acin^)
+  echo    cd /d "%~dp0"
+  echo    rmdir /s /q .venv
+  echo    uv venv --python 3.12 --seed .venv
+  echo    uv pip install --python .venv\Scripts\python.exe -r requirements.txt
+  echo.
+  echo  Sonra bu dosyaya tekrar cift tiklayin.
+  echo ================================================================
+  echo.
+  pause
+  exit /b 1
+)
+echo Cozucu calisiyor.
+
 :calistir
 "%PY%" scripts\updater.py
 set "SONUC=%errorlevel%"
