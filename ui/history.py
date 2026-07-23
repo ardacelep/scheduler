@@ -39,5 +39,5 @@ def render(store) -> None:
         st.info("Bu öğrenciye ait atama yok.")
         return
     df = pd.DataFrame(hist, columns=["Ay", "Birim", "Gün Notu"])
-    st.dataframe(df, use_container_width=True, hide_index=True)
+    st.dataframe(df, width="stretch", hide_index=True)
     st.caption(f"Toplam {len(hist)} ay atanmış.")

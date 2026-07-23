@@ -157,7 +157,7 @@ def _students_tab(store) -> None:
             ),
         },
         num_rows="fixed",
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
         height=420,
         # anahtar veri içeriğine bağlı: veri başka yerde değişirse düzenleyici
@@ -275,7 +275,7 @@ def _gender_guess_panel(store, students, missing) -> None:
             )
         st.dataframe(
             pd.DataFrame(rows),
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
             height=min(38 * (len(rows) + 1), 300),
         )
@@ -395,7 +395,7 @@ def _units_tab(store) -> None:
             "Aktif": st.column_config.CheckboxColumn(),
         },
         num_rows="fixed",
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
         height=420,
         # anahtar veri içeriğine bağlı: dışarıdan değişiklikte sıfırlanır
@@ -622,7 +622,7 @@ def _class_group_panel(store, classes) -> None:
                 for s in states
             ]
         ),
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
     )
 
@@ -973,7 +973,7 @@ def _backup_tab(store) -> None:
                 file_name=backup_filename(active),
                 mime="application/zip",
                 type="primary",
-                use_container_width=True,
+                width="stretch",
             )
     with col_all:
         st.download_button(
@@ -982,7 +982,7 @@ def _backup_tab(store) -> None:
             file_name=backup_filename(None),
             mime="application/zip",
             disabled=not seasons,
-            use_container_width=True,
+            width="stretch",
         )
 
     st.divider()

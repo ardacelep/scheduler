@@ -297,7 +297,7 @@ def _editor(ctx, mapping: dict[str, str]) -> dict[str, str]:
                 "Birim", options=sorted(units_by_label), required=True
             ),
         },
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
         key=f"editor_{g}_{m}_{gen}",
     )
@@ -396,7 +396,7 @@ def _draft_view(ctx, draft: dict[str, str]) -> None:
         mapping = draft
         st.dataframe(
             _proposal_df(ctx, mapping),
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
         )
     violations = _check_proposal(ctx, mapping)
@@ -463,7 +463,7 @@ def _saved_view(ctx) -> None:
         return
     st.dataframe(
         _proposal_df(ctx, ctx["existing"]),
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
     )
     show_violations_scoped(
@@ -593,7 +593,7 @@ def _wizard(ctx) -> None:
         return
     st.dataframe(
         _proposal_df(ctx, result.assignments),
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
     )
     show_violations_scoped(
@@ -853,7 +853,7 @@ def _bulk_preview(bctx, draft: dict) -> None:
                         for s in g_students
                     ]
                 ),
-                use_container_width=True,
+                width="stretch",
                 hide_index=True,
             )
 

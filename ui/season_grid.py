@@ -202,7 +202,7 @@ def _grid(
     )
     edited = st.data_editor(
         base_df, column_config=col_config, hide_index=True,
-        use_container_width=True, height=height, key=edkey,
+        width="stretch", height=height, key=edkey,
     )
 
     # ---- canlı durum yalnız DÖNÜŞ değerinden okunur (tabana geri yazılmaz) ----
@@ -312,7 +312,7 @@ def _grid(
             if shown_errs else f"{len(shown)} uyarı."
         )
         st.dataframe(
-            violations_dataframe(shown), use_container_width=True,
+            violations_dataframe(shown), width="stretch",
             hide_index=True,
         )
         if show_past and non_blocking and not blocking:

@@ -294,6 +294,6 @@ def show_violations(violations, empty_message="Kural ihlali yok. ✅") -> None:
         st.warning(f"{len(warnings)} uyarı bulundu.")
     st.dataframe(
         violations_dataframe(violations),
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
     )

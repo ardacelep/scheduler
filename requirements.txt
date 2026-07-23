@@ -1,4 +1,6 @@
-streamlit>=1.36
+# Alt sınırlar bilinçli: arayüz artık st.dataframe/data_editor'da `width=`
+# kullanıyor (eski `use_container_width` Streamlit'ten kaldırıldı).
+streamlit>=1.58
 ortools>=9.10
 openpyxl>=3.1
 pypdf>=4.0

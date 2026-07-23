@@ -86,6 +86,12 @@ def ortools_denemesi() -> list[str]:
     """
     sorunlar = []
     başlık("3) ÇÖZÜCÜ (OR-Tools CP-SAT) GERÇEK DENEME")
+    # Çökme olursa aşağıdaki satırlar HİÇ yazılmaz; o yüzden ne olacağını
+    # önceden söylüyoruz. Pencere burada kapanırsa sebep kesinleşmiş olur.
+    print("  Deneme başlıyor...")
+    print("  ! Bu satırdan sonra pencere kapanır/donarsa, uygulamayı çökerten")
+    print("    şey ÇÖZÜCÜDÜR. Bunu aynen bildirin.")
+    sys.stdout.flush()
     try:
         from ortools.sat.python import cp_model
 

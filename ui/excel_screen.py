@@ -111,7 +111,7 @@ def _rotation_import_flow(store, data: bytes) -> None:
                 ds.unresolved,
                 columns=["Öğrenci", "Ay", "Dosyadaki değer", "Eklenecek birim"],
             ),
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
         )
 
@@ -172,7 +172,7 @@ def _gender_validation_panel(ds, guesses, gender_counts) -> None:
             }
         )
     st.markdown("**Cinsiyet doğrulaması** (PDF sayıları ↔ isim tahmini)")
-    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+    st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True)
     if any_mismatch:
         st.warning(
             "Bazı şubelerde tahmin, PDF'teki cinsiyet sayısıyla tutmuyor. "
@@ -272,7 +272,7 @@ def roster_import_flow(roster, warns, gender_counts=None) -> None:
                 for s in students_by_id.values()
             ]
         ),
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
         height=320,
     )

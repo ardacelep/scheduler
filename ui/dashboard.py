@@ -87,7 +87,7 @@ def render(store) -> None:
             if done == 0 and next_month is None:
                 next_month = m
         rows.append(row)
-    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+    st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True)
 
     st.subheader("Hızlı erişim")
     c1, c2, c3, c4 = st.columns(4)
