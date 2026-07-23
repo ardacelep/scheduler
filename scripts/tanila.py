@@ -11,6 +11,7 @@ Python hatası vermeden süreci komple çökertebilir) ve uygulamanın kendi
 from __future__ import annotations
 
 import platform
+import subprocess
 import sys
 import traceback
 from pathlib import Path
@@ -77,73 +78,119 @@ def paketler() -> list[str]:
     return sorunlar
 
 
-def ortools_denemesi() -> list[str]:
-    """En kritik test: CP-SAT gerçekten çözüyor mu?
+_SOLVE_SNIPPET = """
+from ortools.sat.python import cp_model
+m = cp_model.CpModel()
+x = m.NewIntVar(0, 10, 'x')
+y = m.NewIntVar(0, 10, 'y')
+m.Add(x + y == 7)
+m.Maximize(x)
+s = cp_model.CpSolver()
+s.parameters.num_workers = 1
+s.parameters.max_time_in_seconds = 10
+d = s.Solve(m)
+print('COZULDU', s.Value(x), s.Value(y))
+"""
 
-    Paket içe aktarılabiliyor ama çözemiyor olabilir (native kütüphane /
-    Visual C++ çalışma zamanı uyumsuzluğu). Bu durumda süreç Python hatası
-    vermeden çöker — o yüzden ayrı ve en sona bırakılmış bir testtir.
+
+def _ayri_surecte(kod: str, timeout: int = 90):
+    """Kodu AYRI bir süreçte çalıştırır. Dönüş: (çıkış kodu, stdout, stderr).
+
+    Kritik: çözücü süreci çökertebildiği için bu testler doğrudan
+    çalıştırılamaz — çökerse teşhis aracının kendisi ölür ve geri kalan
+    adımlar hiç koşmaz (ilk sürümde tam olarak bu oldu).
+    """
+    try:
+        p = subprocess.run(
+            [sys.executable, "-c", kod],
+            capture_output=True, text=True, timeout=timeout,
+        )
+        return p.returncode, p.stdout.strip(), p.stderr.strip()
+    except subprocess.TimeoutExpired:
+        return None, "", "zaman aşımı (süreç asıldı)"
+
+
+def _yorumla(kod: int | None, out: str, err: str) -> tuple[bool, str]:
+    if kod is None:
+        return False, "süreç ASILDI (kilitlendi)"
+    if kod == 0 and "COZULDU" in out:
+        return True, out.split("COZULDU")[1].strip()
+    if kod != 0 and not err:
+        # Python hatası yok ama süreç öldü = native çökme
+        özel = {3221225477: "erişim ihlali (0xC0000005)"}.get(kod & 0xFFFFFFFF, "")
+        return False, f"SESSİZ ÇÖKME, çıkış kodu {kod}" + (f" — {özel}" if özel else "")
+    return False, (err.splitlines()[-1] if err else f"çıkış kodu {kod}")
+
+
+def ortools_denemesi() -> list[str]:
+    """CP-SAT gerçekten çözüyor mu — ve neyin yanında çöküyor?
+
+    İki senaryo ayrı ayrı denenir, çünkü çözüm yolu buna göre değişir:
+      A) ortools TEK BAŞINA  → çalışıyorsa sorun başka bir paketle çakışma
+      B) pyarrow yüklüyken   → yalnız burada çöküyorsa çakışma kesinleşir
+    Uygulama Streamlit üzerinden çalıştığı için pratikte hep B durumundadır.
     """
     sorunlar = []
-    başlık("3) ÇÖZÜCÜ (OR-Tools CP-SAT) GERÇEK DENEME")
-    # Çökme olursa aşağıdaki satırlar HİÇ yazılmaz; o yüzden ne olacağını
-    # önceden söylüyoruz. Pencere burada kapanırsa sebep kesinleşmiş olur.
-    print("  Deneme başlıyor...")
-    print("  ! Bu satırdan sonra pencere kapanır/donarsa, uygulamayı çökerten")
-    print("    şey ÇÖZÜCÜDÜR. Bunu aynen bildirin.")
+    başlık("3) ÇÖZÜCÜ (OR-Tools CP-SAT) — İKİ SENARYO")
+    print("  Testler ayrı süreçte koşar; çökme olursa teşhis devam eder.")
     sys.stdout.flush()
-    try:
-        from ortools.sat.python import cp_model
 
-        model = cp_model.CpModel()
-        x = model.NewIntVar(0, 10, "x")
-        y = model.NewIntVar(0, 10, "y")
-        model.Add(x + y == 7)
-        model.Maximize(x)
-        solver = cp_model.CpSolver()
-        solver.parameters.num_workers = 1
-        solver.parameters.max_time_in_seconds = 10
-        durum = solver.Solve(model)
-        if durum in (cp_model.OPTIMAL, cp_model.FEASIBLE):
-            print(f"  ✓ Çözüldü: x={solver.Value(x)}, y={solver.Value(y)}")
-        else:
-            print(f"  ✗ Çözülemedi (durum kodu {durum})")
-            sorunlar.append("OR-Tools basit bir modeli bile çözemedi.")
-    except Exception as exc:
-        print(f"  ✗ HATA: {type(exc).__name__}: {exc}")
-        traceback.print_exc()
-        sorunlar.append(f"OR-Tools çalışmıyor: {exc}")
+    print("\n  A) ortools tek başına")
+    a_ok, a_not = _yorumla(*_ayri_surecte(_SOLVE_SNIPPET))
+    print(f"     {'✓' if a_ok else '✗'} {a_not}")
+
+    print("\n  B) önce pyarrow yüklenmişken (uygulamadaki gerçek durum)")
+    b_ok, b_not = _yorumla(
+        *_ayri_surecte("import pyarrow, pandas\n" + _SOLVE_SNIPPET)
+    )
+    print(f"     {'✓' if b_ok else '✗'} {b_not}")
+
+    print()
+    if a_ok and b_ok:
+        print("  → Çözücü her iki durumda da sağlam.")
+    elif a_ok and not b_ok:
+        print("  → TEŞHİS: ortools tek başına çalışıyor ama pyarrow ile")
+        print("    birlikte çöküyor. Bu bir KÜTÜPHANE ÇAKIŞMASIDIR.")
+        print("    Çözüm: çözücüyü ayrı bir süreçte çalıştırmak.")
+        sorunlar.append(
+            "ortools ↔ pyarrow çakışması: çözücü ayrı süreçte çalıştırılmalı."
+        )
+    else:
+        print("  → TEŞHİS: ortools tek başına bile çalışmıyor. Bu Python")
+        print(f"    sürümüyle ({sys.version.split()[0]}) uyumsuz olabilir.")
+        print("    Çözüm: Python 3.12/3.13 ile yeniden kurulum.")
+        sorunlar.append(
+            f"ortools bu Python sürümünde ({sys.version.split()[0]}) hiç "
+            "çalışmıyor — farklı Python sürümü gerekir."
+        )
     return sorunlar
 
 
+# @ROOT@ yer tutucusu .replace ile doldurulur: kod içinde % ve {} geçtiği
+# için .format()/%-biçimlendirmesi kullanılamaz.
+_APP_SNIPPET = """
+import sys
+sys.path.insert(0, r'@ROOT@')
+from rotasyon.models import Student, Unit
+from rotasyon.solver import solve_month
+ogr = [Student(id='s' + str(i), full_name='Deneme ' + str(i),
+               gender='K' if i % 2 else 'E', group=1) for i in range(6)]
+bir = [Unit(id='u1', name='DENEME A', quota=3, group=1, pool=True),
+       Unit(id='u2', name='DENEME B', quota=3, group=1, pool=True)]
+r = solve_month(ogr, bir, 'EYLUL', [])
+print('COZULDU', r.status, len(r.assignments))
+"""
+
+
 def uygulama_denemesi() -> list[str]:
-    """Uygulamanın kendi çözücüsüyle küçük bir ay çözümü."""
+    """Uygulamanın kendi çözücüsüyle küçük bir ay çözümü (ayrı süreçte)."""
     sorunlar = []
     başlık("4) UYGULAMANIN ÇÖZÜCÜSÜ")
-    try:
-        from rotasyon.models import Student, Unit
-        from rotasyon.solver import solve_month
-
-        öğrenciler = [
-            Student(id=f"s{i}", full_name=f"Deneme {i}",
-                    gender="K" if i % 2 else "E", group=1)
-            for i in range(6)
-        ]
-        birimler = [
-            Unit(id="u1", name="DENEME A", quota=3, group=1, pool=True),
-            Unit(id="u2", name="DENEME B", quota=3, group=1, pool=True),
-        ]
-        sonuç = solve_month(öğrenciler, birimler, "EYLÜL", [])
-        print(f"  Durum      : {sonuç.status}")
-        print(f"  Atama sayısı: {len(sonuç.assignments)}")
-        if not sonuç.assignments:
-            sorunlar.append("Uygulamanın çözücüsü hiç atama üretmedi.")
-        else:
-            print("  ✓ Rotasyon üretimi çalışıyor.")
-    except Exception as exc:
-        print(f"  ✗ HATA: {type(exc).__name__}: {exc}")
-        traceback.print_exc()
-        sorunlar.append(f"Uygulama çözücüsü çalışmıyor: {exc}")
+    kod = _APP_SNIPPET.replace("@ROOT@", str(ROOT))
+    ok, not_ = _yorumla(*_ayri_surecte(kod))
+    print(f"  {'✓' if ok else '✗'} {not_}")
+    if not ok:
+        sorunlar.append(f"Uygulama çözücüsü çalışmıyor: {not_}")
     return sorunlar
 
 
