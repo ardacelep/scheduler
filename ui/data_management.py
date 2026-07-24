@@ -164,7 +164,11 @@ def _students_tab(store) -> None:
         # sıfırlanır ve güncel hali gösterir (bayat hücre kalmaz)
         key=f"students_editor_{data_fingerprint(ordered)}",
     )
-    if st.button("💾 Tablodaki değişiklikleri kaydet", type="primary", key="save_students"):
+    degisti = not edited.equals(df)
+    if st.button(
+        "💾 Tablodaki değişiklikleri kaydet", type="primary",
+        key="save_students", disabled=not degisti,
+    ):
         for s, (_, row) in zip(ordered, edited.iterrows()):
             s.full_name = str(row["Ad Soyad"]).strip() or s.full_name
             s.student_no = str(row["Okul No"] or "").strip()
@@ -199,9 +203,19 @@ def _students_tab(store) -> None:
             ),
             key=f"banned_{s.id}",
         )
+        # yalnız bu gruptaki birimler seçilebiliyor; kıyas da o küme üzerinden
+        mevcut = [
+            uid for uid in s.banned_unit_ids
+            if any(u.id == uid for u in group_units)
+        ]
         c1, c2 = st.columns(2)
-        if c1.button("💾 Yasakları kaydet", key=f"save_banned_{s.id}"):
-            s.banned_unit_ids = banned
+        if c1.button(
+            "💾 Yasakları kaydet", key=f"save_banned_{s.id}",
+            disabled=set(banned) == set(mevcut),
+        ):
+            # başka gruba ait eski yasaklar korunur, yalnız bu grubunkiler güncellenir
+            digerleri = [uid for uid in s.banned_unit_ids if uid not in mevcut]
+            s.banned_unit_ids = digerleri + banned
             store.save_students(students)
             st.success("Kaydedildi. ✅")
         with c2:
@@ -401,7 +415,10 @@ def _units_tab(store) -> None:
         # anahtar veri içeriğine bağlı: dışarıdan değişiklikte sıfırlanır
         key=f"units_editor_{data_fingerprint(ordered)}",
     )
-    if st.button("💾 Tablodaki değişiklikleri kaydet", type="primary", key="save_units"):
+    if st.button(
+        "💾 Tablodaki değişiklikleri kaydet", type="primary",
+        key="save_units", disabled=edited.equals(df),
+    ):
         for u, (_, row) in zip(ordered, edited.iterrows()):
             u.name = normalize_unit_name(str(row["Birim"])) or u.name
             u.group = _GROUP_TO_CODE.get(row["Grup"], u.group)
@@ -1231,8 +1248,24 @@ def _settings_tab(store) -> None:
             "yoğun birimlere yığabilir."
         )
 
+    # Kaydedilecek bir değişiklik var mı? (branşlar + süreler + ağırlıklar)
+    mevcut_branch = [
+        r["branch"] for r in settings.get("season_requirements", [])
+        if r.get("branch") in branch_options
+    ]
+    degisti = (
+        sorted(picked) != sorted(mevcut_branch)
+        or int(time_limit) != int(solver.get("time_limit_seconds", 5))
+        or int(season_limit) != int(solver.get("season_time_limit_seconds", 60))
+        or {k: int(v) for k, v in new_weights.items()}
+        != {k: int(v) for k, v in weights.items()}
+    )
+
     c_save, c_reset = st.columns(2)
-    if c_save.button("💾 Ayarları kaydet", type="primary", key="save_settings_tab"):
+    if c_save.button(
+        "💾 Ayarları kaydet", type="primary", key="save_settings_tab",
+        disabled=not degisti,
+    ):
         settings["season_requirements"] = [{"branch": b} for b in picked]
         settings.setdefault("solver", {})
         settings["solver"]["time_limit_seconds"] = int(time_limit)

@@ -15,7 +15,13 @@ import threading
 import streamlit as st
 
 from rotasyon.rules import check_all
-from .common import RISK_INTRO, collect_risks, show_risks, show_violations_scoped
+from .common import (
+    RISK_INTRO,
+    collect_risks,
+    data_fingerprint,
+    show_risks,
+    show_violations_scoped,
+)
 
 # ---- arka plan deneme çözümü kaydı ----
 # Deneme çözümü dakikalarca sürebilir. ANA AKIŞTA çalıştırılırsa Streamlit'in
@@ -107,8 +113,11 @@ def _future_tab(store, students, units, assignments, months, custom_rules,
         show_risks(risks)
 
     st.divider()
+    fingerprint = data_fingerprint(
+        students, units, assignments, custom_rules, [settings]
+    )
     _deep_panel(students, units, months, assignments, custom_rules, settings,
-                key)
+                key, fingerprint)
 
 
 def _run_deep_job(job, students, units, months, assignments, custom_rules,
@@ -116,9 +125,13 @@ def _run_deep_job(job, students, units, months, assignments, custom_rules,
     """Daemon thread gövdesi — burada ASLA st.* çağrılmaz."""
     from rotasyon.risk import deep_feasibility
 
+    def _ilerleme(idx, toplam, grup):
+        job["progress"] = (idx, toplam, grup)
+
     try:
         job["results"] = deep_feasibility(
-            students, units, months, assignments, custom_rules, settings
+            students, units, months, assignments, custom_rules, settings,
+            on_group=_ilerleme,
         )
     except Exception as exc:  # çözücü çökerse uygulama ayakta kalsın
         job["error"] = f"{type(exc).__name__}: {exc}"
@@ -133,14 +146,23 @@ def _deep_job_watch(key: str) -> None:
     if job is None or job.get("done"):
         st.rerun(scope="app")
         return
-    st.info(
-        "🔄 Deneme çözümü **arka planda** sürüyor. Bu sırada başka sayfalara "
-        "geçebilirsiniz; hiçbir şey kaydedilmiyor."
+    prog = job.get("progress")
+    if prog:
+        idx, toplam, grup = prog
+        st.progress(
+            (idx - 1) / toplam,
+            text=f"🔄 {grup}. grup çözülüyor… ({idx}/{toplam})",
+        )
+    else:
+        st.progress(0.0, text="🔄 Çözücü hazırlanıyor…")
+    st.caption(
+        "Analiz **arka planda** sürüyor; başka sayfalara geçebilirsiniz, "
+        "hiçbir şey kaydedilmiyor."
     )
 
 
 def _deep_panel(students, units, months, assignments, custom_rules,
-                settings, key) -> None:
+                settings, key, fingerprint) -> None:
     """Deneme çözümü: kalan sezonu gerçekten çözmeyi dener.
 
     Yukarıdaki aritmetik kontroller kesin çelişkileri bulur ama kombinatorik
@@ -158,21 +180,22 @@ def _deep_panel(students, units, months, assignments, custom_rules,
     )
 
     job = _RISK_JOBS.get(key)
-    if job is not None and not job.get("done"):
-        _deep_job_watch(key)
-        return
+    calisiyor = job is not None and not job.get("done")
 
-    if st.button("🔮 Kalan sezonu şimdi dene", key="deep_risk_run"):
-        yeni = {"done": False}
-        _RISK_JOBS[key] = yeni
+    label = "🔮 Yeniden dene" if job else "🔮 Kalan sezonu şimdi dene"
+    if st.button(label, key="deep_risk_run", disabled=calisiyor):
+        _RISK_JOBS[key] = {"done": False, "fingerprint": fingerprint}
         threading.Thread(
             target=_run_deep_job,
-            args=(yeni, students, units, months, assignments, custom_rules,
-                  settings),
+            args=(_RISK_JOBS[key], students, units, months, assignments,
+                  custom_rules, settings),
             daemon=True,
         ).start()
         st.rerun()
 
+    if calisiyor:
+        _deep_job_watch(key)
+        return
     if job is None:
         return
     if job.get("error"):
@@ -182,39 +205,78 @@ def _deep_panel(students, units, months, assignments, custom_rules,
             + job["error"]
         )
         return
+
+    # Veri, analizden SONRA değiştiyse sonuç bayattır — sessizce göstermek
+    # yanıltıcı olur (kullanıcının 4. maddesi). Net damgala.
+    if job.get("fingerprint") != fingerprint:
+        st.warning(
+            "🔄 Veriler bu analizden sonra değişti — aşağıdaki sonuç **güncel "
+            "değil**. Yukarıdaki düğmeyle yeniden çalıştırın."
+        )
+
     results = job.get("results") or []
     if not results:
         st.info("Denenecek grup bulunamadı.")
         return
-    st.caption("Son deneme sonucu:")
+    _deep_results(results)
+
+
+def _deep_results(results) -> None:
+    """Sonuç kartları: üstte özet, altta grup başına neden/öneri."""
+    cozulen = sum(1 for r in results if r.ok)
+    denenen = [r for r in results if r.status != "ATLANDI"]
+    if denenen and cozulen == len(denenen):
+        st.success(
+            f"✅ Denenen {len(denenen)} grubun tamamı kurallara uygun "
+            "tamamlanabiliyor."
+        )
+    elif denenen:
+        st.error(
+            f"⚠️ {len(denenen)} gruptan {len(denenen) - cozulen} tanesi bu "
+            "haliyle **tamamlanamıyor**. Ayrıntı ve öneriler aşağıda."
+        )
+
     for res in results:
         etiket = f"{res.group}. Grup"
-        if res.status == "ATLANDI":
-            st.info(f"{etiket}: tüm aylar zaten üretilmiş.")
-        elif res.ok:
-            st.success(
-                f"{etiket}: kalan {len(res.months)} ay ({', '.join(res.months)}) "
-                "kurallara uygun şekilde **tamamlanabiliyor**. ✅"
-            )
-        elif res.status == "INFEASIBLE":
-            st.error(
-                f"{etiket}: kalan {len(res.months)} ay **çözülemiyor** — bu "
-                "haliyle sezon tamamlanamaz."
-            )
-            for reason in res.reasons:
-                st.markdown(f"- {reason}")
-            if not res.reasons:
-                st.caption(
-                    "Çözücü kesin bir sebep ayıklayamadı; genellikle "
-                    "kontenjanlar ve kısıtlar birlikte tıkar."
+        with st.container(border=True):
+            if res.status == "ATLANDI":
+                st.markdown(f"**{etiket}** — ⏭️ tüm aylar zaten üretilmiş.")
+            elif res.ok:
+                st.markdown(
+                    f"**{etiket}** — ✅ kalan {len(res.months)} ay "
+                    "kurallara uygun tamamlanabiliyor."
                 )
-        else:
-            st.warning(
-                f"{etiket}: süre sınırı içinde kesin sonuç alınamadı "
-                f"(durum: {res.status}). Bu, çözümsüz olduğu anlamına gelmez. "
-                "Veri Yönetimi ▸ ⚙️ Ayarlar'dan sezon çözüm süresini artırıp "
-                "tekrar deneyebilirsiniz."
-            )
+                st.caption("Aylar: " + ", ".join(res.months))
+            elif res.status == "INFEASIBLE":
+                st.markdown(
+                    f"**{etiket}** — ❌ kalan {len(res.months)} ay bu haliyle "
+                    "**çözülemiyor**."
+                )
+                if res.reasons:
+                    st.markdown("**Neden:**")
+                    for reason in res.reasons:
+                        st.markdown(f"- {reason}")
+                if res.suggestions:
+                    st.info(
+                        "**Ne yapmalı:**\n"
+                        + "\n".join(f"- {s}" for s in res.suggestions)
+                    )
+                if not res.reasons and not res.suggestions:
+                    st.caption(
+                        "Çözücü kesin bir sebep ayıklayamadı; genellikle "
+                        "kontenjanlar ve kısıtlar birlikte tıkar. Kontenjanları "
+                        "ve cinsiyet kısıtlarını gözden geçirin."
+                    )
+            else:
+                st.markdown(
+                    f"**{etiket}** — ⏳ süre sınırı içinde kesin sonuç alınamadı "
+                    f"(durum: {res.status})."
+                )
+                st.caption(
+                    "Bu, çözümsüz olduğu anlamına GELMEZ. Veri Yönetimi ▸ "
+                    "⚙️ Ayarlar'dan sezon çözüm süresini artırıp tekrar "
+                    "deneyebilirsiniz."
+                )
 
 
 def _orphan_cleanup_panel(store, students, units, assignments, violations) -> None:

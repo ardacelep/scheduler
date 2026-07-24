@@ -305,6 +305,19 @@ daha"*), 64 kişilik sezonda panel okunabilir kalsın diye.
   anlık uyarı (`fixed_assignment_conflicts`, `units_fitting_all`); uyarı
   engellemez, sorunun oluşmasını önler
 
+### "Çözülemiyor" değil, "neden ve ne yapmalı"
+
+Deneme çözümü bir grubu çözemediğinde yalnız kırmızı bir "olmuyor" demez;
+`risk.explain_infeasible_group` ile **somut sebep + öneri** üretir. İki kaynak
+birleşir: (1) o gruba scope'lanmış `forward_risks` — mesajlar zaten
+"FTR.ÜNİT uygun 7 < gereken 10" gibi somut ve içinde `Çözüm: …` taşıyor,
+`_split_reason` bunu **Neden** ve **Ne yapmalı** diye ayırır; (2) aritmetik
+bir sebep yoksa (saf kombinatorik çıkmaz) aylar sırayla `solve_month` ile
+çözülüp ilk tıkanan ay teşhis edilir (her çözülen ay geçmişe eklenir; sezon
+çözümsüzse ilerlemeli çözüm bir ayda mutlaka tıkanır). Sonuç ekranı grup
+başına kart: **✅ tamamlanabilir** / **❌ Neden + Ne yapmalı** / **⏳ süre
+yetmedi**.
+
 ### İki tasarım kararı
 
 **`risk.py` ortools'u modül düzeyinde import etmez.** Panel her sayfa
@@ -316,11 +329,19 @@ açılışında render edilir; çözücünün bozuk olduğu bir kurulumda (bkz. 
 ölçümde Streamlit'in tüm sunucusunu bloke ettiği ve tarayıcının *"Is Streamlit
 still running?"* hatası bastığı görüldü — kullanıcı uygulamanın çöktüğünü
 sanar. Artık `ui/violations.py:_RISK_JOBS` + `st.fragment(run_every=2.0)`
-deseniyle (toplu üretimdeki `_BULK_JOBS` ile aynı mantık) arka planda koşar;
-bu sırada uygulama tamamen kullanılabilir kalır. Thread hiçbir `st.*` çağrısı
-yapmaz.
+deseniyle (toplu üretimdeki `_BULK_JOBS` ile aynı mantık) arka planda koşar,
+canlı ilerleme çubuğu gösterir (`deep_feasibility(on_group=…)`) ve bu sırada
+uygulama tamamen kullanılabilir kalır. Thread hiçbir `st.*` çağrısı yapmaz.
+Sonuç, çalıştırıldığı andaki `data_fingerprint` ile mühürlenir; veri sonradan
+değişirse sonuç **"güncel değil"** damgasıyla gösterilir (sessizce eski sonucu
+göstermez).
 
 Riskler kaydı **engellemez** — bilgilendirmedir, kararı kullanıcı verir.
+
+> **Kaydet butonları:** düzenleme tabloları (Öğrenciler/Birimler), Ayarlar ve
+> yasaklı-birim kaydı, **gerçek bir değişiklik yoksa pasiftir**
+> (`edited.equals(df)` / mevcut ayarla kıyas) — Yıllık Tablo'daki
+> `disabled=changed_cells == 0` deseninin genele yayılmış hâli.
 
 ---
 

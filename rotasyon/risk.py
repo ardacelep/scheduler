@@ -65,6 +65,7 @@ class DeepResult:
     months: list[str]
     status: str  # OPTIMAL | FEASIBLE | INFEASIBLE | UNKNOWN | ATLANDI
     reasons: list[str] = field(default_factory=list)
+    suggestions: list[str] = field(default_factory=list)
 
     @property
     def ok(self) -> bool:
@@ -509,6 +510,7 @@ def deep_feasibility(
     custom_rules: list[CustomRule] | None = None,
     settings: dict | None = None,
     groups: list[int] | None = None,
+    on_group=None,
 ) -> list[DeepResult]:
     """Kalan ayları GERÇEKTEN çözmeyi dener; hiçbir şey kaydetmez.
 
@@ -525,7 +527,9 @@ def deep_feasibility(
     rules = [r for r in (custom_rules or []) if r.active]
     hedef = groups or sorted({s.group for s in active})
     out: list[DeepResult] = []
-    for g in hedef:
+    for idx, g in enumerate(hedef, 1):
+        if on_group:
+            on_group(idx, len(hedef), g)
         g_students = [s for s in active if s.group == g]
         if not g_students:
             continue
@@ -543,12 +547,131 @@ def deep_feasibility(
             g_students, g_units, months, kalan, assignments,
             settings=settings, custom_rules=rules,
         )
+        reasons = list(getattr(res, "infeasible_reasons", []) or [])
+        suggestions: list[str] = []
+        if res.status not in ("OPTIMAL", "FEASIBLE"):
+            # "Çözülemiyor" yeterli değil: NEDEN ve NE YAPMALI söyle.
+            reasons, suggestions = explain_infeasible_group(
+                g, active, units, months, assignments, rules, settings,
+                fallback=reasons,
+            )
         out.append(
             DeepResult(
                 group=g,
                 months=kalan,
                 status=res.status,
-                reasons=list(getattr(res, "infeasible_reasons", []) or []),
+                reasons=reasons,
+                suggestions=suggestions,
             )
         )
     return out
+
+
+def _split_reason(message: str) -> tuple[str, str]:
+    """Risk mesajını (sebep, öneri) olarak böler.
+
+    forward_risks/capacity mesajları '... . Çözüm: ...' kalıbıyla yazılı.
+    Kalıp yoksa tüm mesaj sebep, öneri boş.
+    """
+    for sep in (". Çözüm: ", " Çözüm: ", "Çözüm: "):
+        if sep in message:
+            sebep, oneri = message.split(sep, 1)
+            return sebep.strip(" ."), oneri.strip()
+    return message.strip(), ""
+
+
+def explain_infeasible_group(
+    group: int,
+    students: list[Student],
+    units: list[Unit],
+    months: list[str],
+    assignments: list[Assignment],
+    custom_rules: list[CustomRule],
+    settings: dict | None,
+    fallback: list[str] | None = None,
+) -> tuple[list[str], list[str]]:
+    """Bir grup neden çözülemiyor + ne yapmalı. Dönüş: (sebepler, öneriler).
+
+    İki kaynak birleşir:
+      1) forward_risks o gruba scope'landığında zaten somut aritmetik sebebi
+         ("FTR.ÜNİT uygun 7 < gereken 10") ve "Çözüm: ..." önerisini üretir.
+      2) Aritmetik sebep yoksa (saf kombinatorik çıkmaz) ilk çözülemeyen ay
+         solve_month teşhis moduyla çözülür; hangi kural ailesinin tıkadığı
+         (_REASON_LABELS) sebep olarak verilir.
+    Hiçbiri sonuç vermezse `fallback` (solver'ın genel mesajı) kullanılır.
+    """
+    g_students = [
+        s for s in students
+        if s.group == group and getattr(s, "active", True)
+    ]
+
+    reasons: list[str] = []
+    suggestions: list[str] = []
+
+    # 1) aritmetik riskler — yalnız bu grubu ilgilendiren HATA'lar
+    for r in forward_risks(
+        g_students, units, months, assignments, custom_rules, settings
+    ):
+        if r.level != ERROR or r.group not in (0, group):
+            continue
+        sebep, oneri = _split_reason(r.message)
+        if sebep not in reasons:
+            reasons.append(sebep)
+        if oneri and oneri not in suggestions:
+            suggestions.append(oneri)
+
+    if reasons:
+        return reasons, suggestions
+
+    # 2) kombinatorik çıkmaz — ilk çözülemeyen ayı teşhis et
+    diag = _month_diagnosis(
+        group, g_students, units, months, assignments, custom_rules, settings
+    )
+    if diag:
+        return diag, []
+
+    return list(fallback or []), []
+
+
+def _month_diagnosis(
+    group, g_students, units, months, assignments, custom_rules, settings
+) -> list[str]:
+    """İlk tıkanan ayı bulup solve_month teşhisiyle açıklar (ilerlemeli).
+
+    Sezon çözücüsü çıkmazı aylar ARASINDA yaşanır (ör. madde 20 peş peşe
+    yoğun yasağı); tek bir ayı yalıtık çözmek bunu göremez. Bu yüzden aylar
+    sırayla çözülür ve her çözülen ay geçmişe eklenir — ilk INFEASIBLE ay,
+    çıkmazın görünür olduğu aydır. solve_month INFEASIBLE olunca kendini
+    _diagnostic=True ile yeniden çağırıp unsat core'dan kural-ailesi
+    açıklaması döndürür (solver.py).
+
+    Sezon INFEASIBLE ise tam atama yoktur, dolayısıyla ilerlemeli çözüm bir
+    ayda mutlaka tıkanır.
+    """
+    from .models import Assignment as _A
+    from .solver import solve_month
+
+    g_ids = {s.id for s in g_students}
+    dolu = {a.month for a in assignments if a.student_id in g_ids}
+    g_units = [u for u in units if u.group in (0, group)]
+    history = list(assignments)
+    for m in months:
+        if m in dolu:
+            continue
+        res = solve_month(
+            g_students, g_units, m, history,
+            settings=settings, custom_rules=custom_rules,
+        )
+        if res.status == "INFEASIBLE":
+            sebepler = list(res.infeasible_reasons or [])
+            return [f"{m} ayı çözülemiyor. " + s for s in sebepler] or [
+                f"{m} ayı çözülemiyor: kurallar birlikte sağlanamıyor."
+            ]
+        if not res.ok:
+            return []  # UNKNOWN: süre yetmedi, kesin çözümsüz demek değil
+        # çözülen ayı geçmişe ekle ki sonraki aylar bu seçime göre denensin
+        history = history + [
+            _A(student_id=sid, month=m, unit_id=uid)
+            for sid, uid in res.assignments.items()
+        ]
+    return []

@@ -21,6 +21,8 @@ from rotasyon.risk import (
     CAT_CUSTOM,
     CAT_QUOTA,
     CAT_RUNWAY,
+    deep_feasibility,
+    explain_infeasible_group,
     fixed_assignment_conflicts,
     forward_risks,
     risk_counts,
@@ -372,3 +374,69 @@ def test_deep_feasibility_detects_infeasible_season():
     units = [U("tek", quota=1)]
     res = deep_feasibility(students, units, MONTHS, [])
     assert not res[0].ok
+
+
+# ---------------------------------------------------------------- açıklama
+def test_explain_returns_reason_and_suggestion_for_must_fill():
+    """must_fill birim uygun öğrenciyi tüketirse: somut sebep + öneri."""
+    students = [S(i, gender="E") for i in range(3)]  # 3 erkek
+    units = [
+        U("ftr", name="FTR", quota=1, gender_restriction="E", must_fill=True),
+        U("a", quota=5), U("b", quota=5), U("c", quota=5), U("d", quota=5),
+    ]
+    reasons, suggestions = explain_infeasible_group(
+        1, students, units, MONTHS, [], [], None
+    )
+    assert reasons and "FTR" in " ".join(reasons)
+    assert suggestions  # "Çözüm: ..." ayrıştırıldı
+    # öneri metni sebepten ayrılmış olmalı (Çözüm: kalıbı sebepte kalmasın)
+    assert "Çözüm:" not in " ".join(reasons)
+
+
+def test_explain_empty_for_solvable_group():
+    students = [S(i) for i in range(4)]
+    units = [U(f"u{i}", quota=4) for i in range(8)]
+    reasons, suggestions = explain_infeasible_group(
+        1, students, units, MONTHS, [], [], None
+    )
+    assert reasons == [] and suggestions == []
+
+
+def test_explain_falls_back_to_month_diagnosis_for_combinatorial():
+    """Aritmetik risk yokken solve_month teşhisi devreye girer.
+
+    İki ay, iki birim ama ikisi de 'yoğun': her ay bir birim atanmak zorunda,
+    madde 20 peş peşe yoğun yasağı ikinci ayı çözümsüz kılar. Runway (R2)
+    2 farklı birim gördüğü için aritmetik yol boş döner → ay-bazlı teşhis.
+    """
+    students = [S(0)]
+    units = [
+        U("y1", quota=3, intensity="yogun"),
+        U("y2", quota=3, intensity="yogun"),
+    ]
+    two = ["EYLÜL", "EKİM"]
+    reasons, _sugg = explain_infeasible_group(
+        1, students, units, two, [], [], None
+    )
+    assert reasons and any("çözülemiyor" in r for r in reasons), reasons
+
+
+def test_explain_uses_fallback_when_nothing_found():
+    students = [S(0)]
+    units = [U(f"u{i}", quota=3) for i in range(4)]
+    reasons, _s = explain_infeasible_group(
+        1, students, units, MONTHS, [], [], None, fallback=["genel mesaj"]
+    )
+    assert reasons == ["genel mesaj"]
+
+
+def test_deep_feasibility_populates_reasons_and_suggestions():
+    students = [S(i, gender="E") for i in range(3)]
+    units = [
+        U("ftr", name="FTR", quota=1, gender_restriction="E", must_fill=True),
+        U("a", quota=5), U("b", quota=5), U("c", quota=5), U("d", quota=5),
+    ]
+    res = deep_feasibility(students, units, MONTHS, [])
+    grp = res[0]
+    assert not grp.ok
+    assert grp.reasons and grp.suggestions
