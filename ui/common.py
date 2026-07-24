@@ -117,49 +117,62 @@ def create_season_with_units(manager: SeasonManager, name: str, source: str) -> 
     return manager.create(name, copy_units_from=source)
 
 
-def capacity_findings_panel(
-    students, units, months, assignments, settings=None
-) -> None:
-    """Sezon ön-denetimi bulgularını gösteren ortak panel.
+RISK_INTRO = (
+    "Bu denetim, verinin sezon SONUNA kadar taşıyıp taşımayacağını üretime "
+    "başlamadan hesaplar: birimler kalan aylarda dolabiliyor mu, her öğrenci "
+    "zorunlu branşlarını görebiliyor mu, gidebileceği birim tükeniyor mu ve "
+    "eklediğiniz özel kurallar ileride çakışacak mı. Kritik bulgular "
+    "giderilmezse rotasyon bir noktada matematiksel olarak tıkanır ya da "
+    "öğrenci eksik mezun olur — hiçbir çözücü bunu sonradan düzeltemez."
+)
 
-    İki denetim birleştirilir:
-      * kapasite (birimler kalan aylarda dolabilir mi)
-      * sezon zorunlulukları (her öğrenci zorunlu branşları sezon SONUNA
-        kadar görebilir mi) — kural denetleyicisi bunu ancak son ay
-        atandığında, yani telafi imkânı kalmadığında yakalıyor.
 
-    Rotasyon Oluştur ve Yıllık Tablo ekranlarının ikisinde de kullanılır;
-    yalnız AKTİF öğrenciler hesaba katılır (pasifler yeni aya atanmaz).
+def collect_risks(students, units, months, assignments, custom_rules=None,
+                  settings=None):
+    """İleriye dönük risklerin tek kaynağı (rotasyon.risk.forward_risks).
+
+    Ucuzdur (saf aritmetik, ortools yüklemez), her sayfa açılışında çağrılabilir.
     """
-    from rotasyon.capacity import (
-        season_capacity_findings,
-        season_requirement_findings,
+    from rotasyon.risk import forward_risks
+
+    return forward_risks(
+        students, units, months, assignments, custom_rules, settings
     )
 
-    active = [s for s in students if getattr(s, "active", True)]
-    cap = season_capacity_findings(active, units, months, assignments)
-    cap += season_requirement_findings(
-        active, units, months, assignments, settings
+
+def show_risks(risks) -> None:
+    """Riskleri kategori başlıklarıyla gruplayarak yazar."""
+    from rotasyon.capacity import ERROR
+
+    for category in dict.fromkeys(r.category for r in risks):
+        st.markdown(f"**{category}**")
+        for r in [x for x in risks if x.category == category]:
+            (st.error if r.level == ERROR else st.warning)(r.message)
+
+
+def capacity_findings_panel(
+    students, units, months, assignments, settings=None, custom_rules=None
+) -> None:
+    """İleriye dönük risk paneli — Rotasyon Oluştur ve Yıllık Tablo'da.
+
+    Yalnız AKTİF öğrenciler hesaba katılır (pasifler yeni aya atanmaz).
+    Tam liste ve "deneme çözümü" Kural Kontrolü ekranındadır.
+    """
+    from rotasyon.risk import risk_counts
+
+    risks = collect_risks(
+        students, units, months, assignments, custom_rules, settings
     )
-    if not cap:
+    if not risks:
         return
-    errs = [c for c in cap if c.level == "hata"]
+    errs, warns = risk_counts(risks)
     with st.expander(
-        f"🔎 Sezon kapasite denetimi: {len(cap)} bulgu"
-        + (f" ({len(errs)} kritik)" if errs else ""),
+        f"🔎 Sezon ön-denetimi: {len(risks)} bulgu"
+        + (f" ({errs} kritik)" if errs else ""),
         expanded=bool(errs),
     ):
-        st.caption(
-            "Bu denetim, verinin sezon SONUNA kadar taşıyıp taşımayacağını "
-            "üretime başlamadan hesaplar: birimler kalan aylarda dolabiliyor "
-            "mu ve her öğrenci zorunlu branşlarını (cerrahi, dahili, yoğun "
-            "bakım, palyatif…) sezon bitmeden görebiliyor mu. Kritik bulgular "
-            "giderilmezse rotasyon bir noktada matematiksel olarak tıkanır ya "
-            "da öğrenci eksik mezun olur — hiçbir çözücü bunu sonradan "
-            "düzeltemez."
-        )
-        for c in cap:
-            (st.error if c.level == "hata" else st.warning)(c.message)
+        st.caption(RISK_INTRO)
+        show_risks(risks)
 
 
 def unit_label(u: Unit) -> str:

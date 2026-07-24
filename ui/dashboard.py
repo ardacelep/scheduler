@@ -4,7 +4,34 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 
-from .common import groups_in, has_data, load_seed, seed_available
+from .common import collect_risks, groups_in, has_data, load_seed, seed_available
+
+
+def _risk_badge(store, students, units, assignments, months) -> None:
+    """Ana Sayfa'da ileriye dönük risk özeti.
+
+    Kullanıcı uygulamayı açar açmaz görmeli: bu riskler sonradan fark
+    edilirse telafisi olmayan cinsten. Ayrıntı ve deneme çözümü Kural
+    Kontrolü ekranında.
+    """
+    from rotasyon.risk import risk_counts
+
+    risks = collect_risks(
+        students, units, months, assignments,
+        store.load_custom_rules(), store.load_settings(),
+    )
+    if not risks:
+        return
+    errs, warns = risk_counts(risks)
+    if errs:
+        st.error(
+            f"🔮 Kalan sezonda **{errs} kritik risk** var: giderilmezse "
+            "rotasyon tamamlanamaz ya da öğrenci eksik mezun olur."
+            + (f" Ayrıca {warns} uyarı." if warns else "")
+        )
+    else:
+        st.warning(f"🔮 Kalan sezon için {warns} uyarı var.")
+    _link("kural-kontrolu", "Riskleri incele", "🔮")
 
 
 def _link(url_path: str, label: str, icon: str) -> None:
@@ -60,6 +87,8 @@ def render(store) -> None:
     c2.metric("Aktif Birim", sum(1 for u in units if u.active))
     c3.metric("Sınıf", len(store.load_classes()))
     c4.metric("Kayıtlı Atama", len(assignments))
+
+    _risk_badge(store, students, units, assignments, months)
 
     # Eksik veri uyarıları — kullanıcıyı doğru ekrana yönlendir
     missing_gender = [s.full_name for s in students if not s.gender and s.active]

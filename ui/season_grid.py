@@ -66,7 +66,9 @@ def render(store) -> None:
 
     # Rotasyon Oluştur ekranıyla aynı kapasite ön-denetimi (bu ekran da
     # rotasyon üretimi için kullanılır).
-    capacity_findings_panel(students, units, months, assignments, settings)
+    capacity_findings_panel(
+        students, units, months, assignments, settings, custom_rules
+    )
 
     group = st.selectbox(
         "Grup", groups_in(students), format_func=lambda g: f"{g}. Grup",

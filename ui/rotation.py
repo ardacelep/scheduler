@@ -71,9 +71,12 @@ def render(store) -> None:
     months = settings["months"]
     all_assignments = store.load_assignments()
 
-    # Kapasite ön-denetimi: sezon 8. ayda duvara çarpmadan ÖNCE söyle.
+    # İleriye dönük risk denetimi: sezon 8. ayda duvara çarpmadan ÖNCE söyle.
     # (students zaten aktiflere süzülmüş — panel de aktifleri kullanır.)
-    capacity_findings_panel(students, units, months, all_assignments, settings)
+    capacity_findings_panel(
+        students, units, months, all_assignments, settings,
+        store.load_custom_rules(),
+    )
 
     c1, c2 = st.columns(2)
     group = c1.selectbox(

@@ -178,14 +178,30 @@ _FAQ = [
         "uyarıları göster* kutusunu kapatabilirsiniz.",
     ),
     (
-        "Bir öğrencinin zorunlu branşı eksik kalırsa önceden uyarır mı?",
-        "Evet. Rotasyon Oluştur ve Yıllık Tablo ekranlarının üstündeki "
-        "**🔎 Sezon kapasite denetimi** paneli her ay şunu hesaplar: her "
-        "öğrenci, kalan aylarda zorunlu branşlarını (cerrahi, dahili, yoğun "
-        "bakım, palyatif; ebelikte doğum salonu) hâlâ görebilir mi? "
-        "Görebilecek ay kalmadıysa ya da o branşta gidebileceği birim "
-        "kalmadıysa **hata** olarak, tam denk geliyorsa (hiç pay yoksa) "
-        "**uyarı** olarak bildirilir — sezon sonunu beklemez.",
+        "İleride çıkacak sorunlardan önceden haberim olur mu?",
+        "Evet, uygulama bunu sürekli hesaplar. Bazı sorunlar sonradan fark "
+        "edilirse telafisi olmaz (öğrencinin palyatif görmediği HAZİRAN'da "
+        "anlaşılırsa yapılacak bir şey yoktur), o yüzden **kalan sezon** ayrıca "
+        "denetlenir:\n\n"
+        "- **Ana Sayfa**'da risk varsa kırmızı/sarı bir özet çıkar.\n"
+        "- **Rotasyon Oluştur** ve **Yıllık Tablo** üstünde *🔎 Sezon "
+        "ön-denetimi* paneli bulunur.\n"
+        "- **Kural Kontrolü ▸ 🔮 Kalan sezon** sekmesinde tam liste vardır.\n\n"
+        "Denetlenenler: kontenjan yetiyor mu, her öğrenci zorunlu branşlarını "
+        "(cerrahi, dahili, yoğun bakım, palyatif; ebelikte doğum salonu) "
+        "görebilecek mi, gidebileceği birim tükeniyor mu ve eklediğiniz özel "
+        "kurallar ileride çakışacak mı.",
+    ),
+    (
+        "“Derin risk analizi” nedir, ne zaman kullanmalıyım?",
+        "Kural Kontrolü ▸ 🔮 Kalan sezon sekmesindeki bu düğme, kalan ayları "
+        "**gerçekten çözmeyi dener** ve “bu sezon tamamlanabilir mi?” "
+        "sorusuna kesin cevap verir. Normal denetim hesapla bulunabilecek "
+        "tıkanmaları gösterir; bu ise kuralların birlikte tıkanıp "
+        "tıkanmadığını da yakalar. Grup başına bir dakikaya kadar sürebilir ve "
+        "**hiçbir şeyi kaydetmez** — sadece dener. Önemli bir değişiklik "
+        "yaptıktan sonra (kontenjan düşürme, birim kapatma, yeni kural) "
+        "çalıştırmak iyi bir alışkanlıktır.",
     ),
     (
         "Bir şubeyi (sınıfı) diğer gruba almam gerekiyor.",

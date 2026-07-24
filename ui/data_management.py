@@ -853,6 +853,13 @@ def _rules_tab(store) -> None:
         }
         unit_pick = c3.selectbox("Birim", list(unit_opts), key="rule_unit")
         note = st.text_input("Not (isteğe bağlı)", key="rule_note_sabit")
+        # Kural EKLENMEDEN önce gelecekteki çakışmayı söyle: sabit atamanın
+        # klasik tuzağı, öğrencinin o birime başka bir ayda zaten gidiyor
+        # olması — o zaman seçilen ayda madde 1 kesin çiğnenir.
+        _fixed_rule_preview(
+            store, students_by_id, units, sid, unit_opts.get(unit_pick), month,
+            rules,
+        )
         if st.button("Kuralı ekle", type="primary", key="add_rule_sabit"):
             rules.append(
                 CustomRule(
@@ -914,6 +921,10 @@ def _rules_tab(store) -> None:
                 "Seçilen öğrenciler farklı gruplarda — gruplar zaten ayrı "
                 "planlandığı için bu kural etkisiz olur."
             )
+        if rtype == RULE_BIRLIKTE_TUT and len(picks) >= 2:
+            _together_rule_preview(
+                [students_by_id[student_options[p]] for p in picks], units
+            )
         if st.button(
             "Kuralı ekle", type="primary",
             disabled=len(picks) < 2, key="add_rule_pair",
@@ -930,6 +941,56 @@ def _rules_tab(store) -> None:
             store.save_custom_rules(rules)
             st.success("Kural eklendi. ✅")
             st.rerun()
+
+
+def _fixed_rule_preview(store, students_by_id, units, sid, unit_id, month,
+                        rules) -> None:
+    """Sabit atama kuralı eklenmeden önce çakışma uyarısı.
+
+    Aynı denetim risk panelinde de var; burada göstermenin değeri, sorunun
+    OLUŞMASINI engellemek — kullanıcı kuralı eklemeden vazgeçebilir.
+    """
+    if not unit_id:
+        return
+    from rotasyon.models import CustomRule as _CR
+    from rotasyon.risk import fixed_assignment_conflicts
+
+    taslak = _CR(
+        type=RULE_SABIT_ATAMA, student_ids=[sid], unit_id=unit_id, month=month
+    )
+    sorunlar = fixed_assignment_conflicts(
+        taslak,
+        students_by_id,
+        {u.id: u for u in units},
+        store.load_assignments(),
+        rules + [taslak],
+    )
+    for msg in sorunlar:
+        st.warning(f"⚠️ {msg}")
+    if sorunlar:
+        st.caption(
+            "Kuralı yine de ekleyebilirsiniz; bu yalnız uyarıdır. Ancak bu "
+            "haliyle ilgili ayda kural çiğnenecek."
+        )
+
+
+def _together_rule_preview(picked_students, units) -> None:
+    """'Birlikte tut' eklenmeden önce: bu kişileri alabilecek birim var mı?"""
+    from rotasyon.risk import units_fitting_all
+
+    k = len(picked_students)
+    uygun = units_fitting_all(picked_students, units)
+    if uygun:
+        st.caption(
+            f"✅ Bu {k} öğrenciyi birlikte alabilecek {len(uygun)} birim var."
+        )
+        return
+    st.warning(
+        f"⚠️ Bu {k} öğrenciyi aynı anda alabilecek hiçbir birim yok "
+        f"(kontenjanı en az {k} olan ve hepsinin cinsiyet/grup/yasak "
+        "kısıtlarına uyan birim bulunmuyor). Kural eklenirse her ay ihlal "
+        "edilir."
+    )
 
 
 # ======================= YEDEKLEME =======================

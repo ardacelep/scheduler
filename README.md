@@ -16,7 +16,8 @@ gerektirmeden planlayan masaüstü uygulaması.
 [Kurallar](#kurallar) · [Çözücü](#çözücü-nasıl-çalışır) ·
 [Kapasite denetimi](#kapasite-ön-denetimi) ·
 [Dinamik değişiklikler](#sezon-ortası-dinamik-değişiklikler) ·
-[Excel](#excel-içedışa-aktarım) · [Yedekleme](#yedekleme) · [Testler](#testler) ·
+[Excel](#excel-içedışa-aktarım) · [Riskler](#i̇leriye-dönük-risk-denetimi) ·
+[Yedekleme](#yedekleme) · [Testler](#testler) ·
 [Windows dağıtımı](#windows-dağıtımı) · [Klasör yapısı](#klasör-yapısı)
 
 ---
@@ -101,7 +102,7 @@ Sol kenar çubuğundan **sezon** seçilir, yeni sezon oluşturulur veya silinir
 | **Ana Sayfa** | Sezon özeti, ay bazında ilerleme tablosu, eksik veri uyarıları, hızlı erişim bağlantıları |
 | **Rotasyon Oluştur** | Tek akışlı üretim + toplu oluşturma (aşağıda ayrıntı) |
 | **Yıllık Tablo** | Sezonun tamamı tek tabloda (öğrenci × ay); aynı ekrandan ay oluşturma/elle düzeltme, düzeltirken herkesin geçmişi görünür (aşağıda ayrıntı) |
-| **Kural Kontrolü** | Kayıtlı tüm atamaların bütün kurallara karşı denetimi (hata / uyarı) |
+| **Kural Kontrolü** | İki sekme: kayıtlı atamaların kural denetimi **ve** kalan sezonun ileriye dönük risk analizi (+ deneme çözümü) |
 | **Veri Yönetimi** | Öğrenci, birim, sınıf ve özel kuralları toplu düzenleme; Excel içe aktarma; cinsiyet tahmini; **yedekleme/geri yükleme** |
 | **Öğrenci Geçmişi** | Bir öğrencinin sezon boyunca gittiği birimler, ay sırasıyla |
 | **Excel İçe/Dışa Aktarım** | Rotasyon veya öğrenci listesi içe aktarma; yıllık renkli ve tek-ay renksiz dışa aktarma |
@@ -262,24 +263,64 @@ için 20 farklı öğrenci gerekir ama uygun yalnız 8 kişi var; kontenjanı en
 1 yapın"*). Çözüm veri düzeyindedir: kontenjanı düşürmek veya toplam kontenjana
 birkaç kişilik **pay** bırakmak.
 
-### Zorunlu branşların ileriye dönük denetimi
+---
 
-Aynı panel, kapasitenin yanında **öğrenci bazında sezon zorunluluklarını** da
-önden hesaplar (`season_requirement_findings`). Gerekçe: kural denetleyicisi
-(madde 6/7) bir öğrencinin palyatif görmediğini ancak **dönemin son ayı
-atandığında** hata sayar — yani telafi imkânı kalmadığında. Bu denetim aynı
-riski her ay sorar: *"kalan aylarda bu zorunluluk hâlâ karşılanabilir mi?"*
+## İleriye dönük risk denetimi
 
-Üç ayrı risk raporlanır:
+`rules.py` bir kuralın **çiğnendiğini** yakalar. Ama bu projede asıl tehlike
+başka: bazı durumlar fark edildiğinde **telafisi kalmamış** olur — bir
+öğrencinin palyatif görmediği HAZİRAN'da anlaşılırsa yapılacak bir şey yoktur.
+`rotasyon/risk.py` aynı soruları **kalan aylara** bakarak sorar.
 
-| Durum | Düzey | Anlamı |
+İki kademe:
+
+| | `forward_risks` | `deep_feasibility` |
 |---|---|---|
-| Eksik zorunlu branş sayısı > kalan ay | ❌ hata | Artık imkânsız; geçmiş aylar düzeltilmeli |
-| O branşta gidilebilecek birim kalmamış (tekrar yasağı / cinsiyet kısıtı / yasaklı birim) | ❌ hata | Birim eklenmeli veya kısıt gevşetilmeli |
-| Eksik branş sayısı = kalan ay | ⚠️ uyarı | Sıfır pay: kalan her ay zorunlu bir branşa denk gelmeli |
+| Ne yapar | Saf aritmetik; kesin çelişkileri bulur | Kalan sezonu **gerçekten çözmeyi dener** |
+| Hız | Milisaniye | Grup başına dakikaya kadar |
+| Ne zaman | Her sayfa açılışında | Yalnız butonla |
+| Kapsam | Aşağıdaki R1–R5 + kapasite | Kombinatorik çıkmazlar dahil **her şey** |
+
+### Denetlenen riskler
+
+| # | Risk | Düzey |
+|---|---|---|
+| — | Zorunlu branş yetişmiyor / o branşta gidilebilecek birim kalmamış | ❌ / ⚠️ |
+| — | `must_fill` birim kalan aylarda dolamaz; toplam kontenjan öğrenci sayısına tam eşit | ❌ / ⚠️ |
+| R1 | Grubun erişebildiği toplam kontenjan < gruptaki aktif öğrenci sayısı | ❌ |
+| R2 | Öğrencinin daha gitmediği **farklı** birim sayısı < kalan ay (madde 1 çıkmazı, ad bazında sayılır) | ❌ |
+| R3 | Sabit atama ileride çakışacak: birim pasif, öğrenci o bölüme başka ayda gidiyor, kontenjan aşımı, cinsiyet/grup/yasak uyuşmazlığı | ❌ |
+| R4 | "Birlikte tut": bu kişileri aynı anda alabilecek birim yok | ❌ |
+| R5 | Aynı ikili için hem "ayrı tut" hem "birlikte tut" tanımlı (pencereler kesişiyor) | ❌ |
 
 Mesajlar öğrenci bazında değil **toplu** üretilir (ilk birkaç ad + *"ve N kişi
 daha"*), 64 kişilik sezonda panel okunabilir kalsın diye.
+
+### Kullanıcı bunları nerede görür
+
+- **Ana Sayfa** — risk varsa kırmızı/sarı özet + Kural Kontrolü'ne bağlantı
+- **Rotasyon Oluştur** ve **Yıllık Tablo** — üstte *🔎 Sezon ön-denetimi* paneli
+- **Kural Kontrolü ▸ 🔮 Kalan sezon** — tam liste + **deneme çözümü** düğmesi
+- **Veri Yönetimi ▸ Kurallar** — sabit atama / birlikte tut **eklenirken**
+  anlık uyarı (`fixed_assignment_conflicts`, `units_fitting_all`); uyarı
+  engellemez, sorunun oluşmasını önler
+
+### İki tasarım kararı
+
+**`risk.py` ortools'u modül düzeyinde import etmez.** Panel her sayfa
+açılışında render edilir; çözücünün bozuk olduğu bir kurulumda (bkz. Python
+3.14 uyarısı) panelin uygulamayı düşürmemesi gerekir. `solve_season` yalnız
+`deep_feasibility` içinde, tembel yüklenir.
+
+**Deneme çözümü arka plan thread'inde çalışır.** Önce senkron yazılmıştı;
+ölçümde Streamlit'in tüm sunucusunu bloke ettiği ve tarayıcının *"Is Streamlit
+still running?"* hatası bastığı görüldü — kullanıcı uygulamanın çöktüğünü
+sanar. Artık `ui/violations.py:_RISK_JOBS` + `st.fragment(run_every=2.0)`
+deseniyle (toplu üretimdeki `_BULK_JOBS` ile aynı mantık) arka planda koşar;
+bu sırada uygulama tamamen kullanılabilir kalır. Thread hiçbir `st.*` çağrısı
+yapmaz.
+
+Riskler kaydı **engellemez** — bilgilendirmedir, kararı kullanıcı verir.
 
 ---
 
@@ -511,6 +552,7 @@ rotasyon/             çekirdek mantık (arayüzden bağımsız)
   planner.py          toplu üretim (açgözlü + ortak model emniyet ağı)
   rules.py            atamaları kurallara karşı denetleyen bağımsız motor
   capacity.py         üretim öncesi sezon kapasite aritmetiği
+  risk.py             ileriye dönük risk denetimi + deneme çözümü
   catalog.py          varsayılan birim kataloğu (data/default_units.json)
   gender_guess.py     isimden çevrimdışı cinsiyet tahmini
   excel_io.py         Excel okuma/yazma (renk/font dahil)
