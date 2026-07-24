@@ -262,6 +262,25 @@ için 20 farklı öğrenci gerekir ama uygun yalnız 8 kişi var; kontenjanı en
 1 yapın"*). Çözüm veri düzeyindedir: kontenjanı düşürmek veya toplam kontenjana
 birkaç kişilik **pay** bırakmak.
 
+### Zorunlu branşların ileriye dönük denetimi
+
+Aynı panel, kapasitenin yanında **öğrenci bazında sezon zorunluluklarını** da
+önden hesaplar (`season_requirement_findings`). Gerekçe: kural denetleyicisi
+(madde 6/7) bir öğrencinin palyatif görmediğini ancak **dönemin son ayı
+atandığında** hata sayar — yani telafi imkânı kalmadığında. Bu denetim aynı
+riski her ay sorar: *"kalan aylarda bu zorunluluk hâlâ karşılanabilir mi?"*
+
+Üç ayrı risk raporlanır:
+
+| Durum | Düzey | Anlamı |
+|---|---|---|
+| Eksik zorunlu branş sayısı > kalan ay | ❌ hata | Artık imkânsız; geçmiş aylar düzeltilmeli |
+| O branşta gidilebilecek birim kalmamış (tekrar yasağı / cinsiyet kısıtı / yasaklı birim) | ❌ hata | Birim eklenmeli veya kısıt gevşetilmeli |
+| Eksik branş sayısı = kalan ay | ⚠️ uyarı | Sıfır pay: kalan her ay zorunlu bir branşa denk gelmeli |
+
+Mesajlar öğrenci bazında değil **toplu** üretilir (ilk birkaç ad + *"ve N kişi
+daha"*), 64 kişilik sezonda panel okunabilir kalsın diye.
+
 ---
 
 ## Sezon ortası dinamik değişiklikler

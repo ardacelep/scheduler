@@ -73,7 +73,7 @@ def render(store) -> None:
 
     # Kapasite ön-denetimi: sezon 8. ayda duvara çarpmadan ÖNCE söyle.
     # (students zaten aktiflere süzülmüş — panel de aktifleri kullanır.)
-    capacity_findings_panel(students, units, months, all_assignments)
+    capacity_findings_panel(students, units, months, all_assignments, settings)
 
     c1, c2 = st.columns(2)
     group = c1.selectbox(

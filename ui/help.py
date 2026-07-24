@@ -178,6 +178,16 @@ _FAQ = [
         "uyarıları göster* kutusunu kapatabilirsiniz.",
     ),
     (
+        "Bir öğrencinin zorunlu branşı eksik kalırsa önceden uyarır mı?",
+        "Evet. Rotasyon Oluştur ve Yıllık Tablo ekranlarının üstündeki "
+        "**🔎 Sezon kapasite denetimi** paneli her ay şunu hesaplar: her "
+        "öğrenci, kalan aylarda zorunlu branşlarını (cerrahi, dahili, yoğun "
+        "bakım, palyatif; ebelikte doğum salonu) hâlâ görebilir mi? "
+        "Görebilecek ay kalmadıysa ya da o branşta gidebileceği birim "
+        "kalmadıysa **hata** olarak, tam denk geliyorsa (hiç pay yoksa) "
+        "**uyarı** olarak bildirilir — sezon sonunu beklemez.",
+    ),
+    (
         "Bir şubeyi (sınıfı) diğer gruba almam gerekiyor.",
         "Veri Yönetimi ▸ 🎨 Sınıflar sekmesindeki **“Sınıf → grup "
         "eşleştirmesi”** bölümünden şubenin grubunu seçip uygulayın; o "
