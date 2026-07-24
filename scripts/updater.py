@@ -56,6 +56,10 @@ def _git(args, root: Path, timeout: int = 30):
             cwd=root,
             capture_output=True,
             text=True,
+            # git çıktısı (commit mesajları dahil) UTF-8'dir; Windows'ta
+            # varsayılan yerel kodlama Türkçe karakterleri bozar.
+            encoding="utf-8",
+            errors="replace",
             timeout=timeout,
         )
         return proc.returncode, (proc.stdout + proc.stderr).strip()
@@ -164,6 +168,10 @@ def main() -> int:
     os.chdir(ROOT)
     sys.path.insert(0, str(ROOT))
     import run_app  # başlatıcı; kilit denetimi ve uygulama açılışı onda
+
+    # Konsolu UTF-8'e al: güncelleme günlüğündeki commit mesajları (Türkçe)
+    # bozuk görünmesin. run_app'teki ortak yardımcıyı kullanır.
+    run_app.make_console_utf8()
 
     running = run_app.running_instance_port(ROOT)
     if running:

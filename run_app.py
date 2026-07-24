@@ -138,8 +138,33 @@ def setup_logging(work_dir: Path) -> Path | None:
 # --------------------------------------------------------------------------
 # Windows konsol/pencere davranışı
 # --------------------------------------------------------------------------
+def make_console_utf8() -> None:
+    """Konsolu ve Python akışlarını UTF-8'e alır (Türkçe karakter bozulmasın).
+
+    Windows konsolu varsayılan olarak cp850/cp857 kod sayfasını kullanır;
+    UTF-8 metin (git çıktısı, commit mesajları, uyarılar) 'Ã¼' gibi bozuk
+    görünür. Hem konsol çıktı/giriş kod sayfasını 65001 (UTF-8) yapar hem de
+    sys.stdout/stderr'i UTF-8'e reconfigure eder. Her yerde çağrılabilir.
+    """
+    if IS_WINDOWS:
+        try:
+            import ctypes
+
+            ctypes.windll.kernel32.SetConsoleOutputCP(65001)
+            ctypes.windll.kernel32.SetConsoleCP(65001)
+        except Exception:
+            pass
+    for akış in (sys.stdout, sys.stderr):
+        try:
+            akış.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass  # _Tee sarmalayıcısı ya da reconfigure'suz akış
+
+
 def prepare_console() -> None:
-    """Konsol başlığını ayarlar ve QuickEdit (tıklayınca donma) kapatır."""
+    """Konsol başlığını ayarlar, UTF-8'e alır ve QuickEdit'i (tıklayınca
+    donma) kapatır."""
+    make_console_utf8()
     if not IS_WINDOWS:
         return
     try:
@@ -289,6 +314,9 @@ def run_streamlit(port: int) -> None:
 
 
 def main() -> int:
+    # UTF-8'i EN BAŞTA, günlük sarmalayıcısından (_Tee) önce kur: böylece
+    # hem konsol hem günlük dosyası Türkçe karakteri doğru yazar.
+    make_console_utf8()
     work_dir, using_fallback = choose_working_dir()
     os.chdir(work_dir)
     log_path = setup_logging(work_dir)

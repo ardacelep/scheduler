@@ -67,6 +67,25 @@ def test_up_to_date(tmp_path):
     assert result.status == "guncel"
 
 
+def test_turkish_commit_message_decoded_utf8(tmp_path):
+    """git çıktısı UTF-8 çözülmeli — Windows'ta commit mesajı bozulmasın.
+
+    _git text=True'yu locale kodlamasıyla çözerse "İ ş ğ ü" gibi harfler
+    'Ã'lı bozuk dizilere döner; encoding='utf-8' bunu engeller.
+    """
+    _o, dev, site = make_repos(tmp_path)
+    (dev / "app.py").write_text("SURUM = 2\n", encoding="utf-8")
+    git(dev, "add", "-A")
+    git(dev, "commit", "-m", "İleriye dönük düzeltme: şubeler güncellendi")
+    git(dev, "push", "origin", "main")
+
+    result = updater.check_and_update(site, log=lambda *_: None)
+    assert result.status == "guncellendi"
+    birlesik = " ".join(result.notes)
+    assert "İleriye dönük düzeltme: şubeler güncellendi" in birlesik
+    assert "Ã" not in birlesik  # bozuk kodlama izi yok
+
+
 def test_update_applies_and_preserves_user_data(tmp_path):
     _o, dev, site = make_repos(tmp_path)
     push_change(dev, version=2)
