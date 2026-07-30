@@ -108,6 +108,12 @@ _SCREENS = [
         "görmek burada yapılır.",
     ),
     (
+        "📊 Grup Dağılımı",
+        "Her grup için birim listesi ve kontenjanları (×N); toplamın öğrenci "
+        "sayısına oturup oturmadığını gösterir. Bir birimi bir grup için iptal "
+        "edebilirsiniz (elle yaparken griye boyama).",
+    ),
+    (
         "🛡️ Kural Kontrolü",
         "Kayıtlı bütün atamaları kurallara karşı denetler; hangi kuralın "
         "nerede çiğnendiğini düz Türkçe yazar.",
@@ -202,6 +208,16 @@ _FAQ = [
         "**hiçbir şeyi kaydetmez** — sadece dener. Önemli bir değişiklik "
         "yaptıktan sonra (kontenjan düşürme, birim kapatma, yeni kural) "
         "çalıştırmak iyi bir alışkanlıktır.",
+    ),
+    (
+        "Bir grubun hangi birimlere kaç kişi verildiğini nasıl görürüm/ayarlarım?",
+        "📊 **Grup Dağılımı** ekranı tam bunun için. Her grup için birim "
+        "listesini kontenjanıyla (×N) gösterir ve toplamın grubun öğrenci "
+        "sayısına oturup oturmadığını söyler. Bir birimi bir grup için "
+        "**iptal** ederseniz (elle yaparken griye boyadığınız gibi) o gruptan "
+        "kimse oraya verilmez — çözücü de buna uyar. İptal ettiğiniz birim "
+        "listede gri/üstü çizili kalır (atlamamanız için). “Tekrarlı liste” "
+        "bölümü, elle tuttuğunuz tablonun birebir kopyalanabilir hâlini verir.",
     ),
     (
         "Bir şubeyi (sınıfı) diğer gruba almam gerekiyor.",
