@@ -159,6 +159,9 @@ class _Obligation:
     unit_ids: list[str]  # bu öğrenci için borcu kapatan aktif birimler
     count: int = 1  # kaç ayrı ziyaret gerekiyor
     urgency_multiplier: int = 1  # erken-karşılama bonusunda ağırlık
+    # hard=False → SERT kısıt kurulmaz, yalnız amaç fonksiyonunda ödüllendirilir
+    # ("tercih" gereksinimleri): karşılanamaması sezonu çözümsüz yapmaz.
+    hard: bool = True
 
 
 def _obligations_from_branches(
@@ -222,7 +225,7 @@ def _obligations_from_requirements(
     for s in students:
         items: list[_Obligation] = []
         for req in requirements:
-            if req.severity != SEVERITY_REQUIRED or not applies_to(req, s):
+            if not applies_to(req, s):
                 continue
             need = unmet_count(req, visited[s.id])
             if need <= 0:
@@ -230,14 +233,23 @@ def _obligations_from_requirements(
             uids = compile_for_student(req, s, units)
             if not uids:
                 continue
-            items.append(_Obligation(label=req.name, unit_ids=uids, count=need))
+            items.append(
+                _Obligation(
+                    label=req.name, unit_ids=uids, count=need,
+                    hard=req.severity == SEVERITY_REQUIRED,
+                )
+            )
         out[s.id] = items
     return out
 
 
 def _obligation_debt(items: list[_Obligation]) -> int:
-    """Kalan toplam ziyaret borcu (ayda en fazla 1 kapatılabilir)."""
-    return sum(o.count for o in items)
+    """Kalan toplam ZORUNLU ziyaret borcu (ayda en fazla 1 kapatılabilir).
+
+    Tercih gereksinimleri sayılmaz: karşılanmamaları sezonu çözümsüz yapmaz,
+    dolayısıyla "kalan ay yetişmiyor" hesabına girmemeleri gerekir.
+    """
+    return sum(o.count for o in items if o.hard)
 
 
 def _prefeasibility_reasons(
@@ -315,6 +327,8 @@ def _prefeasibility_reasons(
         uids_by_label: dict[str, set[str]] = defaultdict(set)
         for s in students:
             for o in unmet[s.id]:
+                if not o.hard:
+                    continue  # tercih: karşılanmazsa çözümsüzlük değil
                 need_by_label[o.label] += 1
                 uids_by_label[o.label].update(o.unit_ids)
         for label, count in need_by_label.items():
@@ -523,10 +537,10 @@ def solve_month(
     for s in students:
         need_now = _obligation_debt(unmet[s.id]) - remaining
         if need_now >= 1:
-            uids = {uid for o in unmet[s.id] for uid in o.unit_ids}
+            zorunlu = [o for o in unmet[s.id] if o.hard]
+            uids = {uid for o in zorunlu for uid in o.unit_ids}
             only_dogum = (
-                len(unmet[s.id]) == 1
-                and unmet[s.id][0].urgency_multiplier > 1
+                len(zorunlu) == 1 and zorunlu[0].urgency_multiplier > 1
             )
             label = "deadline_dogum" if only_dogum else "deadline_core"
             model.Add(
@@ -874,6 +888,9 @@ def solve_season(
     # sezon zorunlulukları: her karşılanmamış borç kalan aylarda kapatılmalı
     # — SERT kısıt (açgözlü lookahead değil). Borçlar v1 branşlarından ya da
     # v2 gereksinimlerinden gelir; buradan sonrası farkı görmez.
+    # "Tercih" borçları sert kısıt kurmaz, aşağıda amaç fonksiyonunda
+    # ödüllendirilir (soft_bonus).
+    soft_bonus: list = []
     for s in students:
         for o in obligations[s.id]:
             cover = [
@@ -882,6 +899,11 @@ def solve_season(
                 for m in solve_months
                 if (s.id, uid, m) in x
             ]
+            if not o.hard:
+                # tercih: sert kısıt yok, yalnız amaç fonksiyonunda ödül
+                for v in cover:
+                    soft_bonus.append(v)
+                continue
             # Madde 1 gereği aynı bölüme iki kez gidilmez: borcu kapatabilecek
             # ziyaret sayısının üst sınırı, uygun AYRI BİRİM ADI sayısıdır
             # (birim×ay çifti sayısı değil).
@@ -959,6 +981,12 @@ def solve_season(
     penalties: list[cp_model.LinearExpr] = []
     pool_units = [u for u in active_units if u.pool]
     genders_present = {s.gender for s in students if s.gender}
+
+    # "Tercih" gereksinimleri: karşılanması ÖDÜLLENDİRİLİR (negatif ceza),
+    # zorunlu değil. Ağırlık core_branch_early ile aynı aileden — zorunlu
+    # kuralları ezmeyecek kadar küçük.
+    for v in soft_bonus:
+        penalties.append(-weights["core_branch_early"] * v)
 
     for m in solve_months:
         # madde 4: havuz doluluk yayılımı

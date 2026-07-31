@@ -25,6 +25,7 @@ from .models import (
     GENDER_LABELS,
     INTENSITY_LABELS,
     PROGRAM_EBELIK,
+    SEVERITY_REQUIRED,
     RULE_AYRI_TUT,
     RULE_BIRIM_YASAK,
     RULE_BIRLIKTE_TUT,
@@ -390,13 +391,19 @@ def _check_requirements_deadlines(
             eksik = unmet_count(req, seen)
             if eksik > 0:
                 kac = f" ({eksik} ziyaret eksik)" if req.min_count > 1 else ""
+                # "Tercih" gereksinimi karşılanmaması kaydı ENGELLEMEZ:
+                # çözücü de onu zorunlu tutmaz, uyarı düzeyinde raporlanır.
+                # (Aksi halde çözücü görmezden gelirken denetleyici hata
+                # basardı — kullanıcı düzeltemeyeceği bir hatayla kalırdı.)
+                zorunlu = req.severity == SEVERITY_REQUIRED
                 out.append(
                     Violation(
                         rule_no=6,
-                        severity=ERROR,
+                        severity=ERROR if zorunlu else WARNING,
                         message=(
-                            f"{s.full_name}: '{req.name}' gereksinimi "
-                            f"karşılanmamış{kac}."
+                            f"{s.full_name}: '{req.name}' "
+                            + ("gereksinimi" if zorunlu else "tercihi")
+                            + f" karşılanmamış{kac}."
                         ),
                         student_id=sid,
                     )

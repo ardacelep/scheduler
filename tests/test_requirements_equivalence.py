@@ -16,6 +16,7 @@ from rotasyon.models import (
     SCOPE_ALL,
     SCOPE_CLASS,
     SCOPE_PROGRAM,
+    SEVERITY_PREFERRED,
     Student,
     Unit,
     BRANCH_CERRAHI,
@@ -25,7 +26,7 @@ from rotasyon.models import (
     BRANCH_YOGUN_BAKIM,
 )
 from rotasyon.requirements import from_legacy_settings
-from rotasyon.rules import check_all
+from rotasyon.rules import WARNING, blocking_errors, check_all
 from rotasyon.solver import solve_season
 
 MONTHS = ["EYLÜL", "EKİM", "KASIM", "ARALIK"]
@@ -298,6 +299,66 @@ def test_checker_silent_before_season_ends():
     assert found == []
 
 
+# ---- "Tercih" (yumuşak) gereksinimler ----
+
+def test_preference_never_makes_season_infeasible():
+    """Tercih karşılanamasa bile sezon çözülebilmeli — zorunlu DEĞİL."""
+    units, students = _units(), _students()
+    imkansiz = Requirement(
+        name="Tercih ama imkânsız", scope=SCOPE_ALL,
+        unit_keys=["YB/B", "YB/C"], min_count=3, severity=SEVERITY_PREFERRED,
+    )
+    res = solve_season(students, units, MONTHS, MONTHS, [], SETTINGS,
+                       random_seed=4, requirements=[imkansiz])
+    assert res.status in ("OPTIMAL", "FEASIBLE"), res.infeasible_reasons
+
+
+def test_same_requirement_as_required_is_infeasible():
+    """Aynı gereksinim ZORUNLU olsaydı çözümsüz olurdu — fark budur."""
+    units, students = _units(), _students()
+    zorunlu = Requirement(
+        name="Zorunlu ve imkânsız", scope=SCOPE_ALL,
+        unit_keys=["YB/B", "YB/C"], min_count=3,
+    )
+    res = solve_season(students, units, MONTHS, MONTHS, [], SETTINGS,
+                       requirements=[zorunlu])
+    assert res.status == "INFEASIBLE"
+
+
+def test_preference_is_still_pursued_when_possible():
+    """Tercih zorunlu değil ama karşılanabiliyorsa çözücü onu seçmeli."""
+    units, students = _units(), _students()
+    tercih = Requirement(
+        name="DİYALİZ tercihi", scope=SCOPE_ALL, unit_keys=["DİYALİZ"],
+        severity=SEVERITY_PREFERRED,
+    )
+    res = solve_season(students, units, MONTHS, MONTHS, [], SETTINGS,
+                       random_seed=21, requirements=[tercih])
+    assert res.status in ("OPTIMAL", "FEASIBLE"), res.infeasible_reasons
+    seen = _unit_names_seen(res, students, units)
+    # 4 ay, 3 öğrenci, DİYALİZ kontenjanı 2 → herkese yetecek yer var
+    assert all("DİYALİZ" in v for v in seen.values()), seen
+
+
+def test_unmet_preference_is_warning_not_error():
+    """Denetleyici tercihi UYARI sayar; kaydı engellemez."""
+    units, students = _units(), _students()
+    asg = _full_season_assignments(students, units)
+    tercih = Requirement(
+        name="Karşılanmayan tercih", scope=SCOPE_ALL,
+        unit_keys=["DOĞ.SAL"], severity=SEVERITY_PREFERRED,
+    )
+    found = [
+        v for v in check_all(students, units, asg, MONTHS, settings=SETTINGS,
+                             requirements=[tercih])
+        if v.rule_no == 6
+    ]
+    assert found, "tercih karşılanmadığında rapor edilmeli"
+    assert all(v.severity == WARNING for v in found)
+    # kaydı engellememeli
+    assert blocking_errors(found) == []
+
+
 def test_checker_skips_requirement_with_no_matching_unit():
     """Hastanede o birim hiç yoksa kullanıcı boş yere uyarılmaz."""
     units, students = _units(), _students()
@@ -310,3 +371,33 @@ def test_checker_skips_requirement_with_no_matching_unit():
         if v.rule_no == 6
     ]
     assert found == []
+
+
+# ---- Gereksinimler + kullanıcı kuralları birlikte ----
+
+def test_requirements_and_custom_rules_work_together():
+    """'Ayrı tut' gibi kullanıcı kuralları gereksinimlerle birlikte geçerli.
+
+    Gereksinim ve özel kural AYRI kavramlardır; biri diğerinin yerine geçmez.
+    """
+    from rotasyon.models import CustomRule, RULE_AYRI_TUT
+
+    units, students = _units(), _students()
+    ayse, fatma = students[0], students[1]
+    kural = CustomRule(type=RULE_AYRI_TUT,
+                       student_ids=[ayse.id, fatma.id])
+    reqs = from_legacy_settings(SETTINGS, units)
+
+    res = solve_season(students, units, MONTHS, MONTHS, [], SETTINGS,
+                       custom_rules=[kural], random_seed=9, requirements=reqs)
+    assert res.status in ("OPTIMAL", "FEASIBLE"), res.infeasible_reasons
+
+    # ayrı tut: hiçbir ay aynı birimde olmamalılar
+    for m in MONTHS:
+        assert res.assignments[(ayse.id, m)] != res.assignments[(fatma.id, m)], m
+
+    # gereksinimler yine de karşılanmış olmalı
+    seen = _branches_seen(res, students, units)
+    for name in ("Ayşe", "Fatma", "Mehmet"):
+        assert BRANCH_YOGUN_BAKIM in seen[name], name
+    assert BRANCH_DOGUM_SALONU in seen["Ayşe"]

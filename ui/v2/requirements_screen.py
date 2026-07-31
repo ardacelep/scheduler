@@ -233,17 +233,32 @@ def _editor(store, reqs, units, students) -> None:
             st.rerun()
 
     c1, c2 = st.columns(2)
+    n_secili = len(secili_birimler)
     min_count = c1.number_input(
         "En az kaç birim görülmeli", min_value=1,
-        max_value=max(1, len(secili_birimler)) if secili_birimler else 1,
+        max_value=max(1, n_secili) if secili_birimler else 1,
         value=1, key="req_new_min",
-        help="1 = listedeki birimlerden herhangi biri yeterli. "
-        "Listedeki birim sayısına eşit yapılırsa hepsi zorunlu olur.",
+        help="**1** = listedekilerden **herhangi biri** yeterli (en sık "
+        "kullanılan). Seçtiğiniz birim sayısına eşitlerseniz **hepsi** "
+        "zorunlu olur.",
     )
     severity = c2.selectbox(
         "Tür", SEVERITIES, format_func=lambda s: SEVERITY_LABELS[s],
         key="req_new_severity",
+        help="**Zorunlu**: karşılanmazsa çözücü o sezonu üretmez, denetleyici "
+        "hata verir. **Tercih**: çözücü karşılamaya çalışır ama gerekirse "
+        "vazgeçer; karşılanmazsa yalnız uyarı çıkar, kaydı engellemez.",
     )
+    # "Hepsi zorunlu" durumunda ayrı satırlar daha okunur hata mesajı verir:
+    # tek satır "2 ziyaret eksik" der, ayrı satırlar HANGİSİNİN eksik olduğunu
+    # söyler. Kullanıcıyı zorlamıyoruz, yalnız hatırlatıyoruz.
+    if secili_birimler and int(min_count) == n_secili and n_secili > 1:
+        st.info(
+            f"ℹ️ Bu haliyle **{n_secili} birimin hepsi** zorunlu olur. "
+            "Bunlar birbirinin alternatifi değil de ayrı ayrı zorunluluksa, "
+            "her biri için **ayrı bir gereksinim** eklemeniz daha iyi olur: "
+            "o zaman denetleyici hangisinin eksik olduğunu adıyla söyler."
+        )
 
     aday = Requirement(
         name=ad.strip() or "(adsız)",
