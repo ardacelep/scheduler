@@ -108,6 +108,7 @@ Sol kenar çubuğundan **sezon** seçilir, yeni sezon oluşturulur veya silinir
 | **Öğrenci Geçmişi** | Bir öğrencinin sezon boyunca gittiği birimler, ay sırasıyla |
 | **Excel İçe/Dışa Aktarım** | Rotasyon veya öğrenci listesi içe aktarma; yıllık renkli ve tek-ay renksiz dışa aktarma |
 | **Gereksinimler** *(Sezon Kurulumu)* | Sezonun zorunluluklarını gelen öğrencilere göre tanımlama: **kime — hangi birimlerden — kaç kez**. Kapsam (tüm/grup/sınıf/program/seçili öğrenci) + birim adıyla seçim + canlı kapsam özeti (aşağıda ayrıntı) |
+| **Kapasite Planı** *(Sezon Kurulumu)* | Birim başına tek **doldurma politikası** (Tam dolmalı / Mümkünse / Havuz / Yedek / Serbest) + kontenjan; toplamın canlı aritmetiği ve çelişki uyarıları (aşağıda ayrıntı) |
 | **Yardım** | Uygulama içi Türkçe kılavuz: adım adım başlangıç, ekran rehberi, sık sorulanlar, sorun giderme |
 
 ### Rotasyon Oluştur akışı
@@ -251,6 +252,39 @@ parametresi alır — verilmezse v1 branş yolu işler, yani mevcut davranış
 değişmez. `rotasyon/requirements.py:from_legacy_settings` v1 ayarlarını
 gereksinim listesine çevirir; `tests/test_requirements_equivalence.py` iki
 yolun aynı sonucu verdiğini kanıtlar.
+
+### Doldurma politikası (kapasite planı)
+
+Bir birimin doldurulma davranışı veri modelinde **dört ayrı boolean**'a
+dağılmıştı (`must_fill`, `single_slot`, `pool`, `reserve`). Bunlar mantıken
+birbirini dışlar ama model bunu engellemiyordu; kullanıcı dört kutucuğu tek tek
+işaretliyor ve **toplamı hiçbir yerde göremiyordu**.
+
+`rotasyon/fill_policy.py` aynı veri üzerinde **tek seçimlik** görünüm sunar
+(şema değişmez, v1 ekranları aynı bayrakları görür):
+
+| Politika | Motordaki karşılığı |
+|---|---|
+| 🔒 **Tam dolmalı** | SERT: `doluluk == kontenjan` her ay (madde 17) |
+| 🎯 **Mümkünse dolsun** | YUMUŞAK: boş kalırsa `single_slot_fill` (50) cezası |
+| ⚖️ **Havuz** | YUMUŞAK: havuzlar arası doluluk farkı küçültülür (`pool_balance`, 5) |
+| 🅿️ **Yedek** | YUMUŞAK: her yerleştirme `reserve_use` (15) cezalı |
+| ○ **Serbest** | Tercih yok; yalnız kontenjan sınırı |
+
+`policy_of()` bayraklardan politikayı okur (çakışmada en katı kazanır —
+katalogdaki FTR.ÜNİT hem `must_fill` hem `single_slot` taşır ve motorda zaten
+`must_fill` baskındır); `apply_policy()` dördünü tutarlı yazar.
+
+**Kapasite matematiği** (`group_capacity_plan`) kullanıcının elle tutturmaya
+çalıştığı hesabı otomatikleştirir: *tam dolanlar kaç kişi çekiyor → geriye kaç
+öğrenci kalıyor → havuz birimi başına kaç düşüyor*. Dört çelişkiyi kaydetmeden
+önce uyarır: tam dolanlar grubu aşıyor · tam dolanlar grubun tamamını tüketiyor
+· kontenjan öğrenci sayısının altında · kontenjan öğrenci sayısına tam eşit
+(her birim dolmak zorunda kalır, tekrar yasağıyla sezonu kilitler).
+
+Aynı aritmetik çözücünün ön-denetimine de eklendi: "tam dolmalı" toplamı grubu
+aşınca `solve_month` bunu **adıyla** söyler — önceden unsat core alakasız bir
+aile gösterebiliyordu ("elle sabitlenen atamalar", hiç kilitli hücre yokken).
 
 ---
 
@@ -473,8 +507,8 @@ Tasarım kararları:
 .venv/bin/python -m pytest tests/
 ```
 
-Şu an **332 test** yeşildir; her yerleşik kural, özel kurallar, gereksinimler
-(v2 kural modeli + v1 denkliği), çözücü, ortak sezon çözücüsü, kapasite
+Şu an **365 test** yeşildir; her yerleşik kural, özel kurallar, gereksinimler
+(v2 kural modeli + v1 denkliği), doldurma politikası ve kapasite matematiği, çözücü, ortak sezon çözücüsü, kapasite
 denetimi, cinsiyet tahmini, sezon yönetimi, dinamik değişiklikler, toplu taslak
 kalıcılığı, yedekleme/geri yükleme, başlatıcı yardımcıları ve Excel içe/dışa
 aktarımı kapsanır. `tests/test_e2e.py` referans

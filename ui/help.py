@@ -140,6 +140,14 @@ _SCREENS = [
         "Örn. 'D sınıfı — DOĞUM SALONU, 2.KAT DOĞUM birimlerinden en az 1'. "
         "Branş seçmenize gerek yok, birimleri doğrudan adıyla seçersiniz.",
     ),
+    (
+        "📦 Kapasite Planı (Sezon Kurulumu)",
+        "Hangi birime kaç kişi gideceğini ve nasıl doldurulacağını "
+        "belirlersiniz: her birimin tek bir politikası vardır (Tam dolmalı / "
+        "Mümkünse dolsun / Havuz / Yedek / Serbest). Ekran toplamı canlı "
+        "hesaplar: tam dolanlar kaç kişi çekiyor, geriye kaç öğrenci kalıyor, "
+        "kalanlar havuz birimi başına kaça düşüyor.",
+    ),
 ]
 
 
@@ -239,6 +247,17 @@ _FAQ = [
         "karşılanamayacak bir kural kurarsanız kırmızı uyarır. "
         "Bir sezonu ilk açtığınızda mevcut ayarlarınızdan başlangıç listesi "
         "üretebilirsiniz.",
+    ),
+    (
+        "“Şu birimler tam dolsun, kalanlar eşit dağılsın” nasıl kurulur?",
+        "📦 **Kapasite Planı** ekranından (Sezon Kurulumu bölümü). Her birime "
+        "tek bir politika verirsiniz: **Tam dolmalı** (her ay kontenjanı kadar "
+        "öğrenci bulunmak zorunda), **Mümkünse dolsun**, **Havuz** (kalanlar "
+        "buralara eşit dağılır), **Yedek** (yalnız başka yer kalmayınca), "
+        "**Serbest**. Ekran üstteki dört sayıyla toplamı canlı gösterir: "
+        "öğrenci sayısı, tam dolanların çektiği kişi, dağıtılacak kalan ve "
+        "havuz birimi başına ortalama. Tam dolanların toplamı grubu aşarsa "
+        "ekran uyarır — o kurulumla hiçbir ay üretilemez.",
     ),
     (
         "Bir şubeyi (sınıfı) diğer gruba almam gerekiyor.",

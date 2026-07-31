@@ -16,7 +16,7 @@ st.set_page_config(
 
 from ui import dashboard, data_management, history, rotation, violations  # noqa: E402
 from ui import excel_screen, group_distribution, help as help_screen, season_grid  # noqa: E402
-from ui.v2 import requirements_screen  # noqa: E402
+from ui.v2 import capacity_plan, requirements_screen  # noqa: E402
 from ui.common import (  # noqa: E402
     UNITS_CATALOG,
     create_season_with_units,
@@ -150,6 +150,10 @@ def main() -> None:
             st.Page(
                 _page(requirements_screen.render, "gereksinimler"),
                 title="Gereksinimler", icon="🎯", url_path="gereksinimler",
+            ),
+            st.Page(
+                _page(capacity_plan.render, "kapasite-plani"),
+                title="Kapasite Planı", icon="📦", url_path="kapasite-plani",
             ),
         ],
         "Destek": [

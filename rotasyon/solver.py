@@ -277,6 +277,18 @@ def _prefeasibility_reasons(
             f"Toplam kontenjan ({total_quota}) öğrenci sayısının ({n}) altında; "
             "kontenjanları artırın veya birim ekleyin."
         )
+    # "Tam dolmalı" birimler bir ayda BİRLİKTE kontenjanları kadar AYRI
+    # öğrenci ister (bir öğrenci ayda tek birimde olur) — toplamları grubu
+    # aşıyorsa çelişki kesindir. Bu kontrol olmadan unsat core alakasız bir
+    # aile gösterebiliyordu ("elle sabitlenen atamalar" gibi).
+    must_total = sum(u.quota for u in units if u.must_fill)
+    if must_total > n:
+        adlar = ", ".join(u.display_name for u in units if u.must_fill)
+        reasons.append(
+            f"“Tam dolmalı” birimler her ay toplam {must_total} öğrenci "
+            f"istiyor ama grupta {n} öğrenci var ({adlar}). Kontenjanlarını "
+            "düşürün ya da bazılarını “tam dolmalı” olmaktan çıkarın."
+        )
     exact_fill = total_quota == n
 
     for u in units:
