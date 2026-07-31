@@ -16,6 +16,7 @@ st.set_page_config(
 
 from ui import dashboard, data_management, history, rotation, violations  # noqa: E402
 from ui import excel_screen, group_distribution, help as help_screen, season_grid  # noqa: E402
+from ui.v2 import requirements_screen  # noqa: E402
 from ui.common import (  # noqa: E402
     UNITS_CATALOG,
     create_season_with_units,
@@ -140,6 +141,15 @@ def main() -> None:
             st.Page(
                 _page(excel_screen.render, "excel"),
                 title="Excel İçe/Dışa Aktarım", icon="📊", url_path="excel",
+            ),
+        ],
+        # v2: sezonun kurallarını gelen öğrencilere göre belirleme akışı.
+        # v1 ekranları aynı sezon verisiyle çalışmaya devam eder; v2
+        # olgunlaştıkça buraya yeni adımlar eklenecek.
+        "🆕 Sezon Kurulumu": [
+            st.Page(
+                _page(requirements_screen.render, "gereksinimler"),
+                title="Gereksinimler", icon="🎯", url_path="gereksinimler",
             ),
         ],
         "Destek": [

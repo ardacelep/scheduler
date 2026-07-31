@@ -251,6 +251,75 @@ def rule_active_in_month(rule: "CustomRule", month: str, months: list[str]) -> b
     return True
 
 
+# ---- Gereksinim (v2 kural modeli) ----
+# Tek kavram: "KİME — HANGİ BİRİMLERDEN — KAÇ KEZ".
+#
+# v1'de bir öğrencinin belirli birimleri görme zorunluluğu ancak dolaylı
+# kurulabiliyordu: birimlere branş atanır, sonra o branş season_requirements'a
+# eklenirdi. Bu dolayım hem gizliydi hem de zorunluluğu HERKESE uyguluyordu;
+# tek istisna (ebelik → doğum salonu) koda gömülüydü, kullanıcı ne görebiliyor
+# ne değiştirebiliyordu. Gereksinim bu üçünü tek, okunur bir satırda birleştirir.
+SCOPE_ALL = "tum"  # tüm öğrenciler
+SCOPE_GROUP = "grup"  # scope_value: "1" / "2"
+SCOPE_CLASS = "sinif"  # scope_value: sınıf adı (A/B/C/D...)
+SCOPE_PROGRAM = "program"  # scope_value: PROGRAMS içinden
+SCOPE_STUDENTS = "ogrenci"  # student_ids ile tek tek seçim
+REQUIREMENT_SCOPES = (
+    SCOPE_ALL,
+    SCOPE_GROUP,
+    SCOPE_CLASS,
+    SCOPE_PROGRAM,
+    SCOPE_STUDENTS,
+)
+SCOPE_LABELS = {
+    SCOPE_ALL: "Tüm öğrenciler",
+    SCOPE_GROUP: "Belirli grup",
+    SCOPE_CLASS: "Belirli sınıf",
+    SCOPE_PROGRAM: "Belirli program",
+    SCOPE_STUDENTS: "Seçili öğrenciler",
+}
+
+# Sert kural mı, yumuşak tercih mi
+SEVERITY_REQUIRED = "zorunlu"
+SEVERITY_PREFERRED = "tercih"
+SEVERITIES = (SEVERITY_REQUIRED, SEVERITY_PREFERRED)
+SEVERITY_LABELS = {
+    SEVERITY_REQUIRED: "Zorunlu (karşılanmazsa hata)",
+    SEVERITY_PREFERRED: "Tercih (karşılanmaya çalışılır)",
+}
+
+
+@dataclass
+class Requirement:
+    """Bir öğrenci kümesinin sezon boyunca görmesi gereken birimler.
+
+    Birimler `unit_keys` ile ADA göre tutulur (id ile değil): katalogda her
+    birim adı grup-1 ve grup-2 satırı olarak iki kez bulunur, ad üzerinden
+    eşleşince kural öğrencinin KENDİ grubundaki satırı otomatik seçer ve
+    birimler yeniden içe aktarılıp id'ler değişse de kural bozulmaz.
+    Anahtarlar `normalize.normalize_key` ile üretilir — madde 1'in (tekrar
+    yasağı) kullandığı eşleştirmenin aynısı.
+    """
+
+    name: str  # kullanıcının verdiği ad: "Yoğun bakım"
+    scope: str = SCOPE_ALL
+    scope_value: str = ""  # grup no / sınıf adı / program kodu
+    student_ids: list[str] = field(default_factory=list)  # SCOPE_STUDENTS
+    unit_keys: list[str] = field(default_factory=list)  # normalize edilmiş adlar
+    min_count: int = 1  # bu birimlerden en az kaçı görülmeli
+    severity: str = SEVERITY_REQUIRED
+    active: bool = True
+    note: str = ""
+    id: str = field(default_factory=_new_id)
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "Requirement":
+        return cls(**d)
+
+
 DEFAULT_MONTHS = [
     "EYLÜL", "EKİM", "KASIM", "ARALIK", "OCAK",
     "ŞUBAT", "MART", "NİSAN", "MAYIS", "HAZİRAN",

@@ -17,9 +17,11 @@ from .models import (
     Assignment,
     ClassGroup,
     CustomRule,
+    Requirement,
     Student,
     Unit,
     DEFAULT_SETTINGS,
+    SCOPE_STUDENTS,
 )
 
 T = TypeVar("T")
@@ -90,6 +92,15 @@ class Store:
 
     def save_custom_rules(self, rules: list[CustomRule]) -> None:
         self._save_list("rules", rules)
+
+    # ---- gereksinimler (v2 kural modeli) ----
+    # Dosya yoksa boş liste döner: v2'yi hiç kullanmamış sezonlar etkilenmez,
+    # v1 ekranları bu dosyayı hiç okumaz.
+    def load_requirements(self) -> list[Requirement]:
+        return self._load_list("requirements", Requirement.from_dict)
+
+    def save_requirements(self, requirements: list[Requirement]) -> None:
+        self._save_list("requirements", requirements)
 
     # ---- toplu taslak (kalıcı) ----
     # Toplu üretim dakikalar sürebilir; sonucu yalnız oturum belleğinde
@@ -235,6 +246,15 @@ class SeasonManager:
             store.save_units(source.load_units())
             store.save_classes(source.load_classes())
             store.save_settings(source.load_settings())
+            # Gereksinimler birimlere ADA göre bağlı olduğundan yeni sezona
+            # taşınabilir. Tek istisna: tek tek öğrenci seçilmiş gereksinimler
+            # — öğrenciler kopyalanmadığı için o id'ler yeni sezonda karşılıksız
+            # kalırdı, bu yüzden atlanır.
+            carried = [
+                r for r in source.load_requirements() if r.scope != SCOPE_STUDENTS
+            ]
+            if carried:
+                store.save_requirements(carried)
         self.set_active(dir_name)
         return store
 

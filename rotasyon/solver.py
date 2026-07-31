@@ -19,10 +19,12 @@ from ortools.sat.python import cp_model
 from .models import (
     Assignment,
     CustomRule,
+    Requirement,
     Student,
     Unit,
     BRANCH_DOGUM_SALONU,
     BRANCH_LABELS,
+    SEVERITY_REQUIRED,
     INTENSITY_HAFIF,
     INTENSITY_YOGUN,
     PROGRAM_EBELIK,
@@ -144,12 +146,106 @@ def _is_eligible(
     return True
 
 
+@dataclass
+class _Obligation:
+    """Bir öğrencinin sezon sonuna kadar karşılaması gereken tek bir borç.
+
+    v1 (branş bazlı) ve v2 (gereksinim bazlı) zorunlulukların ORTAK şekli:
+    "şu birimlerden şu kadarını gör". Çözücünün geri kalanı yalnız bu şekli
+    tanır, zorunluluğun nereden geldiğini bilmez.
+    """
+
+    label: str  # kullanıcıya gösterilen ad ("Yoğun Bakım" / "Ebelik → doğum")
+    unit_ids: list[str]  # bu öğrenci için borcu kapatan aktif birimler
+    count: int = 1  # kaç ayrı ziyaret gerekiyor
+    urgency_multiplier: int = 1  # erken-karşılama bonusunda ağırlık
+
+
+def _obligations_from_branches(
+    students, units, settings, seen_branches
+) -> dict[str, list[_Obligation]]:
+    """v1 yolu: settings.season_requirements branşları + madde 7 (ebelik→doğum).
+
+    Bir branş yalnız o branştan birim tanımlıysa uygulanır (palyatifsiz bir
+    hastanede palyatif zorunluluğu çözümü kilitlemesin).
+    """
+    branch_unit_ids: dict[str, list[str]] = defaultdict(list)
+    for u in units:
+        branch_unit_ids[u.branch_category].append(u.id)
+    available = set(branch_unit_ids)
+    req_branches = [
+        r["branch"]
+        for r in settings.get("season_requirements", [])
+        if r.get("branch") and r["branch"] in available
+    ]
+    out: dict[str, list[_Obligation]] = {}
+    for s in students:
+        items: list[_Obligation] = []
+        for b in req_branches:
+            if b not in seen_branches[s.id]:
+                items.append(
+                    _Obligation(
+                        label=BRANCH_LABELS.get(b, b),
+                        unit_ids=list(branch_unit_ids.get(b, [])),
+                    )
+                )
+        # NOT: madde 7, doğum birimi hiç tanımlı olmasa bile eklenir (v1
+        # davranışı) — o durumda borç kapatılamaz ve çözücü bunu açıkça
+        # çözümsüzlük olarak raporlar.
+        if (
+            s.program == PROGRAM_EBELIK
+            and BRANCH_DOGUM_SALONU not in seen_branches[s.id]
+        ):
+            items.append(
+                _Obligation(
+                    label=BRANCH_LABELS[BRANCH_DOGUM_SALONU],
+                    unit_ids=list(branch_unit_ids.get(BRANCH_DOGUM_SALONU, [])),
+                    urgency_multiplier=3,  # madde 7 daha acil
+                )
+            )
+        out[s.id] = items
+    return out
+
+
+def _obligations_from_requirements(
+    students, units, requirements, visited
+) -> dict[str, list[_Obligation]]:
+    """v2 yolu: kullanıcının tanımladığı gereksinimler.
+
+    Hiç birime derlenmeyen gereksinim atlanır — v1'in "o branştan birim yoksa
+    uygulama" davranışının karşılığı; yoksa hastanede bulunmayan bir birim
+    tüm sezonu çözümsüz yapardı.
+    """
+    from .requirements import applies_to, compile_for_student, unmet_count
+
+    out: dict[str, list[_Obligation]] = {}
+    for s in students:
+        items: list[_Obligation] = []
+        for req in requirements:
+            if req.severity != SEVERITY_REQUIRED or not applies_to(req, s):
+                continue
+            need = unmet_count(req, visited[s.id])
+            if need <= 0:
+                continue
+            uids = compile_for_student(req, s, units)
+            if not uids:
+                continue
+            items.append(_Obligation(label=req.name, unit_ids=uids, count=need))
+        out[s.id] = items
+    return out
+
+
+def _obligation_debt(items: list[_Obligation]) -> int:
+    """Kalan toplam ziyaret borcu (ayda en fazla 1 kapatılabilir)."""
+    return sum(o.count for o in items)
+
+
 def _prefeasibility_reasons(
     students: list[Student],
     units: list[Unit],
     visited: dict[str, set[str]],
     remaining: int,
-    unmet: dict[str, list[str]],
+    unmet: dict[str, list[_Obligation]],
     blocked_intensity: dict[str, set[str]],
 ) -> list[str]:
     """CP-SAT'tan önce ucuz, kesin çelişki kontrolleri.
@@ -158,8 +254,8 @@ def _prefeasibility_reasons(
     unsat core'dan çok daha somut bir açıklama verir ("DİŞ için uygun
     öğrenci kalmadı" gibi).
 
-    `unmet`: öğrenci başına, sezon sonuna kadar hâlâ görülmesi gereken
-    branşlar (settings.season_requirements + madde 7 doğum salonu).
+    `unmet`: öğrenci başına, sezon sonuna kadar kapatılması gereken borçlar
+    (v1 branş zorunlulukları ya da v2 gereksinimleri — ikisi de _Obligation).
     """
     reasons: list[str] = []
     total_quota = sum(u.quota for u in units)
@@ -199,30 +295,37 @@ def _prefeasibility_reasons(
                 "peş peşe yoğun/hafif yasağı ve kısıtlar tüm birimleri eliyor)."
             )
 
-    # Sezon zorunlulukları: ayda en çok 1 branş karşılanabilir → kalan ay
-    # sayısı, karşılanmamış zorunluluk sayısını taşımıyorsa çözüm yoktur.
+    # Sezon zorunlulukları: ayda en çok 1 borç kapatılabilir → kalan ay
+    # sayısı toplam borcu taşımıyorsa çözüm yoktur.
     for s in students:
-        if len(unmet[s.id]) > remaining + 1:
-            labels = ", ".join(BRANCH_LABELS.get(b, b) for b in unmet[s.id])
+        debt = _obligation_debt(unmet[s.id])
+        if debt > remaining + 1:
+            labels = ", ".join(o.label for o in unmet[s.id])
             reasons.append(
                 f"{s.full_name}: kalan {remaining + 1} ayda karşılanması "
-                f"gereken {len(unmet[s.id])} sezon zorunluluğu var ({labels}) "
+                f"gereken {debt} sezon zorunluluğu var ({labels}) "
                 "— ayda en fazla biri karşılanabilir, yetişmez."
             )
 
     if remaining == 0:
-        # Son ay: her branş için, o branşı görmek zorunda olanlar kontenjana sığmalı
-        need_by_branch: dict[str, int] = defaultdict(int)
+        # Son ay: aynı borcu taşıyanlar o borcu kapatan birimlerin
+        # kontenjanına sığmalı
+        quota_by_unit = {u.id: u.quota for u in units}
+        need_by_label: dict[str, int] = defaultdict(int)
+        uids_by_label: dict[str, set[str]] = defaultdict(set)
         for s in students:
-            for b in unmet[s.id]:
-                need_by_branch[b] += 1
-        for b, count in need_by_branch.items():
-            quota = sum(u.quota for u in units if u.branch_category == b)
+            for o in unmet[s.id]:
+                need_by_label[o.label] += 1
+                uids_by_label[o.label].update(o.unit_ids)
+        for label, count in need_by_label.items():
+            quota = sum(
+                quota_by_unit.get(uid, 0) for uid in uids_by_label[label]
+            )
             if count > quota:
                 reasons.append(
-                    f"Son ayda {BRANCH_LABELS.get(b, b)} görmesi gereken "
-                    f"{count} öğrenci var ama bu branştaki birimlerin toplam "
-                    f"kontenjanı {quota}."
+                    f"Son ayda {label} görmesi gereken "
+                    f"{count} öğrenci var ama bunu karşılayan birimlerin "
+                    f"toplam kontenjanı {quota}."
                 )
     return reasons
 
@@ -236,9 +339,14 @@ def solve_month(
     locked: dict[str, str] | None = None,
     random_seed: int | None = None,
     custom_rules: list[CustomRule] | None = None,
+    requirements: list[Requirement] | None = None,
     _diagnostic: bool = False,
 ) -> SolveResult:
     """`students` (tek grup) için `month` ayının atamasını çözer.
+
+    `requirements` (v2): verilirse sezon zorunlulukları bu gereksinim
+    listesinden okunur. Verilmezse v1 yolu işler — settings.season_requirements
+    branşları + koda gömülü madde 7 (ebelik → doğum salonu).
 
     `units` grubun TÜM birimlerini içermeli (pasifler dahil): atama yalnız
     aktif ve kontenjanlı birimlere yapılır, ama geçmiş yorumu (madde 1 tekrar
@@ -289,33 +397,25 @@ def solve_month(
     }
     # Aynı ayda başka gruba/aya ait çakışan atama olmadığı varsayılır (UI temizler).
 
-    # ---- sezon zorunlulukları: her öğrenci sezon boyunca hangi branşları
-    # görmüş olmalı? (settings.season_requirements; yalnız bu grupta o
-    # branştan aktif birim varsa uygulanır — palyatifsiz bir hastanede
-    # palyatif zorunluluğu çözümü kilitlemesin.) Madde 7 (ebelik → doğum
-    # salonu) her zaman ayrıca eklenir.
-    seen_branches: dict[str, set[str]] = {}
-    for s in students:
-        seen_branches[s.id] = {
-            catalog_by_id[a.unit_id].branch_category
-            for a in history
-            if a.student_id == s.id and a.unit_id in catalog_by_id
-        }
-    available_branches = {u.branch_category for u in units}
-    req_branches = [
-        r["branch"]
-        for r in settings.get("season_requirements", [])
-        if r.get("branch") and r["branch"] in available_branches
-    ]
-    unmet: dict[str, list[str]] = {}
-    for s in students:
-        needs = [b for b in req_branches if b not in seen_branches[s.id]]
-        if (
-            s.program == PROGRAM_EBELIK
-            and BRANCH_DOGUM_SALONU not in seen_branches[s.id]
-        ):
-            needs.append(BRANCH_DOGUM_SALONU)
-        unmet[s.id] = needs
+    # ---- sezon zorunlulukları: her öğrencinin sezon sonuna kadar kapatması
+    # gereken borçlar. `requirements` verilirse v2 gereksinim modeli, aksi
+    # halde v1 branş yolu (settings.season_requirements + madde 7 ebelik→doğum).
+    # İkisi de aynı `_Obligation` şekline derlenir; aşağısı farkı görmez.
+    if requirements is not None:
+        unmet = _obligations_from_requirements(
+            students, units, requirements, visited
+        )
+    else:
+        seen_branches: dict[str, set[str]] = {}
+        for s in students:
+            seen_branches[s.id] = {
+                catalog_by_id[a.unit_id].branch_category
+                for a in history
+                if a.student_id == s.id and a.unit_id in catalog_by_id
+            }
+        unmet = _obligations_from_branches(
+            students, units, settings, seen_branches
+        )
 
     # ---- peş peşe yoğun/hafif yasağı: komşu ayların yoğunluğu bu ayda
     # aynı türden birimleri kapatır (araya ay eklenirken iki yön de denetlenir)
@@ -420,23 +520,17 @@ def solve_month(
     # Öğrencinin karşılanmamış zorunluluk sayısı kalan ay sayısını aşarsa
     # bu ayda mutlaka bir zorunlu branşa gitmeli (sert kısıt); daha erkense
     # objective bonusuyla yönlendirilir.
-    branch_unit_ids: dict[str, list[str]] = defaultdict(list)
-    for u in units:
-        branch_unit_ids[u.branch_category].append(u.id)
-
     for s in students:
-        need_now = len(unmet[s.id]) - remaining
+        need_now = _obligation_debt(unmet[s.id]) - remaining
         if need_now >= 1:
-            uids = [
-                uid for b in unmet[s.id] for uid in branch_unit_ids.get(b, [])
-            ]
-            label = (
-                "deadline_dogum"
-                if unmet[s.id] == [BRANCH_DOGUM_SALONU]
-                else "deadline_core"
+            uids = {uid for o in unmet[s.id] for uid in o.unit_ids}
+            only_dogum = (
+                len(unmet[s.id]) == 1
+                and unmet[s.id][0].urgency_multiplier > 1
             )
+            label = "deadline_dogum" if only_dogum else "deadline_core"
             model.Add(
-                sum(x[(s.id, uid)] for uid in uids) >= 1
+                sum(x[(s.id, uid)] for uid in uids if (s.id, uid) in x) >= 1
             ).OnlyEnforceIf(assumptions[label])
 
     # ---- Objective (Minimize) ----
@@ -507,12 +601,13 @@ def solve_month(
     # Aciliyet kalan ay azaldıkça artar; doğum salonu (madde 7) daha ağır.
     urgency = max(1, len(months) - remaining)
     for s in students:
-        for b in unmet[s.id]:
-            mult = 3 if b == BRANCH_DOGUM_SALONU else 1
-            for uid in branch_unit_ids.get(b, []):
+        for o in unmet[s.id]:
+            for uid in o.unit_ids:
+                if (s.id, uid) not in x:
+                    continue
                 penalties.append(
-                    -weights["core_branch_early"] * urgency * mult
-                    * x[(s.id, uid)]
+                    -weights["core_branch_early"] * urgency
+                    * o.urgency_multiplier * x[(s.id, uid)]
                 )
 
     # Gri/yedek birimler: yalnız gerektiğinde kullanılsın (her yerleştirme cezalı)
@@ -636,8 +731,12 @@ def solve_season(
     settings: dict | None = None,
     custom_rules: list[CustomRule] | None = None,
     random_seed: int | None = None,
+    requirements: list[Requirement] | None = None,
 ) -> SeasonSolveResult:
     """`solve_months`'un TAMAMINI tek CP-SAT modelinde birlikte çözer.
+
+    `requirements` (v2): verilirse sezon zorunlulukları bu listeden okunur;
+    verilmezse v1 branş yolu işler (bkz. solve_month).
 
     Ay-bazlı `solve_month` açgözlüdür: erken bir ayın (tek başına kusursuz)
     çözümü ileriki ayı çözümsüz bırakabilir. Bu fonksiyon bütün ayları aynı
@@ -671,12 +770,16 @@ def solve_season(
                 seen_branches[a.student_id].add(u.branch_category)
             hist_by_student_month[(a.student_id, a.month)] = u
 
-    available_branches = {u.branch_category for u in active_units}
-    req_branches = [
-        r["branch"]
-        for r in settings.get("season_requirements", [])
-        if r.get("branch") and r["branch"] in available_branches
-    ]
+    # Sezon zorunlulukları: v2 gereksinimleri verildiyse onlardan, aksi halde
+    # v1 branş yolundan derlenir (ikisi de _Obligation).
+    if requirements is not None:
+        obligations = _obligations_from_requirements(
+            students, active_units, requirements, visited
+        )
+    else:
+        obligations = _obligations_from_branches(
+            students, active_units, settings, seen_branches
+        )
 
     model = cp_model.CpModel()
 
@@ -768,27 +871,40 @@ def solve_season(
                         for v in vars_for(s.id, b_m, lambda u: u.intensity == t):
                             model.Add(v == 0)
 
-    # sezon zorunlulukları (madde 6/7): görülmemiş her zorunlu branş, kalan
-    # aylardan en az birinde karşılanmalı — SERT kısıt (açgözlü lookahead değil)
+    # sezon zorunlulukları: her karşılanmamış borç kalan aylarda kapatılmalı
+    # — SERT kısıt (açgözlü lookahead değil). Borçlar v1 branşlarından ya da
+    # v2 gereksinimlerinden gelir; buradan sonrası farkı görmez.
     for s in students:
-        needs = [b for b in req_branches if b not in seen_branches[s.id]]
-        if s.program == PROGRAM_EBELIK and BRANCH_DOGUM_SALONU not in seen_branches[s.id]:
-            needs.append(BRANCH_DOGUM_SALONU)
-        for b in needs:
+        for o in obligations[s.id]:
             cover = [
-                x[(s.id, u.id, m)]
-                for u in active_units
+                x[(s.id, uid, m)]
+                for uid in o.unit_ids
                 for m in solve_months
-                if u.branch_category == b and (s.id, u.id, m) in x
+                if (s.id, uid, m) in x
             ]
-            if cover:
-                model.Add(sum(cover) >= 1)
+            # Madde 1 gereği aynı bölüme iki kez gidilmez: borcu kapatabilecek
+            # ziyaret sayısının üst sınırı, uygun AYRI BİRİM ADI sayısıdır
+            # (birim×ay çifti sayısı değil).
+            reachable = {
+                key_of[uid]
+                for uid in o.unit_ids
+                for m in solve_months
+                if (s.id, uid, m) in x
+            }
+            if len(reachable) >= o.count:
+                model.Add(sum(cover) >= o.count)
             else:
+                kalan = "kalan aylarda hiçbir uygun birimle karşılanamıyor"
+                if o.count > 1:
+                    kalan = (
+                        f"kalan aylarda {o.count} kez karşılanamıyor "
+                        f"(yalnız {len(reachable)} uygun birim var ve aynı "
+                        "bölüme ikinci kez gidilemez)"
+                    )
                 return SeasonSolveResult(
                     status="INFEASIBLE",
                     infeasible_reasons=[
-                        f"{s.full_name}: {BRANCH_LABELS.get(b, b)} zorunluluğu "
-                        "kalan aylarda hiçbir uygun birimle karşılanamıyor."
+                        f"{s.full_name}: {o.label} zorunluluğu {kalan}."
                     ],
                 )
 

@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from .models import (
     Assignment,
     CustomRule,
+    Requirement,
     Student,
     Unit,
     BRANCH_DOGUM_SALONU,
@@ -56,11 +57,16 @@ def check_all(
     months: list[str],
     custom_rules: list[CustomRule] | None = None,
     settings: dict | None = None,
+    requirements: list[Requirement] | None = None,
 ) -> list[Violation]:
     """Tüm denetimleri çalıştırır; ihlal yoksa boş liste döner.
 
     settings verilmezse sezon zorunlulukları (season_requirements)
     varsayılan listeden okunur.
+
+    `requirements` (v2): verilirse sezon zorunlulukları branş yerine bu
+    gereksinim listesinden denetlenir ve ihlal mesajı kullanıcının verdiği
+    gereksinim adını yazar.
     """
     v: list[Violation] = []
     students_by_id = {s.id: s for s in students}
@@ -104,7 +110,7 @@ def check_all(
     v += _check_rule23_gender(valid, students_by_id, units_by_id)
     v += _check_rule5_group(valid, students_by_id, units_by_id)
     v += _check_rule67_deadlines(
-        valid, students_by_id, units_by_id, months, settings
+        valid, students_by_id, units_by_id, months, settings, requirements
     )
     v += _check_rule20_intensity(valid, students_by_id, units_by_id, months)
     v += _check_rule21_gender_balance(valid, students_by_id, units_by_id)
@@ -349,8 +355,58 @@ def _check_rule5_group(assignments, students_by_id, units_by_id):
     return out
 
 
+def _check_requirements_deadlines(
+    assignments, students_by_id, units_by_id, months, requirements
+):
+    """v2 yolu: sezon sonuna kadar karşılanmamış gereksinimler.
+
+    Branş yolundaki mantığın aynısı — ihlal ancak dönemin son ayı da
+    atandığında raporlanır; dönem bitmemişse sessiz kalınır. Fark, mesajın
+    kullanıcının verdiği gereksinim adını taşıması ve gereksinimin yalnız
+    kapsadığı öğrencilere uygulanması.
+    """
+    from .requirements import applies_to, compile_for_student, unmet_count
+
+    out = []
+    if not months:
+        return out
+    last_month = months[-1]
+    by_student: dict[str, list] = defaultdict(list)
+    for a in assignments:
+        by_student[a.student_id].append(a)
+    all_units = list(units_by_id.values())
+    for sid, items in by_student.items():
+        s = students_by_id[sid]
+        if not any(a.month == last_month for a in items):
+            continue  # dönem henüz tamamlanmamış
+        seen = {normalize_key(units_by_id[a.unit_id].name) for a in items}
+        for req in requirements:
+            if not applies_to(req, s):
+                continue
+            # Hiçbir birime derlenmeyen gereksinim uygulanmaz (hastanede o
+            # birim yok) — kullanıcıyı düzeltemeyeceği bir şey için uyarmayız.
+            if not compile_for_student(req, s, all_units):
+                continue
+            eksik = unmet_count(req, seen)
+            if eksik > 0:
+                kac = f" ({eksik} ziyaret eksik)" if req.min_count > 1 else ""
+                out.append(
+                    Violation(
+                        rule_no=6,
+                        severity=ERROR,
+                        message=(
+                            f"{s.full_name}: '{req.name}' gereksinimi "
+                            f"karşılanmamış{kac}."
+                        ),
+                        student_id=sid,
+                    )
+                )
+    return out
+
+
 def _check_rule67_deadlines(
-    assignments, students_by_id, units_by_id, months, settings=None
+    assignments, students_by_id, units_by_id, months, settings=None,
+    requirements=None,
 ):
     """Madde 6/7: dönem sonuna kadar zorunlu branş ziyaretleri.
 
@@ -362,14 +418,18 @@ def _check_rule67_deadlines(
     karşılanmadıysa "hata"; dönem bitmemişse rapor üretilmez (solver erken
     aylarda bonusla yönlendirir).
     """
+    if requirements is not None:
+        return _check_requirements_deadlines(
+            assignments, students_by_id, units_by_id, months, requirements
+        )
     out = []
     if not months:
         return out
-    requirements = (settings or DEFAULT_SETTINGS).get("season_requirements", [])
+    reqs = (settings or DEFAULT_SETTINGS).get("season_requirements", [])
     available = {u.branch_category for u in units_by_id.values()}
     req_branches = [
         r["branch"]
-        for r in requirements
+        for r in reqs
         if r.get("branch") and r["branch"] in available
     ]
     last_month = months[-1]

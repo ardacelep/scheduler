@@ -133,6 +133,13 @@ _SCREENS = [
         "📊 Excel İçe/Dışa Aktarım",
         "Dışarıdan liste almak ve hazır rotasyonu Excel olarak vermek için.",
     ),
+    (
+        "🎯 Gereksinimler (Sezon Kurulumu)",
+        "Bu sezonun zorunluluklarını gelen öğrencilere göre belirlersiniz. "
+        "Her satır tek bir cümledir: kime — hangi birimlerden — kaç kez. "
+        "Örn. 'D sınıfı — DOĞUM SALONU, 2.KAT DOĞUM birimlerinden en az 1'. "
+        "Branş seçmenize gerek yok, birimleri doğrudan adıyla seçersiniz.",
+    ),
 ]
 
 
@@ -218,6 +225,20 @@ _FAQ = [
         "kimse oraya verilmez — çözücü de buna uyar. İptal ettiğiniz birim "
         "listede gri/üstü çizili kalır (atlamamanız için). “Tekrarlı liste” "
         "bölümü, elle tuttuğunuz tablonun birebir kopyalanabilir hâlini verir.",
+    ),
+    (
+        "“Şu öğrenciler şu birimleri görsün” kuralını nasıl kurarım?",
+        "🎯 **Gereksinimler** ekranından (Sezon Kurulumu bölümü). Kuralı "
+        "olduğu gibi yazarsınız: *kime* (tüm öğrenciler / bir grup / bir sınıf "
+        "/ bir program / tek tek seçtikleriniz) — *hangi birimlerden* "
+        "(adlarıyla seçersiniz) — *kaç kez*. Örneğin “YB/B, YB/C, YB/D'den en "
+        "az 1” ya da “D sınıfı doğum birimlerinden en az 1”. Eskiden bunun "
+        "için birimlere branş atayıp branşı zorunlu tutmak gerekiyordu; artık "
+        "gerekmiyor. Kaydetmeden önce ekran kuralın **kaç öğrenciyi "
+        "kapsadığını** ve her grupta **kaç uygun birim** olduğunu gösterir, "
+        "karşılanamayacak bir kural kurarsanız kırmızı uyarır. "
+        "Bir sezonu ilk açtığınızda mevcut ayarlarınızdan başlangıç listesi "
+        "üretebilirsiniz.",
     ),
     (
         "Bir şubeyi (sınıfı) diğer gruba almam gerekiyor.",

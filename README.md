@@ -107,6 +107,7 @@ Sol kenar çubuğundan **sezon** seçilir, yeni sezon oluşturulur veya silinir
 | **Veri Yönetimi** | Öğrenci, birim, sınıf ve özel kuralları toplu düzenleme; Excel içe aktarma; cinsiyet tahmini; **yedekleme/geri yükleme** |
 | **Öğrenci Geçmişi** | Bir öğrencinin sezon boyunca gittiği birimler, ay sırasıyla |
 | **Excel İçe/Dışa Aktarım** | Rotasyon veya öğrenci listesi içe aktarma; yıllık renkli ve tek-ay renksiz dışa aktarma |
+| **Gereksinimler** *(Sezon Kurulumu)* | Sezonun zorunluluklarını gelen öğrencilere göre tanımlama: **kime — hangi birimlerden — kaç kez**. Kapsam (tüm/grup/sınıf/program/seçili öğrenci) + birim adıyla seçim + canlı kapsam özeti (aşağıda ayrıntı) |
 | **Yardım** | Uygulama içi Türkçe kılavuz: adım adım başlangıç, ekran rehberi, sık sorulanlar, sorun giderme |
 
 ### Rotasyon Oluştur akışı
@@ -207,6 +208,49 @@ Veri Yönetimi → Kurallar ekranından eklenir; **zaman kapsamı** taşıyabili
   *"Ayşe 3. aydan sonra ameliyathane görmesin."* Kalıcı/tıbbi yasaklar için
   Öğrenciler sekmesindeki "yasaklı birimler" alanı kullanılır.
 - **Sabit atama** — öğrenci belirli ayda belirli birime gitsin.
+
+### Gereksinimler (v2 kural modeli)
+
+**Neden:** uygulama başta "kurallar sabit, öğrencileri optimal yerleştir"
+varsayımıyla kuruldu. Gerçek akış tersiymiş — **önce öğrenciler gelir,
+kullanıcı o sezonun kurallarını onlara göre belirler, sonra yerleştirme
+yapılır.** Ayrıca "şu öğrenciler şu birimleri görsün" demenin doğrudan yolu
+yoktu: birimlere branş atanıp o branş zorunlu tutuluyordu. Bu dolayım gizliydi,
+zorunluluğu **herkese** uyguluyordu ve tek istisna (ebelik → doğum salonu)
+**koda gömülüydü**.
+
+**Gereksinim** tek bir okunur cümledir: **kime — hangi birimlerden — kaç kez.**
+
+| Alan | Değerler |
+|---|---|
+| Kapsam (`scope`) | tüm öğrenciler · belirli grup · belirli sınıf · belirli program · seçili öğrenciler |
+| Birimler (`unit_keys`) | Birim **adları** (id değil) |
+| Sayı (`min_count`) | Listeden en az kaçı görülmeli |
+| Tür (`severity`) | zorunlu (sert kısıt) · tercih |
+
+Örnekler: *"Tüm öğrenciler — YB/B, YB/C, YB/D'den en az 1"*, *"D sınıfı —
+DOĞUM SALONU, 2.KAT DOĞUM'dan en az 1"*.
+
+Üç tasarım kararı:
+
+- **Birimler ada göre tutulur, id'ye göre değil.** Katalogda her birim adı
+  grup-1 ve grup-2 satırı olarak iki kez bulunur; ad üzerinden eşleşince motor
+  öğrencinin **kendi grubundaki** satırı otomatik seçer (kullanıcı 6 satır
+  seçmez, "YB/B" der) ve birimler yeniden içe aktarılıp id'ler değişse de kural
+  bozulmaz. Eşleştirme `normalize_key` ile — madde 1'in kullandığı semantiğin
+  aynısı.
+- **Branş silinmedi, geri plana çekildi.** Artık kural semantiği değil, birim
+  seçerken kullanılan bir hızlı-seçim etiketi.
+- **`ebelik → doğum` artık görünür bir satır** — düzenlenebilir, silinebilir.
+
+**Motor entegrasyonu:** v1 branş zorunlulukları ve v2 gereksinimleri ortak bir
+iç şekle (`_Obligation`: *etiket + aday birim id'leri + sayı*) derlenir; çözücü
+ve denetleyici yalnız bu şekli tanır, zorunluluğun nereden geldiğini bilmez.
+`solve_month` / `solve_season` / `check_all` **opsiyonel** bir `requirements`
+parametresi alır — verilmezse v1 branş yolu işler, yani mevcut davranış
+değişmez. `rotasyon/requirements.py:from_legacy_settings` v1 ayarlarını
+gereksinim listesine çevirir; `tests/test_requirements_equivalence.py` iki
+yolun aynı sonucu verdiğini kanıtlar.
 
 ---
 
@@ -429,10 +473,11 @@ Tasarım kararları:
 .venv/bin/python -m pytest tests/
 ```
 
-Şu an **220 test** yeşildir; her yerleşik kural, özel kurallar, çözücü, ortak
-sezon çözücüsü, kapasite denetimi, cinsiyet tahmini, sezon yönetimi, dinamik
-değişiklikler, toplu taslak kalıcılığı, yedekleme/geri yükleme, başlatıcı
-yardımcıları ve Excel içe/dışa aktarımı kapsanır. `tests/test_e2e.py` referans
+Şu an **332 test** yeşildir; her yerleşik kural, özel kurallar, gereksinimler
+(v2 kural modeli + v1 denkliği), çözücü, ortak sezon çözücüsü, kapasite
+denetimi, cinsiyet tahmini, sezon yönetimi, dinamik değişiklikler, toplu taslak
+kalıcılığı, yedekleme/geri yükleme, başlatıcı yardımcıları ve Excel içe/dışa
+aktarımı kapsanır. `tests/test_e2e.py` referans
 veriyle gerçek bir ayı çözüp kural denetiminden geçirir;
 `tests/test_real_docs.py` gerçek belge formatlarını okur.
 
