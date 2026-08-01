@@ -1,9 +1,15 @@
-"""Veri Yönetimi — uygulamanın esneklik merkezi.
+"""Veri Yönetimi — sezondan sezona TAŞINAN bilgilerin merkezi.
 
-Altı sekme: Öğrenciler (toplu düzenleme + Excel'den içe aktarma), Birimler
-(toplu düzenleme + ekleme), Sınıflar, Kurallar (kullanıcı tanımlı ayrı tut /
-birlikte tut / sabit atama kuralları), Ayarlar (sezon zorunlulukları + çözücü
-ağırlıkları) ve Yedekleme (tek düğmeyle yedek indirme / yedekten geri yükleme).
+Altı sekme: Öğrenciler, Birimler, Sınıflar, Kurallar (ayrı tut / birlikte tut
+/ birim yasağı / sabit atama), Ayarlar (çözücü) ve Yedekleme.
+
+**Kapsam sınırı — kimlik / rol ayrımı:** burada birimin KALICI KİMLİĞİ
+düzenlenir (ad, grup, cinsiyet kısıtı, bölüm türü, yoğunluk). Birimin O
+SEZONKİ ROLÜ — kontenjanı, doldurma politikası, bu sezon açık olup olmadığı —
+**Kapasite Planı** ekranındadır. Aynı şekilde sezon zorunlulukları
+**Gereksinimler** ekranındadır. İkisi de bir zamanlar buradaydı ve aynı veriyi
+iki ekranda düzenletmek çelişkili kombinasyonlara yol açıyordu (tabloda bir
+birim hem "Havuz" hem "Yedek" işaretlenebiliyordu).
 
 Toplu düzenlemeler st.data_editor ile yapılır: 70 öğrencinin cinsiyetini
 tek tek form açmadan, tabloda hücre hücre girmek mümkündür.
@@ -35,8 +41,15 @@ from rotasyon.models import (
 from rotasyon.normalize import normalize_unit_name
 from .common import data_fingerprint, gender_label, unit_label
 
-_GENDER_OPTIONS = ["", "Kız", "Erkek"]
-_GENDER_TO_CODE = {"": "", "Kız": "K", "Erkek": "E"}
+# Boş dize seçeneği Streamlit'te "None" diye görünüyordu; iki bağlamda da
+# ne demek olduğunu açıkça yazıyoruz. Öğrencide boş = cinsiyet HENÜZ
+# BİLİNMİYOR, birimde boş = cinsiyet KISITI YOK — aynı widget, farklı anlam.
+_GENDER_OPTIONS = ["Kısıt yok", "Kız", "Erkek"]
+_GENDER_OPTIONS_STUDENT = ["Bilinmiyor", "Kız", "Erkek"]
+_GENDER_TO_CODE = {
+    "Kısıt yok": "", "Bilinmiyor": "", "": "",
+    "Kız": "K", "Erkek": "E",
+}
 _BRANCH_TO_CODE = {v: k for k, v in BRANCH_LABELS.items()}
 _PROGRAM_TO_CODE = {v: k for k, v in PROGRAM_LABELS.items()}
 _GROUP_OPTIONS = ["1. grup", "2. grup", "Her ikisi"]
@@ -118,7 +131,7 @@ def _students_tab(store) -> None:
             {
                 "Ad Soyad": s.full_name,
                 "Okul No": s.student_no,
-                "Cinsiyet": gender_label(s.gender) if s.gender else "",
+                "Cinsiyet": gender_label(s.gender) if s.gender else "Bilinmiyor",
                 "Grup": s.group,
                 "Sınıf": s.class_name,
                 "Bölüm": PROGRAM_LABELS.get(s.program, s.program),
@@ -135,7 +148,7 @@ def _students_tab(store) -> None:
             "Ad Soyad": st.column_config.TextColumn(required=True),
             "Okul No": st.column_config.TextColumn(width="small"),
             "Cinsiyet": st.column_config.SelectboxColumn(
-                options=_GENDER_OPTIONS, width="small"
+                options=_GENDER_OPTIONS_STUDENT, width="small"
             ),
             "Grup": st.column_config.SelectboxColumn(
                 options=[1, 2], width="small"
@@ -172,7 +185,7 @@ def _students_tab(store) -> None:
         for s, (_, row) in zip(ordered, edited.iterrows()):
             s.full_name = str(row["Ad Soyad"]).strip() or s.full_name
             s.student_no = str(row["Okul No"] or "").strip()
-            s.gender = _GENDER_TO_CODE.get(row["Cinsiyet"] or "", s.gender)
+            s.gender = _GENDER_TO_CODE.get(row["Cinsiyet"] or "Bilinmiyor", "")
             s.group = int(row["Grup"])
             s.class_name = row["Sınıf"] or s.class_name
             s.program = _PROGRAM_TO_CODE.get(row["Bölüm"], s.program)
@@ -345,27 +358,29 @@ def _units_tab(store) -> None:
         _empty_units_panel(store)
         return
 
+    # Burada birimin KALICI KİMLİĞİ düzenlenir: adı, hangi grupta olduğu,
+    # kimi kabul ettiği, ne tür bir bölüm olduğu. O SEZONKİ ROLÜ (kaç kişi
+    # alacak, nasıl doldurulacak, bu sezon açık mı) Kapasite Planı'nda
+    # ayarlanır — aynı veriyi iki ekranda düzenletmek, kullanıcının
+    # çelişkili kombinasyon kurmasına ve iki farklı zihinsel modele yol
+    # açıyordu (örn. tabloda hem "Havuz" hem "Yedek" işaretlenebiliyordu).
     st.caption(
-        "Kontenjan, cinsiyet kısıtı, branş kategorisi ve bayraklar tabloda "
-        "doğrudan düzenlenir. Pasif birimler solver'a girmez ama geçmişi korur."
+        "Birimin **kalıcı bilgileri**: ad, grup, cinsiyet kısıtı, bölüm türü. "
+        "Kontenjan, doldurma politikası ve bu sezon açık olup olmadığı "
+        "**Kapasite Planı** ekranındadır."
     )
+    _link_capacity()
     ordered = sorted(units, key=lambda u: (u.group, not u.active, u.name))
     df = pd.DataFrame(
         [
             {
                 "Birim": u.name,
                 "Grup": _CODE_TO_GROUP.get(u.group, "1. grup"),
-                "Kontenjan": u.quota,
                 "Cinsiyet": gender_label(u.gender_restriction)
-                if u.gender_restriction else "",
+                if u.gender_restriction else "Kısıt yok",
                 "Branş": BRANCH_LABELS.get(u.branch_category, "Diğer"),
                 "Yoğunluk": INTENSITY_LABELS.get(u.intensity, "—"),
-                "Tekli": u.single_slot,
-                "Havuz": u.pool,
-                "Yedek": u.reserve,
                 "Ebelik Önc.": u.ebelik_priority,
-                "Tam Dolar": u.must_fill,
-                "Aktif": u.active,
             }
             for u in ordered
         ]
@@ -375,38 +390,22 @@ def _units_tab(store) -> None:
         column_config={
             "Birim": st.column_config.TextColumn(required=True),
             "Grup": st.column_config.SelectboxColumn(options=_GROUP_OPTIONS, width="small"),
-            "Kontenjan": st.column_config.NumberColumn(
-                min_value=0, max_value=50, step=1, width="small",
-                help="Madde 12: aylık kaç öğrenci alır",
-            ),
             "Cinsiyet": st.column_config.SelectboxColumn(
                 options=_GENDER_OPTIONS, width="small",
                 help="Madde 2/3: yalnız bu cinsiyetten öğrenci atanır",
             ),
             "Branş": st.column_config.SelectboxColumn(
                 options=list(BRANCH_LABELS.values()),
-                help="Madde 6/7: dönem sonu zorunlulukları bu kategoriye bakar",
+                help="Bölümün türü. Gereksinim kurarken birimleri hızlı "
+                "seçmek için kullanılır (kendi başına bir kural değildir).",
             ),
             "Yoğunluk": st.column_config.SelectboxColumn(
                 options=list(INTENSITY_LABELS.values()), width="small",
                 help="Peş peşe iki ay yoğun (veya hafif) bölüme öğrenci verilmez",
             ),
-            "Tekli": st.column_config.CheckboxColumn(
-                help="Madde 4: önce doldurulan tekli birim"
-            ),
-            "Havuz": st.column_config.CheckboxColumn(
-                help="Madde 4: kat/YB/FTR/acil eşit dağıtım havuzu"
-            ),
-            "Yedek": st.column_config.CheckboxColumn(
-                help="Gri birim: yalnız ihtiyaç olursa öğrenci verilir"
-            ),
             "Ebelik Önc.": st.column_config.CheckboxColumn(
                 help="Madde 18: ebelik öğrencisi öncelikli"
             ),
-            "Tam Dolar": st.column_config.CheckboxColumn(
-                help="Madde 17: kontenjan her ay tam dolmak zorunda"
-            ),
-            "Aktif": st.column_config.CheckboxColumn(),
         },
         num_rows="fixed",
         width="stretch",
@@ -422,16 +421,14 @@ def _units_tab(store) -> None:
         for u, (_, row) in zip(ordered, edited.iterrows()):
             u.name = normalize_unit_name(str(row["Birim"])) or u.name
             u.group = _GROUP_TO_CODE.get(row["Grup"], u.group)
-            u.quota = int(row["Kontenjan"])
-            u.gender_restriction = _GENDER_TO_CODE.get(row["Cinsiyet"] or "", "")
+            u.gender_restriction = _GENDER_TO_CODE.get(
+                row["Cinsiyet"] or "Kısıt yok", ""
+            )
             u.branch_category = _BRANCH_TO_CODE.get(row["Branş"], u.branch_category)
             u.intensity = _INTENSITY_TO_CODE.get(row["Yoğunluk"] or "—", u.intensity)
-            u.single_slot = bool(row["Tekli"])
-            u.pool = bool(row["Havuz"])
-            u.reserve = bool(row["Yedek"])
             u.ebelik_priority = bool(row["Ebelik Önc."])
-            u.must_fill = bool(row["Tam Dolar"])
-            u.active = bool(row["Aktif"])
+            # kontenjan / politika / aktiflik burada DEĞİŞTİRİLMEZ
+            # (Kapasite Planı'nın alanı) — dokunulmadan korunur
         store.save_units(units)
         st.success("Birimler kaydedildi. ✅")
         st.rerun()
@@ -506,7 +503,6 @@ def _new_unit_form(store, units) -> None:
         c3, c4 = st.columns(2)
         gender = c3.selectbox(
             "Cinsiyet kısıtı", _GENDER_OPTIONS,
-            format_func=lambda g: g or "Kısıt yok",
         )
         branch = c4.selectbox(
             "Branş kategorisi", BRANCH_CATEGORIES, format_func=BRANCH_LABELS.get
@@ -515,11 +511,12 @@ def _new_unit_form(store, units) -> None:
             "Yoğunluk", INTENSITIES, format_func=INTENSITY_LABELS.get,
             help="Peş peşe iki ay yoğun (veya hafif) bölüme öğrenci verilmez",
         )
-        single = st.checkbox("Tekli birim — önce doldurulur (madde 4)")
-        pool = st.checkbox("Havuz birimi — eşit dağıtım (madde 4)")
-        reserve = st.checkbox("Yedek birim — yalnız ihtiyaç olursa kullanılır")
         ebelik = st.checkbox("Ebelik öncelikli (madde 18)")
-        must_fill = st.checkbox("Kontenjan tam dolmak zorunda (madde 17)")
+        st.caption(
+            "Yeni birim **havuz** politikasıyla eklenir (kalanlar eşit "
+            "dağılır). Doldurma politikasını ve kontenjanı sonra Kapasite "
+            "Planı'ndan ayarlarsınız."
+        )
         if st.form_submit_button("Ekle") and name.strip():
             units.append(
                 Unit(
@@ -529,15 +526,23 @@ def _new_unit_form(store, units) -> None:
                     gender_restriction=_GENDER_TO_CODE.get(gender, ""),
                     branch_category=branch,
                     intensity=intensity,
-                    single_slot=single,
-                    pool=pool,
-                    reserve=reserve,
+                    pool=True,  # makul varsayılan; Kapasite Planı'ndan değişir
                     ebelik_priority=ebelik,
-                    must_fill=must_fill,
                 )
             )
             store.save_units(units)
             st.rerun()
+
+
+def _link_capacity() -> None:
+    """Kapasite Planı'na hızlı geçiş (kontenjan/politika oraya taşındı)."""
+    pages = st.session_state.get("_pages", {})
+    if "kapasite-plani" in pages:
+        st.page_link(
+            pages["kapasite-plani"],
+            label="Kontenjan ve doldurma politikası için Kapasite Planı'na git",
+            icon="📦",
+        )
 
 
 # ======================= SINIFLAR =======================
@@ -1173,34 +1178,12 @@ def _settings_tab(store) -> None:
     değişiklik bir sonraki üretimden/denetimden itibaren geçerlidir, geçmiş
     kayıtlı aylar kendiliğinden değişmez.
     """
-    from rotasyon.models import BRANCH_DIGER, DEFAULT_SETTINGS
+    from rotasyon.models import DEFAULT_SETTINGS
 
     settings = store.load_settings()
 
-    st.subheader("🎓 Sezon zorunlulukları")
-    st.caption(
-        "Her öğrencinin sezon SONUNA kadar en az bir kez görmesi gereken "
-        "branşlar. Denetleyici bunu ancak dönemin son ayı da atandığında hata "
-        "sayar; çözücü ise erken aylardan itibaren karşılamaya çalışır. "
-        "Değişiklik bir sonraki rotasyon üretiminden itibaren geçerlidir."
-    )
-    branch_options = [b for b in BRANCH_CATEGORIES if b != BRANCH_DIGER]
-    current_req = [
-        r["branch"]
-        for r in settings.get("season_requirements", [])
-        if r.get("branch") in branch_options
-    ]
-    picked = st.multiselect(
-        "Zorunlu branşlar",
-        branch_options,
-        default=current_req,
-        format_func=lambda b: BRANCH_LABELS.get(b, b),
-        help="Ebelik → doğum salonu zorunluluğu (madde 7) bu listeden bağımsız, "
-        "her zaman uygulanır.",
-        key="set_req_branches",
-    )
+    _requirements_notice(store, settings)
 
-    st.divider()
     st.subheader("🧮 Çözücü ayarları")
     st.caption(
         "Varsayılanlar gerçek sezon verisiyle ölçülüp seçildi; genelde "
@@ -1248,14 +1231,9 @@ def _settings_tab(store) -> None:
             "yoğun birimlere yığabilir."
         )
 
-    # Kaydedilecek bir değişiklik var mı? (branşlar + süreler + ağırlıklar)
-    mevcut_branch = [
-        r["branch"] for r in settings.get("season_requirements", [])
-        if r.get("branch") in branch_options
-    ]
+    # Kaydedilecek bir değişiklik var mı? (süreler + ağırlıklar)
     degisti = (
-        sorted(picked) != sorted(mevcut_branch)
-        or int(time_limit) != int(solver.get("time_limit_seconds", 5))
+        int(time_limit) != int(solver.get("time_limit_seconds", 5))
         or int(season_limit) != int(solver.get("season_time_limit_seconds", 60))
         or {k: int(v) for k, v in new_weights.items()}
         != {k: int(v) for k, v in weights.items()}
@@ -1266,7 +1244,6 @@ def _settings_tab(store) -> None:
         "💾 Ayarları kaydet", type="primary", key="save_settings_tab",
         disabled=not degisti,
     ):
-        settings["season_requirements"] = [{"branch": b} for b in picked]
         settings.setdefault("solver", {})
         settings["solver"]["time_limit_seconds"] = int(time_limit)
         settings["solver"]["season_time_limit_seconds"] = int(season_limit)
@@ -1275,13 +1252,51 @@ def _settings_tab(store) -> None:
         st.toast("Ayarlar kaydedildi ✅", icon="⚙️")
         st.rerun()
     if c_reset.button("↩️ Varsayılanlara dön", key="reset_settings_tab"):
-        settings["season_requirements"] = json_copy(
-            DEFAULT_SETTINGS["season_requirements"]
-        )
+        # yalnız çözücü ayarları sıfırlanır; sezon zorunlulukları artık
+        # Gereksinimler ekranının alanı, buradan silinmemeli
         settings["solver"] = json_copy(DEFAULT_SETTINGS["solver"])
         store.save_settings(settings)
         st.toast("Çözücü ayarları varsayılanlara döndü ✅", icon="↩️")
         st.rerun()
+
+
+def _requirements_notice(store, settings) -> None:
+    """Sezon zorunluluklarının artık NEREDE olduğunu ve hangisinin GEÇERLİ
+    olduğunu söyler.
+
+    Branş multiselect'i buradan kaldırıldı: "birime branş ata → o branşı
+    zorunlu tut" dolayımı kullanıcının şikâyet ettiği workaround'un ta
+    kendisiydi. Yerine Gereksinimler ekranı geçti. Eski alan veride duruyor
+    (gereksinim tanımlanmamış sezonlar için geriye uyum) ama düzenlenmiyor.
+    """
+    from rotasyon.requirements import active_requirements
+
+    st.subheader("🎓 Sezon zorunlulukları")
+    reqs = active_requirements(store)
+    if reqs:
+        st.success(
+            f"Bu sezonda **{len(reqs)} gereksinim** tanımlı ve üretimde "
+            "bunlar geçerli."
+        )
+    else:
+        eski = [
+            BRANCH_LABELS.get(r.get("branch"), r.get("branch"))
+            for r in settings.get("season_requirements", [])
+            if r.get("branch")
+        ]
+        st.info(
+            "Bu sezonda gereksinim tanımlı değil; **eski branş yolu** "
+            "çalışıyor"
+            + (f" (zorunlu branşlar: {', '.join(eski)})." if eski else ".")
+            + " Gereksinimler ekranından tek tıkla aktarabilirsiniz."
+        )
+    pages = st.session_state.get("_pages", {})
+    if "gereksinimler" in pages:
+        st.page_link(
+            pages["gereksinimler"],
+            label="Gereksinimler ekranını aç", icon="🎯",
+        )
+    st.divider()
 
 
 def json_copy(obj):

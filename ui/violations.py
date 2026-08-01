@@ -20,6 +20,7 @@ from .common import (
     collect_risks,
     data_fingerprint,
     show_risks,
+    season_requirements,
     show_violations_scoped,
 )
 
@@ -48,17 +49,20 @@ def render(store) -> None:
     settings = store.load_settings()
     months = settings["months"]
     custom_rules = store.load_custom_rules()
+    requirements = season_requirements(store)
 
     violations = (
         check_all(
             students, units, assignments, months,
             custom_rules=custom_rules, settings=settings,
+            requirements=requirements,
         )
         if assignments
         else []
     )
     risks = collect_risks(
-        students, units, months, assignments, custom_rules, settings
+        students, units, months, assignments, custom_rules, settings,
+        requirements,
     )
     _status_header(violations, risks, bool(assignments))
 
@@ -66,7 +70,7 @@ def render(store) -> None:
     _past_section(store, students, units, assignments, violations)
     st.divider()
     _future_section(store, students, units, assignments, months, custom_rules,
-                    settings, risks, str(store.data_dir))
+                    settings, risks, str(store.data_dir), requirements)
 
 
 def _status_header(violations, risks, has_assignments) -> None:
@@ -135,7 +139,7 @@ def _past_section(store, students, units, assignments, violations) -> None:
 # ======================= GELECEK =======================
 
 def _future_section(store, students, units, assignments, months, custom_rules,
-                    settings, risks, key) -> None:
+                    settings, risks, key, requirements=None) -> None:
     from rotasyon.risk import risk_counts
 
     st.subheader("🔮 Kalan sezon (ileriye dönük)")
@@ -161,11 +165,11 @@ def _future_section(store, students, units, assignments, months, custom_rules,
         students, units, assignments, custom_rules, [settings]
     )
     _deep_panel(students, units, months, assignments, custom_rules, settings,
-                key, fingerprint)
+                key, fingerprint, requirements)
 
 
 def _run_deep_job(job, students, units, months, assignments, custom_rules,
-                  settings) -> None:
+                  settings, requirements=None) -> None:
     """Daemon thread gövdesi — burada ASLA st.* çağrılmaz."""
     from rotasyon.risk import deep_feasibility
 
@@ -175,7 +179,7 @@ def _run_deep_job(job, students, units, months, assignments, custom_rules,
     try:
         job["results"] = deep_feasibility(
             students, units, months, assignments, custom_rules, settings,
-            on_group=_ilerleme,
+            on_group=_ilerleme, requirements=requirements,
         )
     except Exception as exc:  # çözücü çökerse uygulama ayakta kalsın
         job["error"] = f"{type(exc).__name__}: {exc}"
@@ -206,7 +210,7 @@ def _deep_job_watch(key: str) -> None:
 
 
 def _deep_panel(students, units, months, assignments, custom_rules,
-                settings, key, fingerprint) -> None:
+                settings, key, fingerprint, requirements=None) -> None:
     """Deneme çözümü: kalan sezonu gerçekten çözmeyi dener.
 
     Yukarıdaki aritmetik kontroller kesin çelişkileri bulur ama kombinatorik
@@ -232,7 +236,7 @@ def _deep_panel(students, units, months, assignments, custom_rules,
         threading.Thread(
             target=_run_deep_job,
             args=(_RISK_JOBS[key], students, units, months, assignments,
-                  custom_rules, settings),
+                  custom_rules, settings, requirements),
             daemon=True,
         ).start()
         st.rerun()

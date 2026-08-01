@@ -37,6 +37,7 @@ def _plan_group(
     group: int,
     attempt: int,
     seed: int | None,
+    requirements=None,
 ):
     """Bir grubun kalan aylarını tek geçişte çözer.
 
@@ -56,6 +57,7 @@ def _plan_group(
             settings=settings,
             custom_rules=custom_rules,
             random_seed=seed,
+            requirements=requirements,
         )
         if not r.ok:
             return new, solved, (m, r.infeasible_reasons)
@@ -85,6 +87,7 @@ def plan_remaining(
     custom_rules=None,
     groups: list[int] | None = None,
     on_month: Callable[[int, str, int], None] | None = None,
+    requirements=None,
 ):
     """Seçili gruplar için kalan tüm ayları sırayla çözer.
 
@@ -114,6 +117,7 @@ def plan_remaining(
                 g_students, g_units, todo, history, settings,
                 custom_rules, on_month, g, attempt,
                 seed=None if attempt == 1 else attempt,
+                requirements=requirements,
             )
             if best is None or len(result[1]) > len(best[1]):
                 best = result
@@ -142,6 +146,7 @@ def plan_season(
     groups: list[int] | None = None,
     on_group=None,
     on_month=None,
+    requirements=None,
 ):
     """Kalan ayları toplu planlar — açgözlü birincil, ortak model emniyet ağı.
 
@@ -185,7 +190,7 @@ def plan_season(
         new, sub_solved, sub_failed = plan_remaining(
             g_students, g_units, months, assignments,
             settings=settings, custom_rules=custom_rules, groups=[g],
-            on_month=on_month,
+            on_month=on_month, requirements=requirements,
         )
         if g not in sub_failed:
             new_assignments += new
@@ -199,6 +204,7 @@ def plan_season(
         r = solve_season(
             g_students, g_units, months, todo, history=history,
             settings=settings, custom_rules=custom_rules,
+            requirements=requirements,
         )
         if r.ok:
             new_assignments += [

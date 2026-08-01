@@ -30,6 +30,7 @@ from .common import (
     groups_in,
     partition_violations,
     replace_month_assignments,
+    season_requirements,
     show_past_violations_enabled,
     unit_label,
     violations_dataframe,
@@ -61,6 +62,7 @@ def render(store) -> None:
     assignments = store.load_assignments()
     custom_rules = [r for r in store.load_custom_rules() if r.active]
     classes = store.load_classes()
+    requirements = season_requirements(store)
 
     clear_stale_state(
         "_grid_fp",
@@ -71,7 +73,8 @@ def render(store) -> None:
     # Rotasyon Oluştur ekranıyla aynı kapasite ön-denetimi (bu ekran da
     # rotasyon üretimi için kullanılır).
     capacity_findings_panel(
-        students, units, months, assignments, settings, custom_rules
+        students, units, months, assignments, settings, custom_rules,
+        requirements,
     )
 
     group = st.selectbox(
@@ -86,12 +89,13 @@ def render(store) -> None:
     )
     _grid(
         store, settings, months, group, students, units, assignments,
-        custom_rules, classes,
+        custom_rules, classes, requirements,
     )
 
     st.divider()
     bulk_generate.render(
-        store, students, units, settings, custom_rules, assignments
+        store, students, units, settings, custom_rules, assignments,
+        requirements,
     )
 
 
@@ -126,7 +130,7 @@ def _bump_gen(group: int) -> None:
 @st.fragment
 def _grid(
     store, settings, months, group, students, units, assignments,
-    custom_rules, classes,
+    custom_rules, classes, requirements=None,
 ):
     group_students = sorted(
         [s for s in students if s.group == group and s.active],
@@ -245,6 +249,7 @@ def _grid(
             _autofill(
                 settings, months, next_empty, group_students, group, units,
                 assignments, custom_rules, id_to_label, ov, saved, live,
+                requirements=requirements,
             )
     else:
         cbtns[0].caption("✅ Tüm aylar dolu.")
@@ -265,7 +270,7 @@ def _grid(
             _autofill(
                 settings, months, last_auto, group_students, group, units,
                 assignments, custom_rules, id_to_label, ov, saved, live,
-                reroll=True, avoid=avoid,
+                reroll=True, avoid=avoid, requirements=requirements,
             )
 
     if changed_cells and cbtns[1].button(
@@ -285,6 +290,7 @@ def _grid(
     violations = check_all(
         students, units, proposed, months,
         custom_rules=custom_rules, settings=settings,
+        requirements=requirements,
     )
     group_unit_ids = {u.id for u in units if u.group in (0, group)}
     relevant = [
@@ -369,6 +375,7 @@ def _grid(
 def _autofill(
     settings, months, target, group_students, group, units, assignments,
     custom_rules, id_to_label, ov, saved, live, reroll=False, avoid=None,
+    requirements=None,
 ):
     """Hedef ayı çözüp taslağa yerleştirir.
 
@@ -386,6 +393,7 @@ def _autofill(
         return solve_month(
             group_students, group_units, target, history=history,
             settings=settings, custom_rules=custom_rules, random_seed=seed,
+            requirements=requirements,
         )
 
     counter_key = f"grid_reroll_{group}_{target}"

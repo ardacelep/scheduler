@@ -128,7 +128,7 @@ RISK_INTRO = (
 
 
 def collect_risks(students, units, months, assignments, custom_rules=None,
-                  settings=None):
+                  settings=None, requirements=None):
     """İleriye dönük risklerin tek kaynağı (rotasyon.risk.forward_risks).
 
     Ucuzdur (saf aritmetik, ortools yüklemez), her sayfa açılışında çağrılabilir.
@@ -136,8 +136,20 @@ def collect_risks(students, units, months, assignments, custom_rules=None,
     from rotasyon.risk import forward_risks
 
     return forward_risks(
-        students, units, months, assignments, custom_rules, settings
+        students, units, months, assignments, custom_rules, settings,
+        requirements,
     )
+
+
+def season_requirements(store):
+    """Bu sezonda geçerli gereksinimler — yoksa None (eski branş yolu).
+
+    Motora giden HER çağrı bunu kullanmalı; aksi halde kullanıcının
+    tanımladığı gereksinimler üretimi etkilemez (bir kez öyle oldu).
+    """
+    from rotasyon.requirements import active_requirements
+
+    return active_requirements(store)
 
 
 def show_risks(risks) -> None:
@@ -151,7 +163,8 @@ def show_risks(risks) -> None:
 
 
 def capacity_findings_panel(
-    students, units, months, assignments, settings=None, custom_rules=None
+    students, units, months, assignments, settings=None, custom_rules=None,
+    requirements=None,
 ) -> None:
     """İleriye dönük risk paneli — Rotasyon Oluştur ve Yıllık Tablo'da.
 
@@ -161,7 +174,8 @@ def capacity_findings_panel(
     from rotasyon.risk import risk_counts
 
     risks = collect_risks(
-        students, units, months, assignments, custom_rules, settings
+        students, units, months, assignments, custom_rules, settings,
+        requirements,
     )
     if not risks:
         return

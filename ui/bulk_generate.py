@@ -27,7 +27,8 @@ from .common import (
 )
 
 
-def render(store, students, units, settings, custom_rules, assignments) -> None:
+def render(store, students, units, settings, custom_rules, assignments,
+           requirements=None) -> None:
     """Yıllık Tablo'nun altındaki toplu üretim bölümü."""
     _bulk_section(
         dict(
@@ -37,6 +38,7 @@ def render(store, students, units, settings, custom_rules, assignments) -> None:
             settings=settings,
             custom_rules=custom_rules,
             assignments=assignments,
+            requirements=requirements,
         )
     )
 
@@ -78,9 +80,13 @@ def _payload_to_draft(payload: dict) -> dict:
 
 
 def _bulk_fingerprint(bctx) -> str:
+    # Gereksinimler de parmak izine girer: kullanıcı bir zorunluluk
+    # ekleyip/çıkardığında diskteki taslak artık o kurallara göre üretilmiş
+    # değildir, bayat sayılmalı.
     return data_fingerprint(
         bctx["students"], bctx["units"], bctx["assignments"],
         bctx["custom_rules"], [bctx["settings"]],
+        bctx.get("requirements") or [],
     )
 
 
@@ -108,6 +114,7 @@ def _run_bulk_job(job: dict, bctx, picks, fingerprint: str) -> None:
             groups=picks,
             on_group=on_group,
             on_month=on_month,
+            requirements=bctx.get("requirements"),
         )
         bctx["store"].save_bulk_draft(
             _draft_to_payload(
@@ -290,6 +297,7 @@ def _bulk_preview(bctx, draft: dict) -> None:
         months,
         custom_rules=bctx["custom_rules"],
         settings=settings,
+        requirements=bctx.get("requirements"),
     )
     show_violations_scoped(
         violations,

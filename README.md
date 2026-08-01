@@ -100,7 +100,7 @@ Sol kenar çubuğundan **sezon** seçilir, yeni sezon oluşturulur veya silinir
 | Bölüm | Ekran | İşlev |
 |---|---|---|
 | **Kurulum** | **Kurulum Sihirbazı** | Sezonu kurmanın beş adımı sırayla; her adımın durumu VERİDEN okunur (öğrenciler → sınıf-grup → kapasite → gereksinimler → üretim) ve ilgili ekrana bağlantı verir |
-| | **Veri Yönetimi** | Öğrenci, birim, sınıf ve özel kuralları toplu düzenleme; cinsiyet tahmini; **yedekleme/geri yükleme** |
+| | **Veri Yönetimi** | Sezondan sezona taşınan bilgiler: öğrenciler, birimlerin **kalıcı kimliği** (ad, grup, cinsiyet kısıtı, bölüm türü), sınıflar, özel kurallar, çözücü ayarları, **yedekleme/geri yükleme** |
 | | **Kapasite Planı** | Birim başına tek **doldurma politikası** (Tam dolmalı / Mümkünse / Havuz / Yedek / Serbest) + kontenjan; toplamın canlı aritmetiği, çelişki uyarıları ve el tablosunun "tekrarlı liste" hâli (aşağıda ayrıntı) |
 | | **Gereksinimler** | Sezon zorunluluklarını gelen öğrencilere göre tanımlama: **kime — hangi birimlerden — kaç kez** (aşağıda ayrıntı) |
 | **Planlama** | **Ana Sayfa** | Sezon özeti, ay bazında ilerleme tablosu, eksik veri uyarıları, hızlı erişim |
@@ -240,11 +240,21 @@ DOĞUM SALONU, 2.KAT DOĞUM'dan en az 1"*.
 **Motor entegrasyonu:** v1 branş zorunlulukları ve v2 gereksinimleri ortak bir
 iç şekle (`_Obligation`: *etiket + aday birim id'leri + sayı*) derlenir; çözücü
 ve denetleyici yalnız bu şekli tanır, zorunluluğun nereden geldiğini bilmez.
-`solve_month` / `solve_season` / `check_all` **opsiyonel** bir `requirements`
-parametresi alır — verilmezse v1 branş yolu işler, yani mevcut davranış
-değişmez. `rotasyon/requirements.py:from_legacy_settings` v1 ayarlarını
-gereksinim listesine çevirir; `tests/test_requirements_equivalence.py` iki
-yolun aynı sonucu verdiğini kanıtlar.
+`solve_month` / `solve_season` / `check_all` / `plan_season` / `forward_risks` /
+`deep_feasibility` / `season_requirement_findings` **opsiyonel** bir
+`requirements` parametresi alır.
+
+**Geçiş kuralı tek yerde** (`requirements.active_requirements`): sezonda tanımlı
+ve aktif gereksinim varsa motor onu kullanır, yoksa `settings.season_requirements`
+branş yolu çalışmaya devam eder. Böylece eski sezonlar hiç bozulmaz. Hangisinin
+geçerli olduğu Veri Yönetimi ▸ Ayarlar'da açıkça yazar.
+
+> ⚠️ Bu parametre bir kez eklenip **hiçbir çağrı yerine geçirilmemişti**:
+> gereksinim ekranı çalışıyor görünüyor ama üretimi hiç etkilemiyordu (testler
+> `solve_season`'ı doğrudan çağırdığı için yakalayamamıştı).
+> `tests/test_requirements_wiring.py` artık motoru **UI'ın kullandığı üst
+> seviye yollardan** çağırır ve her giriş noktasının parametreyi taşıdığını
+> imza denetimiyle doğrular.
 
 ### Doldurma politikası (kapasite planı)
 
@@ -500,7 +510,7 @@ Tasarım kararları:
 .venv/bin/python -m pytest tests/
 ```
 
-Şu an **365 test** yeşildir; her yerleşik kural, özel kurallar, gereksinimler
+Şu an **382 test** yeşildir; her yerleşik kural, özel kurallar, gereksinimler
 (v2 kural modeli + v1 denkliği), doldurma politikası ve kapasite matematiği, çözücü, ortak sezon çözücüsü, kapasite
 denetimi, cinsiyet tahmini, sezon yönetimi, dinamik değişiklikler, toplu taslak
 kalıcılığı, yedekleme/geri yükleme, başlatıcı yardımcıları ve Excel içe/dışa

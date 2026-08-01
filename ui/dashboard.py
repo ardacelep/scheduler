@@ -4,7 +4,14 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 
-from .common import collect_risks, groups_in, has_data, load_seed, seed_available
+from .common import (
+    collect_risks,
+    groups_in,
+    has_data,
+    load_seed,
+    season_requirements,
+    seed_available,
+)
 
 
 def _risk_badge(store, students, units, assignments, months) -> None:
@@ -19,6 +26,7 @@ def _risk_badge(store, students, units, assignments, months) -> None:
     risks = collect_risks(
         students, units, months, assignments,
         store.load_custom_rules(), store.load_settings(),
+        season_requirements(store),
     )
     if not risks:
         return

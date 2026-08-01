@@ -460,6 +460,7 @@ def forward_risks(
     assignments: list[Assignment],
     custom_rules: list[CustomRule] | None = None,
     settings: dict | None = None,
+    requirements=None,
 ) -> list[Risk]:
     """Kalan sezona dair bütün ucuz (aritmetik) riskler, tek listede.
 
@@ -476,7 +477,7 @@ def forward_risks(
                  message=f.message)
         )
     for f in season_requirement_findings(
-        active, units, months, assignments, settings
+        active, units, months, assignments, settings, requirements
     ):
         out.append(
             Risk(level=f.level, category=CAT_REQUIREMENT, group=f.group,
@@ -511,6 +512,7 @@ def deep_feasibility(
     settings: dict | None = None,
     groups: list[int] | None = None,
     on_group=None,
+    requirements=None,
 ) -> list[DeepResult]:
     """Kalan ayları GERÇEKTEN çözmeyi dener; hiçbir şey kaydetmez.
 
@@ -546,6 +548,7 @@ def deep_feasibility(
         res = solve_season(
             g_students, g_units, months, kalan, assignments,
             settings=settings, custom_rules=rules,
+            requirements=requirements,
         )
         reasons = list(getattr(res, "infeasible_reasons", []) or [])
         suggestions: list[str] = []
@@ -553,7 +556,7 @@ def deep_feasibility(
             # "Çözülemiyor" yeterli değil: NEDEN ve NE YAPMALI söyle.
             reasons, suggestions = explain_infeasible_group(
                 g, active, units, months, assignments, rules, settings,
-                fallback=reasons,
+                fallback=reasons, requirements=requirements,
             )
         out.append(
             DeepResult(
@@ -589,6 +592,7 @@ def explain_infeasible_group(
     custom_rules: list[CustomRule],
     settings: dict | None,
     fallback: list[str] | None = None,
+    requirements=None,
 ) -> tuple[list[str], list[str]]:
     """Bir grup neden çözülemiyor + ne yapmalı. Dönüş: (sebepler, öneriler).
 
@@ -610,7 +614,8 @@ def explain_infeasible_group(
 
     # 1) aritmetik riskler — yalnız bu grubu ilgilendiren HATA'lar
     for r in forward_risks(
-        g_students, units, months, assignments, custom_rules, settings
+        g_students, units, months, assignments, custom_rules, settings,
+        requirements,
     ):
         if r.level != ERROR or r.group not in (0, group):
             continue
@@ -625,7 +630,8 @@ def explain_infeasible_group(
 
     # 2) kombinatorik çıkmaz — ilk çözülemeyen ayı teşhis et
     diag = _month_diagnosis(
-        group, g_students, units, months, assignments, custom_rules, settings
+        group, g_students, units, months, assignments, custom_rules, settings,
+        requirements,
     )
     if diag:
         return diag, []
@@ -634,7 +640,8 @@ def explain_infeasible_group(
 
 
 def _month_diagnosis(
-    group, g_students, units, months, assignments, custom_rules, settings
+    group, g_students, units, months, assignments, custom_rules, settings,
+    requirements=None,
 ) -> list[str]:
     """İlk tıkanan ayı bulup solve_month teşhisiyle açıklar (ilerlemeli).
 
@@ -661,6 +668,7 @@ def _month_diagnosis(
         res = solve_month(
             g_students, g_units, m, history,
             settings=settings, custom_rules=custom_rules,
+            requirements=requirements,
         )
         if res.status == "INFEASIBLE":
             sebepler = list(res.infeasible_reasons or [])

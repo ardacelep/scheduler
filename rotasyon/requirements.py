@@ -36,6 +36,27 @@ from .models import (
 from .normalize import normalize_key
 
 
+def active_requirements(store) -> list[Requirement] | None:
+    """Bu sezonda GEÇERLİ gereksinim listesi — yoksa None (eski branş yolu).
+
+    Geçiş kuralı tek yerde: sezonda tanımlı ve aktif bir gereksinim varsa
+    motor onu kullanır; yoksa `settings.season_requirements` branş yolu
+    çalışmaya devam eder. Böylece eski sezonlar hiç bozulmaz, yeni sezonlar
+    yeni yolu kullanır.
+
+    None ile boş liste FARKLIDIR: None "gereksinim tanımlanmamış, eski yola
+    düş" demek; boş liste "hepsi silinmiş/pasif" demek olurdu ve o da eski
+    yola düşmeli — bu yüzden ikisi de None'a indirgenir.
+    """
+    reqs = [r for r in store.load_requirements() if r.active]
+    return reqs or None
+
+
+def requirements_in_effect(store) -> bool:
+    """Ekranlarda "hangi yol geçerli" bilgisini göstermek için."""
+    return active_requirements(store) is not None
+
+
 def applies_to(req: Requirement, student) -> bool:
     """Gereksinim bu öğrenciyi kapsıyor mu?
 

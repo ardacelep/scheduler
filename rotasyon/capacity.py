@@ -17,6 +17,7 @@ from .models import (
     BRANCH_LABELS,
     DEFAULT_SETTINGS,
     PROGRAM_EBELIK,
+    SEVERITY_REQUIRED,
     Student,
     Unit,
 )
@@ -185,16 +186,17 @@ def _student_required(student: Student, req_branches: list[str],
     return out
 
 
-def _reachable(student: Student, branch: str, units: list[Unit],
-               visited_keys: set[str]) -> bool:
-    """Öğrenci bu branşta gidebileceği bir birim BULABİLİR mi?
+def _reachable_keys(student: Student, allowed: set[str], units: list[Unit],
+                    visited_keys: set[str]) -> bool:
+    """Öğrenci bu ad kümesinden gidebileceği bir birim BULABİLİR mi?
 
     Daha önce gittiği birime tekrar gidemez (madde 1), cinsiyet kısıtı ve
     yasaklı birimler elenir. Hiç uygun birim kalmadıysa zorunluluk artık
     matematiksel olarak karşılanamaz.
     """
     for u in units:
-        if u.branch_category != branch:
+        key = normalize_key(u.name)
+        if key not in allowed:
             continue
         if not u.active or u.quota <= 0:
             continue
@@ -206,13 +208,63 @@ def _reachable(student: Student, branch: str, units: list[Unit],
             continue
         if u.id in student.banned_unit_ids:
             continue
-        key = normalize_key(u.name)
         if student.dis_exempt and "DİŞ" in key:
             continue
         if key in visited_keys:
             continue
         return True
     return False
+
+
+def _branch_keys(units: list[Unit], branch: str) -> set[str]:
+    return {
+        normalize_key(u.name)
+        for u in units
+        if u.branch_category == branch and u.active and u.quota > 0
+    }
+
+
+def _obligations_for(
+    student: Student, units: list[Unit], req_branches: list[str],
+    available: set[str], requirements, seen_keys: set[str],
+) -> list[tuple[str, set[str], int]]:
+    """Bu öğrencinin kalan borçları: (etiket, uygun birim adları, kaç ziyaret).
+
+    v2 gereksinimleri verildiyse onlardan, aksi halde branş yolundan üretilir
+    — çözücüdeki `_Obligation` ile aynı fikir, burada aritmetik için.
+    Hiçbir birime karşılık gelmeyen borç ATLANIR (o birim hastanede yok;
+    kullanıcıyı düzeltemeyeceği bir şey için uyarmayız).
+    """
+    if requirements is not None:
+        from .requirements import applies_to
+
+        out = []
+        for req in requirements:
+            if req.severity != SEVERITY_REQUIRED or not applies_to(req, student):
+                continue
+            keys = {normalize_key(k) for k in req.unit_keys}
+            uygun = {
+                normalize_key(u.name)
+                for u in units
+                if u.active and u.quota > 0 and u.group in (0, student.group)
+                and normalize_key(u.name) in keys
+            }
+            if not uygun:
+                continue
+            need = req.min_count - len(keys & seen_keys)
+            if need > 0:
+                out.append((req.name, uygun, need))
+        return out
+
+    out = []
+    for b in _student_required(student, req_branches, available):
+        keys = _branch_keys(units, b)
+        if not keys:
+            continue
+        if keys & seen_keys:
+            continue  # bu branşı görmüş
+        out.append((BRANCH_LABELS.get(b, b), keys, 1))
+    return out
 
 
 def _names(students: list[Student]) -> str:
@@ -227,20 +279,26 @@ def season_requirement_findings(
     months: list[str],
     assignments: list[Assignment],
     settings: dict | None = None,
+    requirements=None,
 ) -> list[CapacityFinding]:
-    """Zorunlu branşların sezon SONUNA kadar karşılanabilirliği.
+    """Sezon zorunluluklarının sezon SONUNA kadar karşılanabilirliği.
 
     Üç ayrı risk raporlanır:
-      1. Kalan ay sayısı, eksik zorunlu branş sayısından AZ  → artık imkânsız
-      2. Bir branşta gidebileceği birim kalmamış             → artık imkânsız
-      3. Kalan ay sayısı eksik branş sayısına TAM EŞİT       → sıfır pay
+      1. Kalan ay sayısı, eksik zorunluluk sayısından AZ  → artık imkânsız
+      2. Bir zorunluluk için gidebileceği birim kalmamış  → artık imkânsız
+      3. Kalan ay sayısı eksik zorunluluk sayısına TAM EŞİT → sıfır pay
+
+    `requirements` verilirse (v2) borçlar oradan, yoksa branş yolundan okunur.
     """
     findings: list[CapacityFinding] = []
     units_by_id = {u.id: u for u in units}
     active = [s for s in students if getattr(s, "active", True)]
     req_branches = _required_branches(units, settings)
     available = {u.branch_category for u in units if u.active and u.quota > 0}
-    if not req_branches and BRANCH_DOGUM_SALONU not in available:
+    if requirements is None and not req_branches \
+            and BRANCH_DOGUM_SALONU not in available:
+        return findings
+    if requirements is not None and not requirements:
         return findings
 
     # öğrenci → gördüğü branşlar / birim adları / dolu aylar
@@ -258,57 +316,69 @@ def season_requirement_findings(
     imkansiz_ay: dict[int, list[Student]] = {}
     imkansiz_birim: dict[tuple[int, str], list[Student]] = {}
     sifir_pay: dict[int, list[Student]] = {}
+    eksik_etiket: dict[int, set[str]] = {}
 
     for s in active:
-        required = _student_required(s, req_branches, available)
-        if not required:
-            continue
-        gorulen = seen_branch.get(s.id, set())
-        eksik = [b for b in required if b not in gorulen]
-        if not eksik:
+        gorulen_key = seen_key.get(s.id, set())
+        borclar = _obligations_for(
+            s, units, req_branches, available, requirements, gorulen_key
+        )
+        if not borclar:
             continue
         kalan = [m for m in months if m not in done_months.get(s.id, set())]
 
-        # 2) hiç uygun birim kalmamış branşlar
+        # 2) hiç uygun birim kalmamış borçlar
         ulasilamaz = [
-            b for b in eksik
-            if not _reachable(s, b, units, seen_key.get(s.id, set()))
+            (etiket, keys, need) for etiket, keys, need in borclar
+            if not _reachable_keys(s, keys, units, gorulen_key)
         ]
-        for b in ulasilamaz:
-            imkansiz_birim.setdefault((s.group, b), []).append(s)
+        for etiket, _keys, _need in ulasilamaz:
+            imkansiz_birim.setdefault((s.group, etiket), []).append(s)
 
         # 1) ay sayısı yetmiyor  /  3) tam denk
-        gercekten_eksik = [b for b in eksik if b not in ulasilamaz]
-        if len(gercekten_eksik) > len(kalan):
+        ulasilamaz_etiket = {e for e, _k, _n in ulasilamaz}
+        gereken = sum(
+            need for etiket, _k, need in borclar
+            if etiket not in ulasilamaz_etiket
+        )
+        kalanlar = [
+            etiket for etiket, _k, _n in borclar
+            if etiket not in ulasilamaz_etiket
+        ]
+        if gereken > len(kalan):
             imkansiz_ay.setdefault(s.group, []).append(s)
-        elif gercekten_eksik and len(gercekten_eksik) == len(kalan):
+            eksik_etiket.setdefault(s.group, set()).update(kalanlar)
+        elif gereken and gereken == len(kalan):
             sifir_pay.setdefault(s.group, []).append(s)
 
     for g, ogrenciler in sorted(imkansiz_ay.items()):
+        etiketler = ", ".join(sorted(eksik_etiket.get(g, set())))
         findings.append(
             CapacityFinding(
                 level=ERROR,
                 group=g,
                 message=(
                     f"Grup {g}: {len(ogrenciler)} öğrencinin sezon zorunluluğu "
-                    "artık karşılanamaz — görmeleri gereken zorunlu branş "
-                    "sayısı, kalan ay sayısından fazla. Sezon bu haliyle "
-                    "biterse bu öğrenciler eksik mezun olur. Çözüm: geçmiş "
-                    f"ayların birkaçını düzeltin. ({_names(ogrenciler)})"
+                    "artık karşılanamaz — karşılanması gereken zorunluluk "
+                    "sayısı, kalan ay sayısından fazla"
+                    + (f" (eksik: {etiketler})" if etiketler else "")
+                    + ". Sezon bu haliyle biterse bu öğrenciler eksik mezun "
+                    "olur. Çözüm: geçmiş ayların birkaçını düzeltin. "
+                    f"({_names(ogrenciler)})"
                 ),
             )
         )
-    for (g, b), ogrenciler in sorted(imkansiz_birim.items()):
+    for (g, etiket), ogrenciler in sorted(imkansiz_birim.items()):
         findings.append(
             CapacityFinding(
                 level=ERROR,
                 group=g,
                 message=(
-                    f"Grup {g} · {BRANCH_LABELS.get(b, b)}: "
-                    f"{len(ogrenciler)} öğrenci bu zorunlu branşı artık "
-                    "göremez — gidebilecekleri (daha önce gitmedikleri, "
-                    "cinsiyet/yasak kısıtlarına uyan) bu branşta birim "
-                    "kalmadı. Çözüm: bu branşta birim ekleyin/aktifleştirin "
+                    f"Grup {g} · {etiket}: "
+                    f"{len(ogrenciler)} öğrenci bu zorunluluğu artık "
+                    "karşılayamaz — gidebilecekleri (daha önce gitmedikleri, "
+                    "cinsiyet/yasak kısıtlarına uyan) uygun birim "
+                    "kalmadı. Çözüm: birim ekleyin/aktifleştirin "
                     f"ya da kısıtları gevşetin. ({_names(ogrenciler)})"
                 ),
             )
