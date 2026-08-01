@@ -27,7 +27,7 @@ from rotasyon.fill_policy import (
     group_capacity_plan,
     policy_of,
 )
-from ..common import groups_in
+from ..common import clear_stale_state, data_fingerprint, groups_in
 
 
 def render(store) -> None:
@@ -41,6 +41,17 @@ def render(store) -> None:
 
     units = store.load_units()
     students = store.load_students()
+
+    # Bu ekranın widget'ları (politika seçici, kontenjan) veriyi DOĞRUDAN
+    # yansıtır; session_state'te kalan bayat bir değer diske geri yazılabilir.
+    # Streamlit, `key` session_state'te varsa onu `index=`/`value=`'ya tercih
+    # eder — dolayısıyla sezon değişince (kopyalanan sezonlar AYNI birim
+    # id'lerini paylaşır!) eski sezonun seçimi yeni sezonun verisini sessizce
+    # ezerdi. Veri değişince widget durumunu atıyoruz: kaynak her zaman disk.
+    clear_stale_state(
+        "_cap_fp", data_fingerprint(units, students), ("cap_",)
+    )
+
     if not units:
         st.info("Önce Veri Yönetimi'nden birim ekleyin.")
         return

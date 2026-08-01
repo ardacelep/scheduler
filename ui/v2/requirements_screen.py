@@ -34,6 +34,7 @@ from rotasyon.models import (
 from rotasyon.normalize import normalize_key
 from rotasyon.requirements import applies_to, compile_for_student, describe
 from rotasyon.requirements import from_legacy_settings
+from ..common import clear_stale_state, data_fingerprint
 
 
 def render(store) -> None:
@@ -46,6 +47,20 @@ def render(store) -> None:
 
     units = store.load_units()
     students = store.load_students()
+
+    # "Yeni gereksinim" formu session_state'te BEKLEYEN seçimler tutuyor:
+    # birim adları ve ÖĞRENCİ NESNELERİ. Öğrenci listesi yeniden içe
+    # aktarılırsa (ya da sezon değişirse) o nesneler ölü id'lere işaret eder
+    # ve kaydedilen gereksinim hiç kimseyi kapsamaz; kaybolan bir birim adı
+    # ise multiselect'i "default option'da yok" hatasıyla düşürür.
+    # Parmak izi bilerek YALNIZ öğrenci+birim üzerinden alınır: gereksinim
+    # eklemek/silmek yarı dolu formu temizlemesin.
+    clear_stale_state(
+        "_req_fp",
+        data_fingerprint(students, units),
+        ("req_new_", "req_branch_"),
+    )
+
     if not units:
         st.info("Önce Veri Yönetimi'nden birim ekleyin.")
         return
@@ -198,15 +213,26 @@ def _editor(store, reqs, units, students) -> None:
             key="req_new_program",
         )
     elif scope == SCOPE_STUDENTS:
+        # Seçenekler ÖĞRENCİ NESNESİ değil id: session_state'te kalan bir
+        # nesne, öğrenci düzenlenince hiçbir seçeneğe eşit olmaz ve widget
+        # düşer. id ile tutulunca en kötü durumda seçim sessizce boşalır.
+        by_id = {s.id: s for s in students}
         secim = st.multiselect(
-            "Öğrenciler", students,
-            format_func=lambda s: f"{s.full_name} ({s.group}. grup)",
+            "Öğrenciler", list(by_id),
+            format_func=lambda sid: (
+                f"{by_id[sid].full_name} (grup {by_id[sid].group})"
+            ),
             key="req_new_students",
         )
-        student_ids = [s.id for s in secim]
+        student_ids = [sid for sid in secim if sid in by_id]
 
     st.markdown("**Hangi birimlerden?**")
-    onerilen = st.session_state.get("req_branch_pick", [])
+    # Bekleyen seçim, artık var olmayan bir birim adı içeriyorsa multiselect
+    # "default option'larda yok" diye patlar — mevcut adlarla kesiştir.
+    # (clear_stale_state çoğu durumu zaten temizler; bu son savunma.)
+    onerilen = [
+        n for n in st.session_state.get("req_branch_pick", []) if n in names
+    ]
     secili_birimler = st.multiselect(
         "Birimler", names, default=onerilen, key="req_new_units",
         help="Birimleri doğrudan adıyla seçin. Aynı ad her iki grupta da "

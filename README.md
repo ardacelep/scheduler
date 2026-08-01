@@ -285,6 +285,15 @@ katalogdaki FTR.ÜNİT hem `must_fill` hem `single_slot` taşır ve motorda zate
 · kontenjan öğrenci sayısının altında · kontenjan öğrenci sayısına tam eşit
 (her birim dolmak zorunda kalır, tekrar yasağıyla sezonu kilitler).
 
+**Bayat widget durumu:** bu ekranın widget'ları veriyi doğrudan yansıtır ve
+Streamlit, bir `key` session_state'te varsa onu `index=`/`value=`'ya **tercih
+eder**. `SeasonManager.create(copy_units_from=...)` birimleri AYNI id'lerle
+kopyaladığı için `cap_pol_{grup}_{birim_id}` anahtarları sezonlar arasında
+çakışıyordu: sezon değiştirince eski sezonun seçimi yeni sezonun verisini
+sessizce ezebiliyordu. Her iki v2 editörü de artık `clear_stale_state` ile
+veri değişiminde widget durumunu atıyor — kaynak her zaman disk
+(`tests/test_v2_stale_state.py`).
+
 Aynı aritmetik çözücünün ön-denetimine de eklendi: "tam dolmalı" toplamı grubu
 aşınca `solve_month` bunu **adıyla** söyler — önceden unsat core alakasız bir
 aile gösterebiliyordu ("elle sabitlenen atamalar", hiç kilitli hücre yokken).
@@ -510,7 +519,7 @@ Tasarım kararları:
 .venv/bin/python -m pytest tests/
 ```
 
-Şu an **382 test** yeşildir; her yerleşik kural, özel kurallar, gereksinimler
+Şu an **390 test** yeşildir; her yerleşik kural, özel kurallar, gereksinimler
 (v2 kural modeli + v1 denkliği), doldurma politikası ve kapasite matematiği, çözücü, ortak sezon çözücüsü, kapasite
 denetimi, cinsiyet tahmini, sezon yönetimi, dinamik değişiklikler, toplu taslak
 kalıcılığı, yedekleme/geri yükleme, başlatıcı yardımcıları ve Excel içe/dışa
