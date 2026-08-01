@@ -97,26 +97,22 @@ _SCREENS = [
         "Eksik bilgi varsa buradan uyarılırsınız.",
     ),
     (
-        "🔄 Rotasyon Oluştur",
-        "Tek bir grup ve ay için adım adım rotasyon üretir. Sadece bir ayla "
-        "uğraşmak istediğinizde kullanın.",
+        "🧭 Kurulum Sihirbazı",
+        "Yeni sezonu kurarken nerede kaldığınızı gösterir: beş adım, her "
+        "birinin durumu verinizden okunur ve ilgili ekrana bağlantı verir.",
     ),
     (
         "📅 Yıllık Tablo",
         "En çok kullanacağınız ekran. Sezonun tamamı tek tabloda: satırlar "
         "öğrenci, sütunlar aylar. Ay üretmek, hücre düzeltmek ve tüm sezonu "
-        "görmek burada yapılır.",
-    ),
-    (
-        "📊 Grup Dağılımı",
-        "Her grup için birim listesi ve kontenjanları (×N); toplamın öğrenci "
-        "sayısına oturup oturmadığını gösterir. Bir birimi bir grup için iptal "
-        "edebilirsiniz (elle yaparken griye boyama).",
+        "görmek burada yapılır. Altındaki **Toplu oluşturma** kalan bütün "
+        "ayları tek seferde üretir.",
     ),
     (
         "🛡️ Kural Kontrolü",
-        "Kayıtlı bütün atamaları kurallara karşı denetler; hangi kuralın "
-        "nerede çiğnendiğini düz Türkçe yazar.",
+        "Sezonunuzun iki yandan sağlık kontrolü: **kayıtlı atamalar** "
+        "kurallara uyuyor mu ve **kalan sezon** tamamlanabilir mi. İkisinin "
+        "özeti en üstte birlikte durur.",
     ),
     (
         "📋 Veri Yönetimi",
@@ -205,9 +201,9 @@ _FAQ = [
         "anlaşılırsa yapılacak bir şey yoktur), o yüzden **kalan sezon** ayrıca "
         "denetlenir:\n\n"
         "- **Ana Sayfa**'da risk varsa kırmızı/sarı bir özet çıkar.\n"
-        "- **Rotasyon Oluştur** ve **Yıllık Tablo** üstünde *🔎 Sezon "
-        "ön-denetimi* paneli bulunur.\n"
-        "- **Kural Kontrolü ▸ 🔮 Kalan sezon** sekmesinde tam liste vardır.\n\n"
+        "- **Yıllık Tablo** üstünde *🔎 Sezon ön-denetimi* paneli bulunur.\n"
+        "- **Kural Kontrolü**'nde *🔮 Kalan sezon* bölümünde tam liste "
+        "vardır.\n\n"
         "Denetlenenler: kontenjan yetiyor mu, her öğrenci zorunlu branşlarını "
         "(cerrahi, dahili, yoğun bakım, palyatif; ebelikte doğum salonu) "
         "görebilecek mi, gidebileceği birim tükeniyor mu ve eklediğiniz özel "
@@ -215,7 +211,7 @@ _FAQ = [
     ),
     (
         "“Derin risk analizi” nedir, ne zaman kullanmalıyım?",
-        "Kural Kontrolü ▸ 🔮 Kalan sezon sekmesindeki bu düğme, kalan ayları "
+        "Kural Kontrolü'ndeki *🔮 Kalan sezon* bölümünün bu düğmesi, kalan ayları "
         "**gerçekten çözmeyi dener** ve “bu sezon tamamlanabilir mi?” "
         "sorusuna kesin cevap verir. Normal denetim hesapla bulunabilecek "
         "tıkanmaları gösterir; bu ise kuralların birlikte tıkanıp "
@@ -226,13 +222,13 @@ _FAQ = [
     ),
     (
         "Bir grubun hangi birimlere kaç kişi verildiğini nasıl görürüm/ayarlarım?",
-        "📊 **Grup Dağılımı** ekranı tam bunun için. Her grup için birim "
-        "listesini kontenjanıyla (×N) gösterir ve toplamın grubun öğrenci "
-        "sayısına oturup oturmadığını söyler. Bir birimi bir grup için "
-        "**iptal** ederseniz (elle yaparken griye boyadığınız gibi) o gruptan "
-        "kimse oraya verilmez — çözücü de buna uyar. İptal ettiğiniz birim "
-        "listede gri/üstü çizili kalır (atlamamanız için). “Tekrarlı liste” "
-        "bölümü, elle tuttuğunuz tablonun birebir kopyalanabilir hâlini verir.",
+        "📦 **Kapasite Planı** ekranı tam bunun için. Her grup için birim "
+        "listesini kontenjanıyla gösterir, toplamın grubun öğrenci sayısına "
+        "oturup oturmadığını söyler ve her birime bir **doldurma politikası** "
+        "verdirir. Bir birimi bir grup için **iptal** ederseniz (elle yaparken "
+        "griye boyadığınız gibi) o gruptan kimse oraya verilmez — çözücü de "
+        "buna uyar. “Tekrarlı liste” bölümü, elle tuttuğunuz tablonun birebir "
+        "kopyalanabilir hâlini verir.",
     ),
     (
         "“Şu öğrenciler şu birimleri görsün” kuralını nasıl kurarım?",

@@ -34,6 +34,13 @@ _RISK_JOBS: dict[str, dict] = {}
 
 
 def render(store) -> None:
+    """Tek soruya iki yandan cevap: "sezonum sağlam mı?"
+
+    Önceden iki sekme vardı (geçmiş / gelecek) ve sekme her zaman birini
+    gizliyordu — kullanıcı diğer yarıya bakmayı unutabiliyordu. Şimdi üstte
+    ikisinin ÖZETİ birlikte duruyor, ayrıntılar altta sırayla; temiz olan
+    bölüm tek satıra iniyor.
+    """
     st.header("🛡️ Kural Kontrolü")
     students = store.load_students()
     units = store.load_units()
@@ -42,41 +49,80 @@ def render(store) -> None:
     months = settings["months"]
     custom_rules = store.load_custom_rules()
 
-    tab_past, tab_future = st.tabs(
-        ["📋 Kayıtlı atamalar", "🔮 Kalan sezon (ileriye dönük)"]
+    violations = (
+        check_all(
+            students, units, assignments, months,
+            custom_rules=custom_rules, settings=settings,
+        )
+        if assignments
+        else []
     )
-    with tab_past:
-        _past_tab(store, students, units, assignments, months, custom_rules,
-                  settings)
-    with tab_future:
-        _future_tab(store, students, units, assignments, months, custom_rules,
-                    settings, str(store.data_dir))
+    risks = collect_risks(
+        students, units, months, assignments, custom_rules, settings
+    )
+    _status_header(violations, risks, bool(assignments))
+
+    st.divider()
+    _past_section(store, students, units, assignments, violations)
+    st.divider()
+    _future_section(store, students, units, assignments, months, custom_rules,
+                    settings, risks, str(store.data_dir))
+
+
+def _status_header(violations, risks, has_assignments) -> None:
+    """Her iki yarının durumu tek bakışta."""
+    from rotasyon.risk import risk_counts
+
+    hatalar = sum(1 for v in violations if v.severity == "hata")
+    uyarilar = len(violations) - hatalar
+    r_err, r_warn = risk_counts(risks)
+
+    c1, c2 = st.columns(2)
+    with c1:
+        st.markdown("**📋 Kayıtlı atamalar**")
+        if not has_assignments:
+            st.caption("Henüz kayıtlı atama yok.")
+        elif hatalar:
+            st.markdown(f":red[**{hatalar} hata**]"
+                        + (f" · {uyarilar} uyarı" if uyarilar else ""))
+        elif uyarilar:
+            st.markdown(f":orange[{uyarilar} uyarı] · hata yok")
+        else:
+            st.markdown(":green[Tüm atamalar kurallara uygun ✅]")
+    with c2:
+        st.markdown("**🔮 Kalan sezon**")
+        if r_err:
+            st.markdown(f":red[**{r_err} kritik risk**]"
+                        + (f" · {r_warn} uyarı" if r_warn else ""))
+        elif r_warn:
+            st.markdown(f":orange[{r_warn} uyarı] · kritik risk yok")
+        else:
+            st.markdown(":green[Öngörülen tıkanma yok ✅]")
 
 
 # ======================= GEÇMİŞ =======================
 
-def _past_tab(store, students, units, assignments, months, custom_rules,
-              settings) -> None:
+def _past_section(store, students, units, assignments, violations) -> None:
+    st.subheader("📋 Kayıtlı atamalar")
+    if not assignments:
+        st.caption(
+            "Henüz kayıtlı atama yok — rotasyon ürettikçe burada denetlenecek."
+        )
+        return
     st.caption(
-        "Kayıtlı tüm atamalar 19 kurala karşı denetlenir. Elle "
+        "Kayıtlı tüm atamalar kurallara karşı denetlenir. Elle "
         "değişikliklerden sonra da çalıştırabilirsiniz."
     )
-    st.info(
-        "ℹ️ Bu denetim **tüm ayları GÜNCEL veriyle** karşılaştırır: bir birimin "
-        "kontenjanını düşürür ya da bir kısıt eklerseniz, geçmiş bir ay artık "
-        "buna uymuyorsa burada hata olarak görünür. Bu yalnız **bilgilendirme** "
-        "amaçlıdır — geçmiş rotasyonlar kendiliğinden değişmez ve bu eski "
-        "hatalar yeni ay kaydetmenizi engellemez. Zamana bağlı kurallar "
-        "(başlangıç/bitiş ayı olanlar) yalnız kendi aylarında denetlenir.",
-        icon="ℹ️",
-    )
-    if not assignments:
-        st.info("Henüz kayıtlı atama yok.")
-        return
-    violations = check_all(
-        students, units, assignments, months,
-        custom_rules=custom_rules, settings=settings,
-    )
+    with st.expander("ℹ️ Geçmiş aylar neden hata gösterebilir?"):
+        st.markdown(
+            "Bu denetim **tüm ayları GÜNCEL veriyle** karşılaştırır: bir "
+            "birimin kontenjanını düşürür ya da bir kısıt eklerseniz, geçmiş "
+            "bir ay artık buna uymuyorsa burada hata olarak görünür. Bu "
+            "yalnız **bilgilendirme** amaçlıdır — geçmiş rotasyonlar "
+            "kendiliğinden değişmez ve bu eski hatalar yeni ay kaydetmenizi "
+            "engellemez. Zamana bağlı kurallar (başlangıç/bitiş ayı olanlar) "
+            "yalnız kendi aylarında denetlenir."
+        )
     _orphan_cleanup_panel(store, students, units, assignments, violations)
     # Bu ekran tümüyle kayıtlı (tamamlanmış) veriyi denetler; düzenleme kapsamı
     # yoktur → aya/öğrenciye bağlı her ihlal "geçmişe dönük" sayılır. Ayar
@@ -88,14 +134,12 @@ def _past_tab(store, students, units, assignments, months, custom_rules,
 
 # ======================= GELECEK =======================
 
-def _future_tab(store, students, units, assignments, months, custom_rules,
-                settings, key) -> None:
+def _future_section(store, students, units, assignments, months, custom_rules,
+                    settings, risks, key) -> None:
     from rotasyon.risk import risk_counts
 
+    st.subheader("🔮 Kalan sezon (ileriye dönük)")
     st.caption(RISK_INTRO)
-    risks = collect_risks(
-        students, units, months, assignments, custom_rules, settings
-    )
     errs, warns = risk_counts(risks)
     if not risks:
         st.success(

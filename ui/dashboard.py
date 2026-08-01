@@ -122,13 +122,13 @@ def render(store) -> None:
     c1, c2, c3, c4 = st.columns(4)
     with c1:
         _link(
-            "rotasyon",
-            f"Rotasyon oluştur{f' ({next_month})' if next_month else ''}",
-            "🔄",
+            "yillik-tablo",
+            f"Rotasyonu düzenle{f' ({next_month})' if next_month else ''}",
+            "📅",
         )
     with c2:
         _link("kural-kontrolu", "Kural denetimi çalıştır", "🛡️")
     with c3:
-        _link("excel", "Excel'e aktar", "📤")
+        _link("kurulum", "Kurulum durumu", "🧭")
     with c4:
         _link("yardim", "Yardım", "❓")

@@ -95,6 +95,42 @@ def test_streamlit_env_sets_end_user_defaults(monkeypatch):
     assert env["STREAMLIT_CLIENT_TOOLBAR_MODE"] == "minimal"
 
 
+def test_exe_theme_matches_config_toml(monkeypatch):
+    """exe (ortam değişkeni) ile kaynak (config.toml) aynı görünmeli.
+
+    config.toml exe'ye paketlenmiyor; tema iki yerde ayrı tanımlı olduğu için
+    biri güncellenip diğeri unutulursa uygulama iki farklı görünüme sahip olur.
+    """
+    import re
+    import pathlib
+
+    for key in list(run_app.os.environ):
+        if key.startswith("STREAMLIT_"):
+            monkeypatch.delenv(key, raising=False)
+    run_app.streamlit_env()
+
+    toml = pathlib.Path(__file__).resolve().parents[1] / ".streamlit/config.toml"
+    metin = toml.read_text(encoding="utf-8")
+    # [theme] ve [theme.sidebar] bölümlerindeki anahtar = "değer" çiftleri
+    bolumler = re.split(r"^\[", metin, flags=re.M)
+    bulunan = 0
+    for bolum in bolumler:
+        if not bolum.startswith("theme"):
+            continue
+        onek = "STREAMLIT_THEME_SIDEBAR_" if bolum.startswith(
+            "theme.sidebar"
+        ) else "STREAMLIT_THEME_"
+        for anahtar, deger in re.findall(
+            r'^(\w+)\s*=\s*"([^"]+)"', bolum, flags=re.M
+        ):
+            env_key = onek + re.sub(r"(?<!^)(?=[A-Z])", "_", anahtar).upper()
+            assert run_app.os.environ.get(env_key) == deger, (
+                f"{env_key} config.toml'daki {anahtar}={deger} ile uyuşmuyor"
+            )
+            bulunan += 1
+    assert bulunan >= 7, f"tema anahtarları okunamadı ({bulunan})"
+
+
 def test_streamlit_env_does_not_override_user_choice(monkeypatch):
     monkeypatch.setenv("STREAMLIT_SERVER_ADDRESS", "0.0.0.0")
     run_app.streamlit_env()

@@ -75,6 +75,29 @@ def _group_section(store, units, students, group) -> None:
     _breakdown(plan)
     with st.expander(f"✏️ Grup {group} birimlerini düzenle", expanded=False):
         _unit_editor(store, units, group)
+    _repeated_list(units, group)
+
+
+def _repeated_list(units, group) -> None:
+    """Elle tutulan tablonun birebir hâli: her birim kontenjanı kadar tekrar.
+
+    Eğitim hemşiresi rotasyonu elle yaparken birim adını kaç kişi gidecekse o
+    kadar yazıyor ("kes-yapıştır yapıyorum ki kaç kişi verdim saymayayım").
+    Kendi belgesine yapıştırabilsin diye kopyalanabilir metin olarak sunulur.
+    """
+    with st.expander("📋 Tekrarlı liste (kes-yapıştır için)"):
+        satirlar = [
+            u.name_with_gender
+            for u in sorted(
+                (x for x in units if x.group in (0, group) and x.active),
+                key=lambda x: x.name,
+            )
+            for _ in range(u.quota)
+        ]
+        st.caption(
+            f"{len(satirlar)} satır — her birim kontenjanı kadar tekrar yazılı."
+        )
+        st.code("\n".join(satirlar) or "(aktif birim yok)", language=None)
 
 
 def _summary(plan) -> None:

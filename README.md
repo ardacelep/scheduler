@@ -97,37 +97,32 @@ sezonun verisi tamamen bağımsızdır.
 Sol kenar çubuğundan **sezon** seçilir, yeni sezon oluşturulur veya silinir
 (silme kalıcı değildir: sezon `data/trash/` altına taşınır, geri alınabilir).
 
-| Ekran | İşlev |
-|---|---|
-| **Ana Sayfa** | Sezon özeti, ay bazında ilerleme tablosu, eksik veri uyarıları, hızlı erişim bağlantıları |
-| **Rotasyon Oluştur** | Tek akışlı üretim + toplu oluşturma (aşağıda ayrıntı) |
-| **Yıllık Tablo** | Sezonun tamamı tek tabloda (öğrenci × ay); aynı ekrandan ay oluşturma/elle düzeltme, düzeltirken herkesin geçmişi görünür (aşağıda ayrıntı) |
-| **Grup Dağılımı** | Her grup için birim listesi + kontenjan (×N) + denge (kontenjan toplamı ↔ öğrenci sayısı); birimi bir grup için tek tıkla **iptal** (elle "griye boyama"nın karşılığı). Eğitim hemşiresinin el tablosunun canlı hâli |
-| **Kural Kontrolü** | İki sekme: kayıtlı atamaların kural denetimi **ve** kalan sezonun ileriye dönük risk analizi (+ deneme çözümü) |
-| **Veri Yönetimi** | Öğrenci, birim, sınıf ve özel kuralları toplu düzenleme; Excel içe aktarma; cinsiyet tahmini; **yedekleme/geri yükleme** |
-| **Öğrenci Geçmişi** | Bir öğrencinin sezon boyunca gittiği birimler, ay sırasıyla |
-| **Excel İçe/Dışa Aktarım** | Rotasyon veya öğrenci listesi içe aktarma; yıllık renkli ve tek-ay renksiz dışa aktarma |
-| **Gereksinimler** *(Sezon Kurulumu)* | Sezonun zorunluluklarını gelen öğrencilere göre tanımlama: **kime — hangi birimlerden — kaç kez**. Kapsam (tüm/grup/sınıf/program/seçili öğrenci) + birim adıyla seçim + canlı kapsam özeti (aşağıda ayrıntı) |
-| **Kapasite Planı** *(Sezon Kurulumu)* | Birim başına tek **doldurma politikası** (Tam dolmalı / Mümkünse / Havuz / Yedek / Serbest) + kontenjan; toplamın canlı aritmetiği ve çelişki uyarıları (aşağıda ayrıntı) |
-| **Yardım** | Uygulama içi Türkçe kılavuz: adım adım başlangıç, ekran rehberi, sık sorulanlar, sorun giderme |
+| Bölüm | Ekran | İşlev |
+|---|---|---|
+| **Kurulum** | **Kurulum Sihirbazı** | Sezonu kurmanın beş adımı sırayla; her adımın durumu VERİDEN okunur (öğrenciler → sınıf-grup → kapasite → gereksinimler → üretim) ve ilgili ekrana bağlantı verir |
+| | **Veri Yönetimi** | Öğrenci, birim, sınıf ve özel kuralları toplu düzenleme; cinsiyet tahmini; **yedekleme/geri yükleme** |
+| | **Kapasite Planı** | Birim başına tek **doldurma politikası** (Tam dolmalı / Mümkünse / Havuz / Yedek / Serbest) + kontenjan; toplamın canlı aritmetiği, çelişki uyarıları ve el tablosunun "tekrarlı liste" hâli (aşağıda ayrıntı) |
+| | **Gereksinimler** | Sezon zorunluluklarını gelen öğrencilere göre tanımlama: **kime — hangi birimlerden — kaç kez** (aşağıda ayrıntı) |
+| **Planlama** | **Ana Sayfa** | Sezon özeti, ay bazında ilerleme tablosu, eksik veri uyarıları, hızlı erişim |
+| | **Yıllık Tablo** | Sezonun tamamı tek tabloda (öğrenci × ay); hücre düzeltme, sıradaki ayı doldurma **ve toplu oluşturma** (aşağıda ayrıntı) |
+| | **Kural Kontrolü** | Tek ekranda iki yandan sağlık kontrolü: kayıtlı atamaların kural denetimi **ve** kalan sezonun ileriye dönük risk analizi (+ deneme çözümü); ikisinin özeti en üstte birlikte |
+| **Araçlar** | **Excel** | İçe/dışa aktarım (tek seçimle ayrılır); rotasyon veya öğrenci listesi okuma, yıllık renkli ve tek-ay renksiz yazma |
+| | **Öğrenci Geçmişi** | Bir öğrencinin sezon boyunca gittiği birimler, ay sırasıyla |
+| | **Yardım** | Uygulama içi Türkçe kılavuz: adım adım başlangıç, ekran rehberi, SSS, sorun giderme |
 
-### Rotasyon Oluştur akışı
+> Menü üç bölümdür: sezonu **kurma** işleri bir arada, sezonu **yürütme**
+> işleri bir arada, ara sıra kullanılanlar en altta. Eski "Rotasyon Oluştur"
+> ekranı Yıllık Tablo ile, "Grup Dağılımı" Kapasite Planı ile örtüştüğü için
+> kaldırıldı; işlevleri (toplu oluşturma, tekrarlı liste) kalan ekranlara
+> taşındı.
 
-Seçili **grup + ay** için tek bir görünüm vardır ve üç durumdan birindedir:
+### Toplu oluşturma (Yıllık Tablo'nun altında)
 
-- ⚪ **oluşturulmadı** → *Otomatik oluştur* veya *Sihirbazla adım adım*
-- 🟡 **taslak** (kaydedilmemiş) → incele, elle düzenle, *farklı çözüm* dene, kaydet
-- 🟢 **kayıtlı** → incele, elle düzenle, *yeniden oluştur* (yeni taslak üretir)
-
-Üretim yöntemi ne olursa olsun sonuç aynı taslağa akar; "elle düzenleme" ayrı
-bir mod değil, taslağın/kaydın üzerinde bir anahtardır. Hiçbir şey siz
-onaylamadan kaydedilmez.
-
-**Toplu oluşturma** kalan bütün ayları tek seferde üretir; sonuç grup×ay
-tablosu + kural denetimiyle **taslak** olarak önizlenir, onaylayınca kaydedilir.
-Çözüm **arka planda** çalışır: bu sırada başka sayfalara geçebilir, hatta
-uygulamayı kapatıp açabilirsiniz — biten taslak siz onaylayana/silene kadar
-diskte saklanır, kaybolmaz.
+Kalan bütün ayları tek seferde üretir; sonuç grup×ay tablosu + kural
+denetimiyle **taslak** olarak önizlenir, onaylayınca kaydedilir. Çözüm **arka
+planda** çalışır: bu sırada başka sayfalara geçebilir, hatta uygulamayı kapatıp
+açabilirsiniz — biten taslak siz onaylayana/silene kadar diskte saklanır.
+Sezon ortasından da çalışır: dolu aylar geçmiş kabul edilir.
 
 ### Yıllık Tablo
 
@@ -159,8 +154,6 @@ sezonun tamamı tek ekrana sığdırılabilir (yazdırmaya da uygun).
 > geri yazılmaz); böylece seçim ilk denemede uygulanır ve kaydırma konumu
 > sıfırlanmaz.
 
-Rehberli, tek grup+ay odaklı üretim için **Rotasyon Oluştur** ekranı olduğu
-gibi durur; Yıllık Tablo ona bir alternatiftir.
 
 ---
 
@@ -378,8 +371,8 @@ daha"*), 64 kişilik sezonda panel okunabilir kalsın diye.
 ### Kullanıcı bunları nerede görür
 
 - **Ana Sayfa** — risk varsa kırmızı/sarı özet + Kural Kontrolü'ne bağlantı
-- **Rotasyon Oluştur** ve **Yıllık Tablo** — üstte *🔎 Sezon ön-denetimi* paneli
-- **Kural Kontrolü ▸ 🔮 Kalan sezon** — tam liste + **deneme çözümü** düğmesi
+- **Yıllık Tablo** — üstte *🔎 Sezon ön-denetimi* paneli
+- **Kural Kontrolü** *(🔮 Kalan sezon bölümü)* — tam liste + **deneme çözümü**
 - **Veri Yönetimi ▸ Kurallar** — sabit atama / birlikte tut **eklenirken**
   anlık uyarı (`fixed_assignment_conflicts`, `units_fitting_all`); uyarı
   engellemez, sorunun oluşmasını önler

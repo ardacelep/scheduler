@@ -37,12 +37,25 @@ from .common import (
 
 
 def render(store) -> None:
-    st.header("📊 Excel İçe/Dışa Aktarım")
-    tab_import, tab_export = st.tabs(["📥 İçe Aktar", "📤 Dışa Aktar"])
-    with tab_import:
-        _import_tab(store)
-    with tab_export:
+    """İçe/dışa aktarım iki ayrı iştir; ikisini birden göstermek gereksiz.
+
+    Sekme yerine tek seçim: seçilmeyen taraf hiç render edilmez (Streamlit
+    sekmeleri hepsini DOM'a basar), ekran sade kalır ve kullanıcı hangi işi
+    yaptığını her an görür.
+    """
+    st.header("📊 Excel")
+    yon = st.segmented_control(
+        "Ne yapmak istiyorsunuz?",
+        ["📥 İçe aktar", "📤 Dışa aktar"],
+        default="📥 İçe aktar",
+        key="excel_yon",
+        label_visibility="collapsed",
+    )
+    st.divider()
+    if yon == "📤 Dışa aktar":
         _export_tab(store)
+    else:
+        _import_tab(store)
 
 
 # ======================= İÇE AKTARIM =======================

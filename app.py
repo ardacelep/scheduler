@@ -14,9 +14,9 @@ st.set_page_config(
     layout="wide",
 )
 
-from ui import dashboard, data_management, history, rotation, violations  # noqa: E402
-from ui import excel_screen, group_distribution, help as help_screen, season_grid  # noqa: E402
-from ui.v2 import capacity_plan, requirements_screen  # noqa: E402
+from ui import dashboard, data_management, history, violations  # noqa: E402
+from ui import excel_screen, help as help_screen, season_grid  # noqa: E402
+from ui.v2 import capacity_plan, requirements_screen, setup_wizard  # noqa: E402
 from ui.common import (  # noqa: E402
     UNITS_CATALOG,
     create_season_with_units,
@@ -26,14 +26,15 @@ from ui.common import (  # noqa: E402
 
 
 def _page(render_fn, url_path: str):
-    """Ekran fonksiyonunu st.Page'in beklediği çağrılabilire sarar."""
+    """Ekran fonksiyonunu st.Page'in beklediği çağrılabilire sarar.
+
+    Aktif sezon burada YAZILMAZ: kenar çubuğundaki sezon seçici aynı bilgiyi
+    zaten gösteriyor ve her sayfanın tepesinde tekrarlamak başlığı aşağı itip
+    ekranı gürültülendiriyordu.
+    """
 
     def runner():
-        manager = get_manager()
-        active = manager.active_season()
-        if active:
-            st.caption(f"📅 Aktif sezon: **{active}**")
-        render_fn(manager.store())
+        render_fn(get_manager().store())
 
     runner.__name__ = url_path.replace("-", "_")
     return runner
@@ -106,57 +107,52 @@ def _season_sidebar(manager) -> None:
 
 
 def main() -> None:
+    # Menü üç bölüm: sezonu KURMA işleri bir arada, sezonu YÜRÜTME işleri bir
+    # arada, ara sıra kullanılanlar en altta. (Eski yapıda "Rotasyon Oluştur"
+    # Yıllık Tablo ile, "Grup Dağılımı" Kapasite Planı ile örtüşüyordu; ikisi
+    # de kaldırıldı, işlevleri kalan ekranlara taşındı.)
     pages = {
+        "Kurulum": [
+            st.Page(
+                _page(setup_wizard.render, "kurulum"),
+                title="Kurulum Sihirbazı", icon="🧭", url_path="kurulum",
+            ),
+            st.Page(
+                _page(data_management.render, "veri-yonetimi"),
+                title="Veri Yönetimi", icon="📋", url_path="veri-yonetimi",
+            ),
+            st.Page(
+                _page(capacity_plan.render, "kapasite-plani"),
+                title="Kapasite Planı", icon="📦", url_path="kapasite-plani",
+            ),
+            st.Page(
+                _page(requirements_screen.render, "gereksinimler"),
+                title="Gereksinimler", icon="🎯", url_path="gereksinimler",
+            ),
+        ],
         "Planlama": [
             st.Page(
                 _page(dashboard.render, "ana-sayfa"),
                 title="Ana Sayfa", icon="🏠", url_path="ana-sayfa", default=True,
             ),
             st.Page(
-                _page(rotation.render, "rotasyon"),
-                title="Rotasyon Oluştur", icon="🔄", url_path="rotasyon",
-            ),
-            st.Page(
                 _page(season_grid.render, "yillik-tablo"),
                 title="Yıllık Tablo", icon="📅", url_path="yillik-tablo",
-            ),
-            st.Page(
-                _page(group_distribution.render, "grup-dagilimi"),
-                title="Grup Dağılımı", icon="📊", url_path="grup-dagilimi",
             ),
             st.Page(
                 _page(violations.render, "kural-kontrolu"),
                 title="Kural Kontrolü", icon="🛡️", url_path="kural-kontrolu",
             ),
         ],
-        "Veri": [
+        "Araçlar": [
             st.Page(
-                _page(data_management.render, "veri-yonetimi"),
-                title="Veri Yönetimi", icon="📋", url_path="veri-yonetimi",
+                _page(excel_screen.render, "excel"),
+                title="Excel", icon="📊", url_path="excel",
             ),
             st.Page(
                 _page(history.render, "ogrenci-gecmisi"),
                 title="Öğrenci Geçmişi", icon="🕘", url_path="ogrenci-gecmisi",
             ),
-            st.Page(
-                _page(excel_screen.render, "excel"),
-                title="Excel İçe/Dışa Aktarım", icon="📊", url_path="excel",
-            ),
-        ],
-        # v2: sezonun kurallarını gelen öğrencilere göre belirleme akışı.
-        # v1 ekranları aynı sezon verisiyle çalışmaya devam eder; v2
-        # olgunlaştıkça buraya yeni adımlar eklenecek.
-        "🆕 Sezon Kurulumu": [
-            st.Page(
-                _page(requirements_screen.render, "gereksinimler"),
-                title="Gereksinimler", icon="🎯", url_path="gereksinimler",
-            ),
-            st.Page(
-                _page(capacity_plan.render, "kapasite-plani"),
-                title="Kapasite Planı", icon="📦", url_path="kapasite-plani",
-            ),
-        ],
-        "Destek": [
             st.Page(
                 _page(help_screen.render, "yardim"),
                 title="Yardım", icon="❓", url_path="yardim",

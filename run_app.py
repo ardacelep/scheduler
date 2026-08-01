@@ -291,6 +291,20 @@ def streamlit_env() -> None:
         "STREAMLIT_CLIENT_TOOLBAR_MODE": "minimal",  # geliştirici menüsü gizli
         "STREAMLIT_GLOBAL_DEVELOPMENT_MODE": "false",
         "STREAMLIT_LOGGER_LEVEL": "warning",
+        # Tema: .streamlit/config.toml exe'ye PAKETLENMEZ (onedir'de
+        # _internal/ altına düşer, Streamlit ise config'i CWD'de arar), bu
+        # yüzden görsel dil burada da verilmeli — yoksa exe varsayılan
+        # Streamlit görünümünde açılır, kaynaktan çalıştırınca başka görünür.
+        # config.toml [theme] bölümüyle AYNI değerler tutulmalı.
+        "STREAMLIT_THEME_PRIMARY_COLOR": "#0D6E80",
+        "STREAMLIT_THEME_BACKGROUND_COLOR": "#FFFFFF",
+        "STREAMLIT_THEME_SECONDARY_BACKGROUND_COLOR": "#F2F6F7",
+        "STREAMLIT_THEME_TEXT_COLOR": "#1B2A2E",
+        "STREAMLIT_THEME_LINK_COLOR": "#0D6E80",
+        "STREAMLIT_THEME_BORDER_COLOR": "#DDE5E7",
+        "STREAMLIT_THEME_BASE_RADIUS": "0.6rem",
+        "STREAMLIT_THEME_SIDEBAR_BACKGROUND_COLOR": "#F2F6F7",
+        "STREAMLIT_THEME_SIDEBAR_BORDER_COLOR": "#DDE5E7",
     }
     for key, value in defaults.items():
         os.environ.setdefault(key, value)

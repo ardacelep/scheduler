@@ -14,5 +14,18 @@ maxUploadSize = 200
 [client]
 toolbarMode = "minimal"  # geliştirici menüsü gizli, "Yazdır" erişilebilir kalır
 
+# Görsel dil: sağlık kurumuna yakışan sakin bir teal + yumuşak yüzeyler.
+# Ekranların çoğu yoğun tablo/liste; kenarlıklar belirgin tutuldu ki kart
+# sınırları tablo gürültüsünde kaybolmasın.
 [theme]
 primaryColor = "#0D6E80"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F2F6F7"   # kart/kenar çubuğu yüzeyi
+textColor = "#1B2A2E"
+linkColor = "#0D6E80"
+borderColor = "#DDE5E7"
+baseRadius = "0.6rem"
+
+[theme.sidebar]
+backgroundColor = "#F2F6F7"
+borderColor = "#DDE5E7"

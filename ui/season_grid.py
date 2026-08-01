@@ -22,6 +22,7 @@ import streamlit as st
 from rotasyon.models import Assignment
 from rotasyon.rules import blocking_errors, check_all
 from rotasyon.solver import solve_month
+from . import bulk_generate
 from .common import (
     capacity_findings_panel,
     clear_stale_state,
@@ -37,6 +38,9 @@ from .common import (
 _DRAFT_PREFIXES = (
     "grid_gen_", "grid_ed_", "grid_base_", "grid_ov_", "grid_force_",
     "grid_reroll_", "grid_last_auto_",
+    # toplu üretim de bu ekranda yaşıyor: taslağı/seçimleri veri değişince
+    # bayat bırakma (diskteki kalıcı taslak ayrıca fingerprint ile korunur)
+    "bulk_",
 )
 BLANK = "—"  # boş hücre (o ay atama yok)
 _WIDTHS = {"Dar": "small", "Orta": "medium", "Geniş": "large"}
@@ -83,6 +87,11 @@ def render(store) -> None:
     _grid(
         store, settings, months, group, students, units, assignments,
         custom_rules, classes,
+    )
+
+    st.divider()
+    bulk_generate.render(
+        store, students, units, settings, custom_rules, assignments
     )
 
 

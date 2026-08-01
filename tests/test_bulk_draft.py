@@ -1,7 +1,7 @@
 """Toplu taslağın kalıcılığı: disk gidiş-dönüşü + bayatlık kontrolü."""
 from rotasyon.models import Assignment
 from rotasyon.store import Store
-from ui.rotation import _draft_to_payload, _payload_to_draft
+from ui.bulk_generate import _draft_to_payload, _payload_to_draft
 
 
 def _draft():
@@ -42,7 +42,7 @@ def test_store_draft_persist_and_clear(tmp_path):
 def test_stale_draft_discarded_when_data_changes(tmp_path):
     """Veri değişince (fingerprint uyuşmaz) diskteki taslak bayattır:
     yüklenmez ve dosya temizlenir."""
-    from ui.rotation import _bulk_fingerprint, _load_persisted_draft
+    from ui.bulk_generate import _bulk_fingerprint, _load_persisted_draft
 
     store = Store(tmp_path)
     bctx = {
