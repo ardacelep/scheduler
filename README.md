@@ -487,9 +487,32 @@ dosyalarında tutulur.
 kısıtlı birimlerde kırmızı `(Kız)`/`(Erkek)` eki) ve tek-ay renksiz görünüm.
 Yıllık dosya **tekrar içe aktarılabilir**; tek-ay görünümü yazdırma amaçlıdır.
 
-Birim özellikleri (yoğunluk, yedeklik, branş) içe aktarılan dosyalarda
-bulunmadığında, `BÖLÜMLER VE ÖZELLİKLERİ.xlsx` kaynaklı **varsayılan katalog**
-ile isim eşleşmesinden otomatik zenginleştirilir.
+Birim özellikleri (yoğunluk, branş) içe aktarılan dosyalarda bulunmadığında
+**varsayılan katalog** ile isim eşleşmesinden otomatik zenginleştirilir.
+
+### Varsayılan birim kataloğu nereden geliyor
+
+`rotasyon/data/default_units.json` — yeni sezon açılırken kopyalanacak bir
+önceki sezon yoksa başlangıç noktası. Kişisel veri içermez, depoda izlenir.
+
+Kaynak: **`scripts/catalog_from_rotations.py`**, eğitim hemşiresinin elle
+hazırladığı üç sınıf-eşleştirme senaryosunu okur
+(`example/{AB-CD,AC-BD,AD-BC} ROTASYON.xlsx`). Her sayfanın öğrenci listesinin
+altında yetkili bir blok var: *birim adı (k/e ekli) · kontenjan (yazıyla) ·
+`CERRAHİ/DAHİLİ BRANŞ` · `YOĞUN/HAFİF BÖLÜM`*, ve `BU GRUPTA ÖĞRENCİ VERME`
+satırı o grupta pasif demek.
+
+Bu script eski `build_catalog.py`'nin yerini aldı. Eski kaynak
+(`BÖLÜMLER VE ÖZELLİKLERİ.xlsx`) **kontenjan vermiyordu**, bu yüzden havuz
+birimlerine `POOL_QUOTA_DEFAULT = 3` diye tahmin yazılıyordu; gerçek
+rotasyonlar kat servislerinin **1-2 kişi** aldığını gösterdi. Katalog gerçeğin
+iki-üç katıydı ve bu, sezonlarda büyük yapay fazlalık üretiyordu.
+
+Kontenjan kararı **senaryolar arası maksimum**: sekiz birim (kat servisleri +
+ACİL + FTR) grup büyüklüğüne göre 1↔2 oynuyor. Kontenjan bir ÜST SINIR
+olduğundan maksimum yazmak büyük grubu tam karşılar, küçük grupta ise çözücü
+hepsini doldurmaz (havuz politikası kalanı dengeli dağıtır). Tersi büyük grubu
+kapasitesiz bırakırdı.
 
 ---
 
@@ -519,7 +542,7 @@ Tasarım kararları:
 .venv/bin/python -m pytest tests/
 ```
 
-Şu an **390 test** yeşildir; her yerleşik kural, özel kurallar, gereksinimler
+Şu an **393 test** yeşildir; her yerleşik kural, özel kurallar, gereksinimler
 (v2 kural modeli + v1 denkliği), doldurma politikası ve kapasite matematiği, çözücü, ortak sezon çözücüsü, kapasite
 denetimi, cinsiyet tahmini, sezon yönetimi, dinamik değişiklikler, toplu taslak
 kalıcılığı, yedekleme/geri yükleme, başlatıcı yardımcıları ve Excel içe/dışa
@@ -680,7 +703,7 @@ ui/                   ekran modülleri (dashboard, rotation, season_grid,
 
 data/                 çalışma verisi — sezon bazında (gitignore)
 seed_data/            "Örnek veriyle başla" için hazır veri
-scripts/              build_catalog.py, build_seed.py, make_icon.py
+scripts/              catalog_from_rotations.py, build_seed.py, make_icon.py
 packaging/            PyInstaller spec, ikon, OKU-BENI.txt, derleme .bat'ları
 .github/workflows/    Windows .exe derleme iş akışı
 tests/                pytest paketi

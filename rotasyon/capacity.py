@@ -317,6 +317,9 @@ def season_requirement_findings(
     imkansiz_birim: dict[tuple[int, str], list[Student]] = {}
     sifir_pay: dict[int, list[Student]] = {}
     eksik_etiket: dict[int, set[str]] = {}
+    # (grup, etiket) -> [kaç öğrenci istiyor, borcu kapatan birim adları,
+    #                    o grupta kalan en fazla ay sayısı]
+    talep: dict[tuple[int, str], list] = {}
 
     for s in active:
         gorulen_key = seen_key.get(s.id, set())
@@ -326,6 +329,11 @@ def season_requirement_findings(
         if not borclar:
             continue
         kalan = [m for m in months if m not in done_months.get(s.id, set())]
+        for etiket, keys, need in borclar:
+            t = talep.setdefault((s.group, etiket), [0, set(), 0])
+            t[0] += need
+            t[1] |= keys
+            t[2] = max(t[2], len(kalan))
 
         # 2) hiç uygun birim kalmamış borçlar
         ulasilamaz = [
@@ -383,6 +391,41 @@ def season_requirement_findings(
                 ),
             )
         )
+    # 4) TOPLAM kapasite: bir zorunluluğu karşılayan birimlerin kalan aylardaki
+    #    toplam yeri, o zorunluluğu bekleyen öğrenci sayısını taşıyor mu?
+    #    Öğrenci başına "ulaşabilir mi" kontrolü bunu GÖREMEZ: herkes ayrı ayrı
+    #    ulaşabilir ama hepsi birlikte sığmayabilir. (Gerçek örnek: YB/B+C+D
+    #    ayda 3 kişi × 10 ay = 30 yer, grup 38 kişi → 8 öğrenci açıkta.)
+    for (g, etiket), (ihtiyac, keys, kalan_ay) in sorted(talep.items()):
+        if not kalan_ay:
+            continue
+        if g in imkansiz_ay:
+            # O grupta "kalan ay sayısı yetmiyor" zaten raporlandı; ay
+            # yetmiyorken kontenjandan söz etmek gürültü — üstelik çözümü de
+            # farklı (geçmişi düzeltmek vs kontenjan artırmak).
+            continue
+        aylik = sum(
+            u.quota for u in units
+            if u.active and u.quota > 0 and u.group in (0, g)
+            and normalize_key(u.name) in keys
+        )
+        yer = aylik * kalan_ay
+        if ihtiyac > yer:
+            findings.append(
+                CapacityFinding(
+                    level=ERROR,
+                    group=g,
+                    message=(
+                        f"Grup {g} · {etiket}: bu zorunluluğu {ihtiyac} "
+                        f"öğrenci bekliyor ama karşılayan birimlerin kalan "
+                        f"{kalan_ay} aydaki toplam yeri {yer} "
+                        f"({aylik} kişi/ay). {ihtiyac - yer} öğrenci açıkta "
+                        "kalır. Çözüm: bu birimlerin kontenjanını artırın, "
+                        "listeye birim ekleyin ya da zorunluluğu daraltın."
+                    ),
+                )
+            )
+
     for g, ogrenciler in sorted(sifir_pay.items()):
         findings.append(
             CapacityFinding(

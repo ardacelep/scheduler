@@ -1,5 +1,13 @@
 """'BÖLÜMLER VE ÖZELLİKLERİ.xlsx' → rotasyon/data/default_units.json
 
+⚠️ **ARTIK KULLANILMIYOR — `catalog_from_rotations.py` bunun yerini aldı.**
+Bu script'i çalıştırmak katalogu GERİLETİR: kaynak belge kontenjan vermediği
+için havuz birimlerine aşağıdaki `POOL_QUOTA_DEFAULT = 3` tahminini yazar,
+oysa elle yapılmış gerçek rotasyonlar kat servislerinin 1-2 kişi aldığını
+gösteriyor. (`tests/test_catalog.py::test_catalog_quotas_match_real_documents`
+bu gerilemeyi yakalar.) Dosya, eski belgenin ayrıştırma kurallarına referans
+olsun diye duruyor.
+
 Gerçek belgeden varsayılan birim kataloğunu üretir. Belge gitignore'lu
 (example/) olduğundan bu script yalnız geliştirme makinesinde koşar;
 üretilen JSON kişisel veri içermez ve depoya girer.

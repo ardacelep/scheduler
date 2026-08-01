@@ -175,3 +175,54 @@ def test_engine_entry_points_accept_requirements():
     ]
     for fn in beklenen:
         assert "requirements" in inspect.signature(fn).parameters, fn.__name__
+
+
+# ---- gereksinim TOPLAM kapasite denetimi ----
+
+def test_requirement_total_capacity_shortfall_is_reported():
+    """Herkes ayrı ayrı ulaşabilir ama hep birlikte sığmayabilir.
+
+    Gerçek örnek: elle yapılmış rotasyonlarda YB/B+YB/C+YB/D ayda 3 kişi
+    alıyor; 10 ayda 30 yer. Grup 38 kişiyse 8 öğrenci "bir yoğun bakım gör"
+    zorunluluğunu karşılayamaz. Öğrenci başına ulaşılabilirlik kontrolü bunu
+    GÖRMEZ (herkes ulaşabiliyor), toplam aritmetik görür.
+    """
+    units = [
+        Unit(name=f"YB/{h}", group=1, quota=1, branch_category=BRANCH_DIGER)
+        for h in "BCD"
+    ] + [
+        Unit(name=f"DOLGU{i}", group=1, quota=9, branch_category=BRANCH_DIGER,
+             pool=True)
+        for i in range(6)
+    ]
+    students = [
+        Student(full_name=f"Ö{i}", gender="K", group=1, class_name="A")
+        for i in range(38)
+    ]
+    req = Requirement(name="Yoğun bakım", scope=SCOPE_ALL,
+                      unit_keys=["YB/B", "YB/C", "YB/D"])
+    bulgular = season_requirement_findings(
+        students, units, MONTHS * 4, [], SETTINGS, [req]   # 12 ay
+    )
+    kapasite = [b for b in bulgular if "açıkta kalır" in b.message]
+    assert kapasite, [b.message for b in bulgular]
+    assert kapasite[0].level == ERROR
+    assert "Yoğun bakım" in kapasite[0].message
+
+
+def test_no_shortfall_when_capacity_suffices():
+    """Karşıt kanıt: kontenjan yeterken uyarı ÇIKMAMALI."""
+    units = [
+        Unit(name=f"YB/{h}", group=1, quota=4, branch_category=BRANCH_DIGER)
+        for h in "BCD"
+    ]
+    students = [
+        Student(full_name=f"Ö{i}", gender="K", group=1, class_name="A")
+        for i in range(10)
+    ]
+    req = Requirement(name="Yoğun bakım", scope=SCOPE_ALL,
+                      unit_keys=["YB/B", "YB/C", "YB/D"])
+    bulgular = season_requirement_findings(
+        students, units, MONTHS, [], SETTINGS, [req]
+    )
+    assert not [b for b in bulgular if "açıkta kalır" in b.message]

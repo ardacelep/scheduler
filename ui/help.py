@@ -50,11 +50,14 @@ def _getting_started() -> None:
 **1. Sezonu açın.**
 Sol taraftaki **📅 Sezon** bölümünden **➕ Yeni sezon oluştur**'a basın,
 adını yazın (örneğin `2026-2027`). "Birimler nereden gelsin?" sorusunda
-**hazır birim kataloğu** seçili kalsın — hastanenin birimleri kontenjan ve
-özellikleriyle hazır gelir.
+**hazır birim kataloğu** seçili kalsın — hastanenin birimleri kontenjan,
+cinsiyet kısıtı ve yoğunluk bilgisiyle hazır gelir. Katalog, elle
+hazırladığınız rotasyon dosyalarındaki kontenjanlardan türetilmiştir; grup
+büyüklüğüne göre değişen birimlerde **üst sınır** yazılıdır, gerekirse
+Kapasite Planı'ndan düşürebilirsiniz.
 
 **2. Öğrenci listesini yükleyin.**
-**📊 Excel İçe/Dışa Aktarım** ekranından okuldan gelen öğrenci listesini
+**📊 Excel** ekranından okuldan gelen öğrenci listesini
 (Excel ya da e-okul PDF'i) seçin. Uygulama dosya türünü kendi anlar;
 öğrencileri, sınıfları ve bölümleri okur, isimlerden cinsiyeti tahmin eder.
 Size **hangi sınıfın hangi gruba** gideceğini sorar.
