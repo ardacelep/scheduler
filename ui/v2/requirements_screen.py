@@ -84,22 +84,44 @@ def _unit_names(units) -> list[str]:
 
 
 def _empty_state(store, units) -> None:
-    st.info(
-        "Bu sezon için henüz gereksinim tanımlanmamış. Mevcut ayarlarınızdan "
-        "otomatik başlangıç listesi oluşturabilir ya da sıfırdan ekleyebilirsiniz."
-    )
-    settings = store.load_settings()
-    preview = from_legacy_settings(settings, units)
-    if preview:
-        st.markdown("**Mevcut ayarlarınızdan üretilecek gereksinimler:**")
-        for r in preview:
+    """Gereksinim yokken iki hazır başlangıç yolu sunar.
+
+    Varsayılan katalogdan açılan yeni sezonlar gereksinimleri ZATEN hazır alır
+    (create_season_with_units). Bu ekran, o yoldan gelmemiş sezonlar için
+    duruyor: elle kurulmuş sezonlar ve v2'den önce açılmış olanlar.
+    """
+    from rotasyon.catalog import load_default_requirements
+
+    st.info("Bu sezon için henüz gereksinim tanımlanmamış.")
+
+    hazir = load_default_requirements()
+    if hazir:
+        st.markdown("**📦 Hazır kural seti** (rotasyon belgelerindeki kurallar):")
+        for r in hazir:
             st.markdown(f"- **{r.name}** — {describe(r)}")
-        if st.button("📥 Bu listeyi oluştur", type="primary", key="req_import"):
-            store.save_requirements(preview)
-            st.toast(f"{len(preview)} gereksinim oluşturuldu ✅", icon="🎯")
+        if st.button("Bu seti kur", type="primary", key="req_default"):
+            store.save_requirements(hazir)
+            st.toast(f"{len(hazir)} gereksinim kuruldu ✅", icon="🎯")
             st.rerun()
-    else:
-        st.caption("Mevcut ayarlardan üretilebilecek bir gereksinim bulunamadı.")
+
+    # Eski sezonlar için: settings.season_requirements branşlarından üret.
+    # Hazır set varken bu ikinci yol yalnız o sezona ÖZEL bir branş listesi
+    # varsa anlamlı — o yüzden ikincil ve katlanmış duruyor.
+    preview = from_legacy_settings(store.load_settings(), units)
+    if preview:
+        with st.expander("⚙️ Bu sezonun eski ayarlarından üret"):
+            st.caption(
+                "Sezonun **Ayarlar**'ında kayıtlı branş zorunluluklarından "
+                "üretir. Hazır set size uymuyorsa ya da bu sezona özel bir "
+                "liste tanımladıysanız kullanın."
+            )
+            for r in preview:
+                st.markdown(f"- **{r.name}** — {describe(r)}")
+            if st.button("Eski ayarlardan üret", key="req_import"):
+                store.save_requirements(preview)
+                st.toast(f"{len(preview)} gereksinim oluşturuldu ✅", icon="🎯")
+                st.rerun()
+
     st.divider()
     _editor(store, [], units, store.load_students())
 
@@ -150,7 +172,7 @@ def _list_panel(store, reqs, units, students) -> None:
 
     for req in reqs:
         with st.container(border=True):
-            c1, c2, c3 = st.columns([6, 1, 1])
+            c1, c2, c3, c4 = st.columns([6, 1, 1, 1])
             baslik = f"**{req.name}**"
             if not req.active:
                 baslik = (
@@ -167,15 +189,135 @@ def _list_panel(store, reqs, units, students) -> None:
             if req.note:
                 c1.caption(f"📝 {req.note}")
 
+            duzenle_key = f"req_edit_{req.id}"
+            aciksa = st.session_state.get("req_editing") == req.id
+            if c2.button("✏️ Düzenle" if not aciksa else "✖️ Kapat",
+                         key=duzenle_key):
+                st.session_state["req_editing"] = None if aciksa else req.id
+                st.rerun()
             etiket = "▶️ Aktifleştir" if not req.active else "⏸️ Pasifleştir"
-            if c2.button(etiket, key=f"req_toggle_{req.id}"):
+            if c3.button(etiket, key=f"req_toggle_{req.id}"):
                 req.active = not req.active
                 store.save_requirements(reqs)
                 st.rerun()
-            if c3.button("🗑️ Sil", key=f"req_del_{req.id}"):
+            if c4.button("🗑️ Sil", key=f"req_del_{req.id}"):
                 store.save_requirements([r for r in reqs if r.id != req.id])
+                st.session_state.pop("req_editing", None)
                 st.toast(f"'{req.name}' silindi", icon="🗑️")
                 st.rerun()
+
+            if aciksa:
+                _inline_edit(store, reqs, req, units, students)
+
+
+def _inline_edit(store, reqs, req, units, students) -> None:
+    """Var olan gereksinimi yerinde düzenler.
+
+    Ayrı bir "düzenle" ekranı yerine satırın altında açılır: kullanıcı
+    değiştirdiği kuralı listede gördüğü yerde düzenler. Önceden yalnız
+    ekle/sil vardı, bir kelimeyi değiştirmek için kuralı silip yeniden
+    kurmak gerekiyordu.
+    """
+    st.divider()
+    names = _unit_names(units)
+    k = f"re_{req.id}"
+
+    ad = st.text_input("Gereksinim adı", value=req.name, key=f"{k}_ad")
+
+    scope = st.radio(
+        "Kime uygulanır?", list(SCOPE_LABELS),
+        format_func=lambda s: SCOPE_LABELS[s],
+        index=list(SCOPE_LABELS).index(req.scope)
+        if req.scope in SCOPE_LABELS else 0,
+        horizontal=True, key=f"{k}_scope",
+    )
+    scope_value, student_ids = "", list(req.student_ids)
+    if scope == SCOPE_GROUP:
+        gruplar = sorted({s.group for s in students}) or [1, 2]
+        mevcut = [str(g) for g in gruplar]
+        scope_value = str(st.selectbox(
+            "Grup", gruplar, key=f"{k}_grup",
+            index=mevcut.index(req.scope_value)
+            if req.scope_value in mevcut else 0,
+        ))
+    elif scope == SCOPE_CLASS:
+        classes = sorted({s.class_name for s in students if s.class_name})
+        if classes:
+            scope_value = st.selectbox(
+                "Sınıf", classes, key=f"{k}_sinif",
+                index=classes.index(req.scope_value)
+                if req.scope_value in classes else 0,
+            )
+    elif scope == SCOPE_PROGRAM:
+        scope_value = st.selectbox(
+            "Program", PROGRAMS, format_func=lambda p: PROGRAM_LABELS.get(p, p),
+            index=PROGRAMS.index(req.scope_value)
+            if req.scope_value in PROGRAMS else 0,
+            key=f"{k}_prog",
+        )
+    elif scope == SCOPE_STUDENTS:
+        by_id = {s.id: s for s in students}
+        secim = st.multiselect(
+            "Öğrenciler", list(by_id),
+            default=[sid for sid in req.student_ids if sid in by_id],
+            format_func=lambda sid: (
+                f"{by_id[sid].full_name} (grup {by_id[sid].group})"
+            ),
+            key=f"{k}_ogr",
+        )
+        student_ids = [sid for sid in secim if sid in by_id]
+
+    # kayıttaki anahtarlar normalize; gösterim adlarına çevrilir
+    mevcut_adlar = [
+        n for n in names if normalize_key(n) in
+        {normalize_key(x) for x in req.unit_keys}
+    ]
+    secili = st.multiselect(
+        "Birimler", names, default=mevcut_adlar, key=f"{k}_birim",
+    )
+    c1, c2 = st.columns(2)
+    minc = c1.number_input(
+        "En az kaç birim görülmeli", min_value=1,
+        max_value=max(1, len(secili)) if secili else 1,
+        value=min(req.min_count, max(1, len(secili))) if secili
+        else 1,
+        key=f"{k}_min",
+    )
+    severity = c2.selectbox(
+        "Tür", SEVERITIES, format_func=lambda s: SEVERITY_LABELS[s],
+        index=SEVERITIES.index(req.severity)
+        if req.severity in SEVERITIES else 0,
+        key=f"{k}_tur",
+    )
+
+    yeni = Requirement(
+        id=req.id, name=ad.strip() or req.name, scope=scope,
+        scope_value=scope_value, student_ids=student_ids,
+        unit_keys=[normalize_key(n) for n in secili],
+        min_count=int(minc), severity=severity, active=req.active,
+        note=req.note,
+    )
+    if secili:
+        st.markdown("**Önizleme:** " + describe(yeni))
+        _coverage_note(yeni, students, units)
+
+    degisti = yeni.to_dict() != req.to_dict()
+    hazir = bool(ad.strip()) and bool(secili) and degisti
+    if scope in (SCOPE_GROUP, SCOPE_CLASS, SCOPE_PROGRAM) and not scope_value:
+        hazir = False
+    if scope == SCOPE_STUDENTS and not student_ids:
+        hazir = False
+
+    if st.button("💾 Değişiklikleri kaydet", type="primary",
+                 disabled=not hazir, key=f"{k}_kaydet"):
+        store.save_requirements(
+            [yeni if r.id == req.id else r for r in reqs]
+        )
+        st.session_state["req_editing"] = None
+        st.toast(f"'{yeni.name}' güncellendi ✅", icon="🎯")
+        st.rerun()
+    if not degisti:
+        st.caption("Bir şey değiştirince kaydedebilirsiniz.")
 
 
 def _editor(store, reqs, units, students) -> None:

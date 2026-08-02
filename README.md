@@ -495,6 +495,30 @@ Birim özellikleri (yoğunluk, branş) içe aktarılan dosyalarda bulunmadığı
 `rotasyon/data/default_units.json` — yeni sezon açılırken kopyalanacak bir
 önceki sezon yoksa başlangıç noktası. Kişisel veri içermez, depoda izlenir.
 
+Yanında **`rotasyon/data/default_requirements.json`** durur: belgelerde yazılı
+sezon kuralları hazır **gereksinim** olarak gelir. Varsayılan katalogdan sezon
+açtığınızda birimlerle birlikte bu kurallar da kurulur (`create_season_with_units`),
+kullanıcı her sezon aynı beş-altı kuralı elle tanımlamak zorunda kalmaz:
+
+| Gereksinim | Kime | Birimler | En az |
+|---|---|--:|--:|
+| Cerrahi branş | tüm öğrenciler | 1.KAT CERR, 6.KAT CERR | 1 |
+| Dahili branş | tüm öğrenciler | 3.KAT NOR, 4.KAT DAHİLİYE, ZEMİN ENF+DAH | 1 |
+| Yoğun bölüm | tüm öğrenciler | 5/7.KAT PALYATİF, 6.KAT CERR, ACİL, YB/B-C-D | 1 |
+| Yoğun bakım | tüm öğrenciler | YB/B, YB/C, YB/D | 1 |
+| Palyatif | tüm öğrenciler | 5.KAT PALYATİF, 7.KAT PALYATİF | 1 |
+| Ebelik → doğum | program = ebelik | DOĞUM SALONU-YENİ DOĞAN, 2.KAT DOĞUM | **2** |
+
+İki ayrıntı belgelerin dilinden geliyor: YB kuralı *"YB/B, YB/C, YB/D"* üçünden
+**birini** ister (kullanıcı doğruladı), doğum kuralı ise *"DOĞ.SAL'ı **VE**
+2.KAT DOĞUM'u"* — **ikisini de** (`min_count=2`). Belgeler "pembe D sınıfı"
+diyor; uygulamada bu **program = ebelik** olarak yazılır (D sınıfı = ebelik
+öğrencileri, gerçek veride birebir örtüşüyor) çünkü program kapsamı sınıf
+ADINA bağımlı değildir ve sonraki sezonlarda da geçerli kalır.
+
+Belgelerdeki dördüncü kural (*peş peşe yoğun/hafif bölüm yasağı*) gereksinim
+değil, birim **yoğunluğu** ile uygulanır (madde 20).
+
 Kaynak: **`scripts/catalog_from_rotations.py`**, eğitim hemşiresinin elle
 hazırladığı üç sınıf-eşleştirme senaryosunu okur
 (`example/{AB-CD,AC-BD,AD-BC} ROTASYON.xlsx`). Her sayfanın öğrenci listesinin
@@ -542,7 +566,7 @@ Tasarım kararları:
 .venv/bin/python -m pytest tests/
 ```
 
-Şu an **393 test** yeşildir; her yerleşik kural, özel kurallar, gereksinimler
+Şu an **398 test** yeşildir; her yerleşik kural, özel kurallar, gereksinimler
 (v2 kural modeli + v1 denkliği), doldurma politikası ve kapasite matematiği, çözücü, ortak sezon çözücüsü, kapasite
 denetimi, cinsiyet tahmini, sezon yönetimi, dinamik değişiklikler, toplu taslak
 kalıcılığı, yedekleme/geri yükleme, başlatıcı yardımcıları ve Excel içe/dışa

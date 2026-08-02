@@ -137,7 +137,10 @@ _SCREENS = [
         "Bu sezonun zorunluluklarını gelen öğrencilere göre belirlersiniz. "
         "Her satır tek bir cümledir: kime — hangi birimlerden — kaç kez. "
         "Örn. 'D sınıfı — DOĞUM SALONU, 2.KAT DOĞUM birimlerinden en az 1'. "
-        "Branş seçmenize gerek yok, birimleri doğrudan adıyla seçersiniz.",
+        "Branş seçmenize gerek yok, birimleri doğrudan adıyla seçersiniz. "
+        "Varsayılan katalogdan sezon açtıysanız rotasyon belgelerinizdeki "
+        "kurallar **hazır gelir**; her satırı ✏️ ile düzenleyebilir, "
+        "pasifleştirebilir ya da silebilirsiniz.",
     ),
     (
         "📦 Kapasite Planı (Sezon Kurulumu)",
@@ -244,8 +247,11 @@ _FAQ = [
         "gerekmiyor. Kaydetmeden önce ekran kuralın **kaç öğrenciyi "
         "kapsadığını** ve her grupta **kaç uygun birim** olduğunu gösterir, "
         "karşılanamayacak bir kural kurarsanız kırmızı uyarır. "
-        "Bir sezonu ilk açtığınızda mevcut ayarlarınızdan başlangıç listesi "
-        "üretebilirsiniz.",
+        "Varsayılan katalogdan açılan sezonlarda rotasyon belgelerinizdeki "
+        "kurallar hazır gelir; elle kurulmuş sezonlarda **hazır kural setini** "
+        "tek düğmeyle kurabilirsiniz. Var olan bir kuralı değiştirmek için "
+        "satırındaki **✏️ Düzenle**'ye basın — silip yeniden kurmanız "
+        "gerekmez.",
     ),
     (
         "“Şu birimler tam dolsun, kalanlar eşit dağılsın” nasıl kurulur?",

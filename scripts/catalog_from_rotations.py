@@ -55,6 +55,10 @@ from rotasyon.models import (  # noqa: E402
     BRANCH_YOGUN_BAKIM,
     INTENSITY_HAFIF,
     INTENSITY_YOGUN,
+    PROGRAM_EBELIK,
+    Requirement,
+    SCOPE_ALL,
+    SCOPE_PROGRAM,
     Unit,
 )
 from rotasyon.normalize import normalize_key, normalize_unit_name, parse_cell  # noqa: E402
@@ -64,7 +68,37 @@ SOURCES = [
     for ad in ("AB-CD", "AC-BD", "AD-BC")
 ]
 TARGET = ROOT / "rotasyon" / "data" / "default_units.json"
+TARGET_REQ = ROOT / "rotasyon" / "data" / "default_requirements.json"
 SHEETS = {"PSÇ": 1, "ÇPC": 2}
+
+# Belgelerin altındaki yazılı kurallar — altı sayfanın dördü BİREBİR aynı,
+# beşincisi (D sınıfı doğum) D sınıfının bulunduğu sayfada. Sırayla:
+#
+#   "10 AYLIK SEZON SONUNDA HER BİR ÖĞRENCİ BİRER DEFA YOĞUN BÖLÜM,
+#    DAHİLİ BRANŞ VE CERRAHİ BRANŞ GÖRMÜŞ OLMALI"
+#   "…BİRER DEFA YB/B, YB/C, YB/D GÖRMÜŞ OLMALI"        → üçünden BİRİ
+#   "…BİRER DEFA 5.KAT PALYATİF VEYA 7.KAT PALYATİF…"    → ikisinden biri
+#   "BİR ÖĞRENCİ PEŞ PEŞE YOĞUN/HAFİF BÖLÜME VERİLMEYECEK"
+#   "PEMBE RENKLİ D SINIFI ÖĞRENCİLERİ BİRER DEFA DOĞ.SAL-Y.DOĞ'YI VE
+#    2.KAT DOĞUM SERVİSİ'Yİ GÖRMÜŞ OLMALI"              → İKİSİ DE ("VE")
+#
+# Son kural gereksinim DEĞİL, birim yoğunluğuyla (intensity) uygulanır —
+# peş peşe yoğun/hafif yasağı motorda madde 20.
+#
+# "D sınıfı" yerine **program = ebelik** yazılır: kullanıcı D sınıfının
+# ebelik öğrencileri olduğunu doğruladı ve gerçek veride birebir örtüşüyor
+# (26-27: sınıf D = 8 öğrenci, hepsi ebelik). Program kapsamı sınıf ADINA
+# bağımlı olmadığı için sonraki sezonlarda da geçerli kalır.
+VARSAYILAN_GEREKSINIMLER = [
+    ("Cerrahi branş", ["1.KAT CERR", "6.KAT CERR"], 1, None),
+    ("Dahili branş", ["3.KAT NOR", "4.KAT DAHİLİYE", "ZEMİN ENF+DAH"], 1, None),
+    ("Yoğun bölüm", ["5.KAT PALYATİF", "6.KAT CERR", "7.KAT PALYATİF", "ACİL",
+                     "YB/B", "YB/C", "YB/D"], 1, None),
+    ("Yoğun bakım (YB/B-C-D'den biri)", ["YB/B", "YB/C", "YB/D"], 1, None),
+    ("Palyatif (5. veya 7. kat)", ["5.KAT PALYATİF", "7.KAT PALYATİF"], 1, None),
+    ("Ebelik → doğum (ikisi de)",
+     ["DOĞUM SALONU-YENİ DOĞAN", "2.KAT DOĞUM"], 2, PROGRAM_EBELIK),
+]
 
 # Belgede kısaltılmış yazımlar → katalogdaki kanonik ad.
 KANONIK = {
@@ -214,6 +248,39 @@ def main() -> int:
         json.dumps(payload, ensure_ascii=False, indent=1) + "\n",
         encoding="utf-8",
     )
+    # --- varsayılan gereksinimler ---
+    var_adlar = {normalize_key(u.name) for u in units}
+    reqs = []
+    for ad, birimler, minc, program in VARSAYILAN_GEREKSINIMLER:
+        eksik = [b for b in birimler if normalize_key(b) not in var_adlar]
+        if eksik:
+            raise SystemExit(
+                f"'{ad}' gereksinimi katalogda olmayan birim istiyor: {eksik}"
+            )
+        reqs.append(
+            Requirement(
+                name=ad,
+                scope=SCOPE_PROGRAM if program else SCOPE_ALL,
+                scope_value=program or "",
+                unit_keys=[normalize_key(b) for b in birimler],
+                min_count=minc,
+                note="Elle hazırlanmış rotasyon belgelerindeki yazılı kural.",
+            )
+        )
+    req_payload = []
+    for r in reqs:
+        d = r.to_dict()
+        d.pop("id", None)  # id dosyada tutulmaz, her yüklemede taze
+        req_payload.append(d)
+    TARGET_REQ.write_text(
+        json.dumps(req_payload, ensure_ascii=False, indent=1) + "\n",
+        encoding="utf-8",
+    )
+    print(f"{TARGET_REQ.relative_to(ROOT)}: {len(reqs)} gereksinim")
+    for r in reqs:
+        kim = "ebelik" if r.scope == SCOPE_PROGRAM else "tüm öğrenciler"
+        print(f"  · {r.name} ({kim}, en az {r.min_count})")
+
     aktif = sum(1 for u in units if u.active)
     print(f"{TARGET.relative_to(ROOT)}: {len(units)} kayıt ({aktif} aktif)")
     for g in (1, 2):

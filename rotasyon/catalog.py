@@ -11,9 +11,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from .models import Unit
+from .models import Requirement, Unit
 
 _CATALOG_PATH = Path(__file__).parent / "data" / "default_units.json"
+_REQ_PATH = Path(__file__).parent / "data" / "default_requirements.json"
 
 
 def catalog_available() -> bool:
@@ -24,6 +25,24 @@ def load_default_units() -> list[Unit]:
     """Katalogdaki birimleri TAZE id'lerle döndürür (dosyada id tutulmaz)."""
     with open(_CATALOG_PATH, encoding="utf-8") as f:
         return [Unit.from_dict(d) for d in json.load(f)]
+
+
+def load_default_requirements() -> list[Requirement]:
+    """Katalogla birlikte gelen varsayılan sezon gereksinimleri.
+
+    Elle hazırlanmış rotasyon belgelerinin altındaki yazılı kurallardan
+    türetilir (bkz. scripts/catalog_from_rotations.py). Birimleri varsayılan
+    katalogdan seçen yeni sezon bu gereksinimleri de hazır alır — kullanıcı
+    her sezon aynı beş-altı kuralı elle kurmak zorunda kalmaz.
+
+    Katalogdaki birim ADLARINA dayanır; kullanıcı birim adını değiştirirse
+    ilgili gereksinim o birime artık uymaz (Gereksinimler ekranı bunu
+    "0 uygun birim" diye gösterir).
+    """
+    if not _REQ_PATH.exists():
+        return []
+    with open(_REQ_PATH, encoding="utf-8") as f:
+        return [Requirement.from_dict(d) for d in json.load(f)]
 
 
 def catalog_attributes() -> dict[str, dict]:

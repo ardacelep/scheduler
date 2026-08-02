@@ -1,0 +1,93 @@
+[
+ {
+  "name": "Cerrahi branş",
+  "scope": "tum",
+  "scope_value": "",
+  "student_ids": [],
+  "unit_keys": [
+   "1.KAT CERR",
+   "6.KAT CERR"
+  ],
+  "min_count": 1,
+  "severity": "zorunlu",
+  "active": true,
+  "note": "Elle hazırlanmış rotasyon belgelerindeki yazılı kural."
+ },
+ {
+  "name": "Dahili branş",
+  "scope": "tum",
+  "scope_value": "",
+  "student_ids": [],
+  "unit_keys": [
+   "3.KAT NOR",
+   "4.KAT DAHİLİYE",
+   "ZEMİN ENF+DAH"
+  ],
+  "min_count": 1,
+  "severity": "zorunlu",
+  "active": true,
+  "note": "Elle hazırlanmış rotasyon belgelerindeki yazılı kural."
+ },
+ {
+  "name": "Yoğun bölüm",
+  "scope": "tum",
+  "scope_value": "",
+  "student_ids": [],
+  "unit_keys": [
+   "5.KAT PALYATİF",
+   "6.KAT CERR",
+   "7.KAT PALYATİF",
+   "ACİL",
+   "YB/B",
+   "YB/C",
+   "YB/D"
+  ],
+  "min_count": 1,
+  "severity": "zorunlu",
+  "active": true,
+  "note": "Elle hazırlanmış rotasyon belgelerindeki yazılı kural."
+ },
+ {
+  "name": "Yoğun bakım (YB/B-C-D'den biri)",
+  "scope": "tum",
+  "scope_value": "",
+  "student_ids": [],
+  "unit_keys": [
+   "YB/B",
+   "YB/C",
+   "YB/D"
+  ],
+  "min_count": 1,
+  "severity": "zorunlu",
+  "active": true,
+  "note": "Elle hazırlanmış rotasyon belgelerindeki yazılı kural."
+ },
+ {
+  "name": "Palyatif (5. veya 7. kat)",
+  "scope": "tum",
+  "scope_value": "",
+  "student_ids": [],
+  "unit_keys": [
+   "5.KAT PALYATİF",
+   "7.KAT PALYATİF"
+  ],
+  "min_count": 1,
+  "severity": "zorunlu",
+  "active": true,
+  "note": "Elle hazırlanmış rotasyon belgelerindeki yazılı kural."
+ },
+ {
+  "name": "Ebelik → doğum (ikisi de)",
+  "scope": "program",
+  "scope_value": "ebelik",
+  "student_ids": [],
+  "unit_keys": [
+   "DOĞUM SALONU-YENİ DOĞAN",
+   "2.KAT DOĞUM"
+  ],
+  "min_count": 2,
+  "severity": "zorunlu",
+  "active": true,
+  "note": "Elle hazırlanmış rotasyon belgelerindeki yazılı kural."
+ }
+]

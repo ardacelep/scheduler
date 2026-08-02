@@ -7,7 +7,11 @@ from pathlib import Path
 
 import streamlit as st
 
-from rotasyon.catalog import catalog_available, load_default_units
+from rotasyon.catalog import (
+    catalog_available,
+    load_default_requirements,
+    load_default_units,
+)
 from rotasyon.models import (
     Assignment,
     ClassGroup,
@@ -107,10 +111,18 @@ def unit_source_options(seasons: list[str]) -> list[str]:
 
 
 def create_season_with_units(manager: SeasonManager, name: str, source: str) -> Store:
-    """Yeni sezonu açar ve birimleri seçilen kaynaktan doldurur."""
+    """Yeni sezonu açar ve birimleri seçilen kaynaktan doldurur.
+
+    Varsayılan katalog seçildiğinde **gereksinimler de** hazır gelir (belgelerde
+    yazılı sezon kuralları); kullanıcı her sezon aynı beş-altı kuralı elle
+    kurmak zorunda kalmaz. Önceki sezondan kopyalarken gereksinimler
+    SeasonManager.create tarafından taşınır.
+    """
     if source == UNITS_CATALOG:
         store = manager.create(name)
         store.save_units(load_default_units())
+        if reqs := load_default_requirements():
+            store.save_requirements(reqs)
         return store
     if source == UNITS_EMPTY:
         return manager.create(name)
