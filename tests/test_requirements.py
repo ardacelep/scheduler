@@ -225,3 +225,69 @@ def test_describe_reads_like_a_sentence():
     assert "DOĞ.SAL" in text
     assert "en az 1" in text
     assert "zorunlu" in text
+
+
+# ---- min_visits_needed: kesişen gereksinimler ----
+
+def test_disjoint_requirements_add_up():
+    """Hiç kesişmeyen borçlar ayrı ayrı ay ister."""
+    from rotasyon.requirements import min_visits_needed
+    assert min_visits_needed([({"A"}, 1), ({"B"}, 1), ({"C"}, 1)]) == 3
+
+
+def test_subset_requirement_does_not_add_a_month():
+    """YB ⊂ yoğun bölüm: bir YB ziyareti ikisini de kapatır.
+
+    Toplama (1+1=2) gereken ay sayısını şişirir ve "yetişmez" diye yanlış
+    çözümsüzlük üretirdi.
+    """
+    from rotasyon.requirements import min_visits_needed
+    yogun = {"5.KAT", "YB/B", "YB/C"}
+    yb = {"YB/B", "YB/C"}
+    assert min_visits_needed([(yogun, 1), (yb, 1)]) == 1
+
+
+def test_partial_overlap_does_not_add_a_month():
+    from rotasyon.requirements import min_visits_needed
+    assert min_visits_needed([({"A", "B"}, 1), ({"B", "C"}, 1)]) == 1
+
+
+def test_real_default_set_needs_four_months_not_five():
+    """Varsayılan beş gereksinim 4 ayda karşılanabilir (kesişimler sayesinde).
+
+    Cerrahi ∩ Yoğun bölüm = 6.KAT CERR · Yoğun bakım ⊂ Yoğun bölüm ·
+    Palyatif ⊂ Yoğun bölüm → ayrık en fazla dört küme seçilebilir.
+    """
+    from rotasyon.catalog import load_default_requirements
+    from rotasyon.normalize import normalize_key
+    from rotasyon.requirements import min_visits_needed
+
+    reqs = [r for r in load_default_requirements() if r.scope == SCOPE_ALL]
+    assert len(reqs) == 5, "varsayılan evrensel gereksinim sayısı değişti"
+    items = [
+        ({normalize_key(k) for k in r.unit_keys}, r.min_count) for r in reqs
+    ]
+    assert min_visits_needed(items) == 4
+
+
+def test_min_count_is_respected_for_disjoint_sets():
+    from rotasyon.requirements import min_visits_needed
+    assert min_visits_needed([({"A", "B"}, 2), ({"C"}, 1)]) == 3
+
+
+def test_empty_and_zero_items_ignored():
+    from rotasyon.requirements import min_visits_needed
+    assert min_visits_needed([]) == 0
+    assert min_visits_needed([(set(), 3), ({"A"}, 0)]) == 0
+
+
+def test_lower_bound_never_exceeds_naive_sum():
+    """Alt sınır her zaman ≤ toplam olmalı — asla şişirmemeli."""
+    from rotasyon.requirements import min_visits_needed
+    ornekler = [
+        [({"A"}, 1), ({"A"}, 1), ({"A"}, 1)],
+        [({"A", "B"}, 2), ({"B", "C"}, 1), ({"D"}, 3)],
+        [({"X"}, 5)],
+    ]
+    for items in ornekler:
+        assert min_visits_needed(items) <= sum(n for _s, n in items)

@@ -173,8 +173,10 @@ def _run_deep_job(job, students, units, months, assignments, custom_rules,
     """Daemon thread gövdesi — burada ASLA st.* çağrılmaz."""
     from rotasyon.risk import deep_feasibility
 
-    def _ilerleme(idx, toplam, grup):
-        job["progress"] = (idx, toplam, grup)
+    def _ilerleme(idx, toplam, grup, not_=None):
+        # not_ = "zor çıktı — daha uzun deniyor (2/3, 4 sn)" gibi insan-okunur
+        # bir ek; uzun süren aşamalarda yazının donmasını engeller
+        job["progress"] = (idx, toplam, grup, not_)
 
     try:
         job["results"] = deep_feasibility(
@@ -196,11 +198,13 @@ def _deep_job_watch(key: str) -> None:
         return
     prog = job.get("progress")
     if prog:
-        idx, toplam, grup = prog
-        st.progress(
-            (idx - 1) / toplam,
-            text=f"🔄 {grup}. grup çözülüyor… ({idx}/{toplam})",
-        )
+        idx, toplam, grup, not_ = prog
+        if not_:
+            simge = "🔎" if "sebep" in not_ else "🐢"
+            metin = f"{simge} Grup {grup} {not_} ({idx}/{toplam})"
+        else:
+            metin = f"🔄 Grup {grup} çözülüyor… ({idx}/{toplam})"
+        st.progress((idx - 1) / toplam, text=metin)
     else:
         st.progress(0.0, text="🔄 Çözücü hazırlanıyor…")
     st.caption(
@@ -219,12 +223,19 @@ def _deep_panel(students, units, months, assignments, custom_rules,
     butonla hem arka planda çalışır.
     """
     st.subheader("🔮 Derin risk analizi (deneme çözümü)")
-    limit = settings.get("solver", {}).get("season_time_limit_seconds", 60)
+    from rotasyon.models import DEFAULT_SETTINGS
+
+    limit = settings.get("solver", {}).get(
+        "season_time_limit_seconds",
+        DEFAULT_SETTINGS["solver"]["season_time_limit_seconds"],
+    )
     st.caption(
         "Yukarıdaki denetim hesapla bulunabilecek tıkanmaları gösterir. Bu "
         "düğme ise kalan ayları **gerçekten çözmeyi dener** ve kuralların "
-        "birlikte tıkanıp tıkanmadığına kesin cevap verir. Grup başına en çok "
-        f"{limit} saniye sürebilir; **hiçbir şey kaydedilmez**, yalnız denenir."
+        "birlikte tıkanıp tıkanmadığına kesin cevap verir. Kolay sezonlarda "
+        f"grup başına ~{limit} saniye; zor çıkarsa uygulama kendiliğinden "
+        f"daha uzun deniyor (en çok {limit * 4} saniye). "
+        "**Hiçbir şey kaydedilmez**, yalnız denenir."
     )
 
     job = _RISK_JOBS.get(key)
@@ -316,14 +327,31 @@ def _deep_results(results) -> None:
                         "ve cinsiyet kısıtlarını gözden geçirin."
                     )
             else:
+                # UNKNOWN. Kullanıcıyı bir AYARA yönlendirmiyoruz ("çözüm
+                # süresini artırın" teknik bilgi ister ve ne kadar artıracağı
+                # belirsizdir). Uygulama zaten kademeli olarak daha uzun
+                # denedi; burada YAPILABİLİR şeyler söylenir.
                 st.markdown(
-                    f"**{etiket}** — ⏳ süre sınırı içinde kesin sonuç alınamadı "
-                    f"(durum: {res.status})."
+                    f"**{etiket}** — ⏳ bu grup bilgisayarın rahat "
+                    "çözebileceğinden daha zor."
                 )
                 st.caption(
-                    "Bu, çözümsüz olduğu anlamına GELMEZ. Veri Yönetimi ▸ "
-                    "⚙️ Ayarlar'dan sezon çözüm süresini artırıp tekrar "
-                    "deneyebilirsiniz."
+                    "Uygulama giderek daha uzun süre denedi ama kesin sonuca "
+                    "ulaşamadı. **Bu, çözümü olmadığı anlamına gelmez** — "
+                    "kurallar bu grup için çok sıkı demektir."
+                )
+                if res.reasons:
+                    for reason in res.reasons:
+                        st.caption(f"• {reason}")
+                st.info(
+                    "**Ne yapabilirsiniz** (en etkiliden başlayarak):\n"
+                    "- 📦 **Kapasite Planı**'nda kontenjanlara bir-iki "
+                    "kişilik pay bırakın — “kontenjan öğrenci sayısına tam "
+                    "eşit” uyarısı varsa asıl sebep odur.\n"
+                    "- 🎯 **Gereksinimler**'de bir zorunluluğu **tercih**'e "
+                    "çevirin; tercih karşılanamazsa sezon yine üretilir.\n"
+                    "- Yıllık Tablo'dan ayları **tek tek** üretin: tek ay "
+                    "çözümü bütün sezonu birlikte çözmekten çok daha kolaydır."
                 )
 
 

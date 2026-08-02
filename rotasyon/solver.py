@@ -244,12 +244,22 @@ def _obligations_from_requirements(
 
 
 def _obligation_debt(items: list[_Obligation]) -> int:
-    """Kalan toplam ZORUNLU ziyaret borcu (ayda en fazla 1 kapatılabilir).
+    """Bu borçları kapatmak için gereken AY sayısının güvenli alt sınırı.
+
+    Borçları toplamak YANLIŞ olurdu: gereksinimler kesişebilir ve kesişince
+    tek ziyaret birkaçını birlikte kapatır (bir YB/B ziyareti hem "yoğun
+    bakım" hem "yoğun bölüm" borcunu düşürür). Toplama, "kalan 4 ayda 5
+    zorunluluk var, yetişmez" gibi yanlış çözümsüzlük üretiyordu.
+    Bkz. requirements.min_visits_needed.
 
     Tercih gereksinimleri sayılmaz: karşılanmamaları sezonu çözümsüz yapmaz,
     dolayısıyla "kalan ay yetişmiyor" hesabına girmemeleri gerekir.
     """
-    return sum(o.count for o in items if o.hard)
+    from .requirements import min_visits_needed
+
+    return min_visits_needed(
+        [(o.unit_ids, o.count) for o in items if o.hard]
+    )
 
 
 def _prefeasibility_reasons(
@@ -366,6 +376,7 @@ def solve_month(
     random_seed: int | None = None,
     custom_rules: list[CustomRule] | None = None,
     requirements: list[Requirement] | None = None,
+    escalate: bool = True,
     _diagnostic: bool = False,
 ) -> SolveResult:
     """`students` (tek grup) için `month` ayının atamasını çözer.
@@ -373,6 +384,11 @@ def solve_month(
     `requirements` (v2): verilirse sezon zorunlulukları bu gereksinim
     listesinden okunur. Verilmezse v1 yolu işler — settings.season_requirements
     branşları + koda gömülü madde 7 (ebelik → doğum salonu).
+
+    `escalate`: süre yetmezse limiti büyütüp yeniden dene (varsayılan). Sebep
+    TEŞHİSİ bunu kapatır: teşhis ayları tek tek çözerek döngü kurar, her zor
+    ayda kademeleri beklemek analizi dakikalarca uzatır ve zaten aranan şey
+    çözüm değil hangi kuralın tıkadığıdır.
 
     `units` grubun TÜM birimlerini içermeli (pasifler dahil): atama yalnız
     aktif ve kontenjanlı birimlere yapılır, ama geçmiş yorumu (madde 1 tekrar
@@ -668,7 +684,10 @@ def solve_month(
         model.AddAssumptions(list(set(assumptions.values())))
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = float(
-        settings["solver"].get("time_limit_seconds", 5)
+        settings["solver"].get(
+            "time_limit_seconds",
+            DEFAULT_SETTINGS["solver"]["time_limit_seconds"],
+        )
     )
     # Tek worker: paralel modda OR-Tools'un absl senkronizasyonu, pandas'ın
     # yüklediği pyarrow'daki aynı absl sembolleriyle çakışıp deadlock
@@ -685,11 +704,21 @@ def solve_month(
         ) % (2**31)
         solver.parameters.randomize_search = True
     status = solver.Solve(model)
-    if status == cp_model.UNKNOWN and not _diagnostic:
+    if status == cp_model.UNKNOWN and not _diagnostic and escalate:
         # Eski/yavaş makine sigortası: süre içinde hiç çözüm bulunamadıysa
-        # limiti 4 katına çıkarıp bir kez daha dene.
-        solver.parameters.max_time_in_seconds *= 4
-        status = solver.Solve(model)
+        # limiti kademeli büyütüp yeniden dene (kullanıcıya "süreyi artırın"
+        # dememek için — uygulama sabırlı davranmayı kendi bilir).
+        taban_ay = float(
+            settings["solver"].get(
+                "time_limit_seconds",
+                DEFAULT_SETTINGS["solver"]["time_limit_seconds"],
+            )
+        )
+        for kat in (4, 8):
+            solver.parameters.max_time_in_seconds = taban_ay * kat
+            status = solver.Solve(model)
+            if status != cp_model.UNKNOWN:
+                break
 
     if status in (cp_model.OPTIMAL, cp_model.FEASIBLE):
         result = SolveResult(
@@ -743,7 +772,11 @@ def solve_month(
     return SolveResult(
         status="UNKNOWN",
         infeasible_reasons=[
-            "Süre sınırı içinde çözüm bulunamadı; süreyi artırmayı deneyin."
+            "Bu ay bilgisayarın rahat çözebileceğinden daha zor: uygulama "
+            "giderek daha uzun süre denedi ama kesin sonuca ulaşamadı. Bu, "
+            "çözümü OLMADIĞI anlamına gelmez — kurallar bu ay için çok sıkı. "
+            "Kontenjanlara bir-iki kişilik pay bırakmayı ya da bir "
+            "gereksinimi 'tercih'e çevirmeyi deneyin."
         ],
     )
 
@@ -758,8 +791,12 @@ def solve_season(
     custom_rules: list[CustomRule] | None = None,
     random_seed: int | None = None,
     requirements: list[Requirement] | None = None,
+    on_retry=None,
 ) -> SeasonSolveResult:
     """`solve_months`'un TAMAMINI tek CP-SAT modelinde birlikte çözer.
+
+    `on_retry(kademe, toplam_kademe, yeni_limit)`: süre yetmeyip daha uzun
+    denemeye geçildiğinde çağrılır (arayüz "daha uzun deneniyor" yazsın diye).
 
     `requirements` (v2): verilirse sezon zorunlulukları bu listeden okunur;
     verilmezse v1 branş yolu işler (bkz. solve_month).
@@ -1076,8 +1113,11 @@ def solve_season(
     model.Minimize(sum(penalties) if penalties else 0)
 
     solver = cp_model.CpSolver()
-    solver.parameters.max_time_in_seconds = float(
-        settings["solver"].get("season_time_limit_seconds", 60)
+    taban = float(
+        settings["solver"].get(
+            "season_time_limit_seconds",
+            DEFAULT_SETTINGS["solver"]["season_time_limit_seconds"],
+        )
     )
     solver.parameters.num_workers = int(settings["solver"].get("num_workers", 1))
     if random_seed is not None:
@@ -1085,7 +1125,25 @@ def solve_season(
             random_seed * 2654435761 + 101
         ) % (2**31)
         solver.parameters.randomize_search = True
-    status = solver.Solve(model)
+
+    # KADEMELİ DENEME: süre içinde sonuç alınamazsa (UNKNOWN) limiti büyütüp
+    # kendiliğinden yeniden dener. Amaç kullanıcıyı "çözüm süresini artırın"
+    # gibi teknik bir ayara yönlendirmemek — uygulama sabırlı davranmayı kendi
+    # bilir. Makine hızı bilinmediği için (eski bilgisayar) sabit bir sayı
+    # yerine kademe kullanılıyor: hızlı makine ilk denemede biter, yavaş
+    # makine kendiliğinden daha çok süre alır.
+    #
+    # INFEASIBLE'da ASLA tekrar denenmez: çözümsüzlük matematiksel bir kanıt,
+    # daha uzun beklemek sonucu değiştirmez (yalnız kullanıcıyı bekletir).
+    kademeler = [taban, taban * 2, taban * 4]
+    status = None
+    for i, limit in enumerate(kademeler):
+        solver.parameters.max_time_in_seconds = limit
+        status = solver.Solve(model)
+        if status != cp_model.UNKNOWN:
+            break
+        if on_retry and i + 1 < len(kademeler):
+            on_retry(i + 2, len(kademeler), kademeler[i + 1])
 
     if status in (cp_model.OPTIMAL, cp_model.FEASIBLE):
         result = SeasonSolveResult(
@@ -1110,6 +1168,11 @@ def solve_season(
     return SeasonSolveResult(
         status="UNKNOWN",
         infeasible_reasons=[
-            "Süre sınırı içinde bütün sezon için çözüm bulunamadı."
+            "Bu sezon bilgisayarın rahat çözebileceğinden daha zor: uygulama "
+            f"giderek daha uzun süre denedi ({int(kademeler[-1])} saniyeye "
+            "kadar) ama kesin sonuca ulaşamadı. Bu, çözümü OLMADIĞI anlamına "
+            "gelmez. En işe yarar adım kuralları biraz gevşetmek: "
+            "kontenjanlara bir-iki kişilik pay bırakmak ya da bir "
+            "gereksinimi 'tercih'e çevirmek genelde yeter."
         ],
     )

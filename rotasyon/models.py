@@ -344,14 +344,21 @@ DEFAULT_SETTINGS: dict = {
         {"branch": BRANCH_PALYATIF},
     ],
     "solver": {
-        # Ölçüm: en iyi çözüm ilk 1-2 saniyede bulunuyor, kalan süre yalnız
-        # optimallik kanıtına gidiyor (skor 60 sn'de bile değişmedi).
-        # Eski/yavaş bilgisayarlarda da akıcı kalsın diye 5 sn yeterli.
-        "time_limit_seconds": 5,
-        # Toplu üretimde bütün sezonu tek modelde çözen ortak çözücünün süre
-        # sınırı (solve_season). Model ay-bazlıdan büyük olduğu için daha
-        # geniş; süre dolarsa açgözlü ay-bazlı yola geri düşülür.
-        "season_time_limit_seconds": 60,
+        # Bunlar bir ÜST SINIR değil BAŞLANGIÇ: süre yetmezse çözücü
+        # kendiliğinden kademeli olarak daha uzun deniyor (solve_month 4×/8×,
+        # solve_season 2×/4×). Kullanıcıya "çözüm süresini artırın" demek
+        # yerine uygulama sabırlı davranmayı kendi biliyor.
+        #
+        # Ölçüm bu makinede en iyi çözümün ilk 1-2 saniyede bulunduğunu
+        # gösterdi; ama uygulama ESKİ BİR BİLGİSAYARDA koşacak ve CP-SAT'ın
+        # süre sınırı duvar saatiyle işliyor — yavaş makine aynı sürede daha
+        # az arama yapar. Bu yüzden başlangıçlar ölçülen değerin belirgin
+        # üstünde tutuluyor (ölçüm 1-2 sn → başlangıç 8 sn). Hızlı makinede
+        # zaten erken bitip süre harcanmaz.
+        "time_limit_seconds": 8,
+        # Bütün sezonu tek modelde çözen ortak çözücü (solve_season). Model
+        # ay-bazlıdan çok büyük; süre dolarsa açgözlü ay-bazlı yola düşülür.
+        "season_time_limit_seconds": 90,
         # Paralel arama worker sayısı. 1 bırakın: bu boyuttaki modellerde tek
         # worker daha hızlı VE macOS'ta pyarrow ile absl deadlock'unu önlüyor.
         "num_workers": 1,

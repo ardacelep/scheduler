@@ -124,6 +124,40 @@ def unmet_count(req: Requirement, seen_unit_keys) -> int:
     return max(0, req.min_count - met_count(req, seen_unit_keys))
 
 
+def min_visits_needed(items) -> int:
+    """Bu borçları kapatmak için gereken ay sayısının GÜVENLİ alt sınırı.
+
+    `items`: (birim_kümesi, kaç_ziyaret) çiftleri.
+
+    Gereksinimler KESİŞEBİLİR ve kesişince tek ziyaret birkaçını birlikte
+    kapatır: "yoğun bakım" (YB/B-C-D) kümesi "yoğun bölüm" kümesinin ALT
+    KÜMESİ olduğu için bir YB/B ziyareti ikisini de karşılar. Borçları
+    toplamak (1+1+1+1+1=5) bu yüzden gereken ay sayısını ŞİŞİRİR ve
+    "kalan 4 ayda 5 zorunluluk var, yetişmez" gibi YANLIŞ çözümsüzlük
+    üretirdi.
+
+    Kesin minimum bir küme-kapsama problemi (NP-zor). Burada gereken şey
+    kesinlik değil **sağlamlık**: alt sınır asla gerçek minimumdan BÜYÜK
+    olmamalı, yoksa yanlış hata basarız. Birbiriyle hiç kesişmeyen borçlar
+    ayrı ayrı ay ister; dolayısıyla ikili ayrık bir alt küme seçip
+    sayılarını toplamak geçerli bir alt sınırdır. Açgözlü seçim (en büyük
+    sayıdan başlayarak, ayrık olanı al) bunu O(n²) ile verir; en iyi alt
+    sınırı bulmayabilir ama ASLA aşmaz.
+    """
+    kalanlar = sorted(items, key=lambda it: -it[1])
+    secilen_birimler: set = set()
+    alt_sinir = 0
+    for birimler, sayi in kalanlar:
+        kume = set(birimler)
+        if not kume or sayi <= 0:
+            continue
+        if kume & secilen_birimler:
+            continue  # başka bir borçla kesişiyor: aynı ziyaret ikisini sayabilir
+        secilen_birimler |= kume
+        alt_sinir += sayi
+    return alt_sinir
+
+
 def describe(req: Requirement, class_names=None) -> str:
     """Gereksinimin tek cümlelik okunur özeti (ekranda ve ihlal mesajında)."""
     who = {

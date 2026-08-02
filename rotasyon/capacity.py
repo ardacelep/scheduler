@@ -344,11 +344,16 @@ def season_requirement_findings(
             imkansiz_birim.setdefault((s.group, etiket), []).append(s)
 
         # 1) ay sayısı yetmiyor  /  3) tam denk
+        # Borçları TOPLAMAK yanlış olurdu: kesişen gereksinimlerde tek ziyaret
+        # birkaçını birlikte kapatır (YB/B hem "yoğun bakım" hem "yoğun bölüm").
+        # Güvenli alt sınır için ayrık borçlar toplanır.
         ulasilamaz_etiket = {e for e, _k, _n in ulasilamaz}
-        gereken = sum(
-            need for etiket, _k, need in borclar
+        from .requirements import min_visits_needed
+
+        gereken = min_visits_needed([
+            (keys, need) for etiket, keys, need in borclar
             if etiket not in ulasilamaz_etiket
-        )
+        ])
         kalanlar = [
             etiket for etiket, _k, _n in borclar
             if etiket not in ulasilamaz_etiket

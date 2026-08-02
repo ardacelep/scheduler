@@ -545,15 +545,30 @@ def deep_feasibility(
             )
             continue
         g_units = [u for u in units if u.group in (0, g)]
+
+        # Süre yetmeyip daha uzun denemeye geçilirse kullanıcı bunu GÖRSÜN:
+        # "hâlâ çalışıyor" ile "takıldı" arasındaki farkı ancak böyle anlar.
+        def _uzat(kademe, toplam, limit, _g=g, _i=idx):
+            if on_group:
+                on_group(
+                    _i, len(hedef), _g,
+                    f"zor çıktı — daha uzun deniyor "
+                    f"({kademe}/{toplam}, {int(limit)} sn)",
+                )
+
         res = solve_season(
             g_students, g_units, months, kalan, assignments,
             settings=settings, custom_rules=rules,
-            requirements=requirements,
+            requirements=requirements, on_retry=_uzat,
         )
         reasons = list(getattr(res, "infeasible_reasons", []) or [])
         suggestions: list[str] = []
         if res.status not in ("OPTIMAL", "FEASIBLE"):
             # "Çözülemiyor" yeterli değil: NEDEN ve NE YAPMALI söyle.
+            # Bu teşhis ayları tek tek çözer, yani UZUN sürer — kullanıcı
+            # ilerleme yazısının donduğunu görüp "takıldı" sanmasın.
+            if on_group:
+                on_group(idx, len(hedef), g, "sebep araştırılıyor…")
             reasons, suggestions = explain_infeasible_group(
                 g, active, units, months, assignments, rules, settings,
                 fallback=reasons, requirements=requirements,
@@ -639,6 +654,11 @@ def explain_infeasible_group(
     return list(fallback or []), []
 
 
+# Unsat core'dan gelen kural-ailesi sayısı bunu aşarsa tek tek listelemek
+# yerine "topluca sıkışıyor" diye özetlenir (belirsizlik duvarı olmasın).
+_MAX_TEKIL_SEBEP = 3
+
+
 def _month_diagnosis(
     group, g_students, units, months, assignments, custom_rules, settings,
     requirements=None,
@@ -669,12 +689,26 @@ def _month_diagnosis(
             g_students, g_units, m, history,
             settings=settings, custom_rules=custom_rules,
             requirements=requirements,
+            # teşhis döngüsü: kademeli beklemek analizi dakikalarca uzatır
+            escalate=False,
         )
         if res.status == "INFEASIBLE":
             sebepler = list(res.infeasible_reasons or [])
-            return [f"{m} ayı çözülemiyor. " + s for s in sebepler] or [
-                f"{m} ayı çözülemiyor: kurallar birlikte sağlanamıyor."
-            ]
+            if not sebepler:
+                return [f"{m} ayı çözülemiyor: kurallar birlikte sağlanamıyor."]
+            # Unsat core bazen kural ailelerinin ÇOĞUNU birlikte döndürür
+            # ("şu da olabilir, bu da olabilir" × 8). Bu bir belirsizlik
+            # duvarıdır: teknik olmayan kullanıcıya hiçbir şey söylemez, üstelik
+            # hangisine bakacağını da bilemez. Çok aile varsa tek cümlede
+            # topla — "her şey birden sıkışıyor" ASIL bilgidir.
+            if len(sebepler) > _MAX_TEKIL_SEBEP:
+                return [
+                    f"{m} ayında kurallar TOPLUCA sıkışıyor: çözücü tek bir "
+                    f"suçlu ayıklayamadı ({len(sebepler)} kural ailesi birlikte "
+                    "tıkıyor). Bu genellikle payın hiç kalmadığını gösterir — "
+                    "kontenjanlarda birkaç kişilik boşluk açmak en etkili adım."
+                ]
+            return [f"{m} ayı çözülemiyor. " + s for s in sebepler]
         if not res.ok:
             return []  # UNKNOWN: süre yetmedi, kesin çözümsüz demek değil
         # çözülen ayı geçmişe ekle ki sonraki aylar bu seçime göre denensin

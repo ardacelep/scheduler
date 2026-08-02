@@ -1184,28 +1184,16 @@ def _settings_tab(store) -> None:
 
     _requirements_notice(store, settings)
 
-    st.subheader("🧮 Çözücü ayarları")
+    st.subheader("⏱️ Ne kadar beklensin?")
+    solver = settings.get("solver", {})
+    time_limit, season_limit = _patience_picker(solver)
+
+    st.divider()
+    st.subheader("🧮 İnce ayar (ağırlıklar)")
     st.caption(
         "Varsayılanlar gerçek sezon verisiyle ölçülüp seçildi; genelde "
         "dokunmak gerekmez. Ağırlık = kuralın çözüm seçiminde ne kadar söz "
         "sahibi olduğu (yalnız birbirine GÖRE anlamlıdır)."
-    )
-    solver = settings.get("solver", {})
-    c1, c2 = st.columns(2)
-    time_limit = c1.number_input(
-        "Aylık çözüm süresi (saniye)",
-        min_value=1, max_value=120,
-        value=int(solver.get("time_limit_seconds", 5)),
-        help="Tek ay üretiminin süre sınırı. En iyi çözüm ilk saniyelerde "
-        "bulunur; yükseltmek nadiren fark yaratır.",
-        key="set_time_limit",
-    )
-    season_limit = c2.number_input(
-        "Sezon (toplu) çözüm süresi (saniye)",
-        min_value=10, max_value=600,
-        value=int(solver.get("season_time_limit_seconds", 60)),
-        help="Tüm sezonu tek modelde çözen emniyet ağının süre sınırı.",
-        key="set_season_limit",
     )
 
     weights = dict(solver.get("weights", {}))
@@ -1233,8 +1221,10 @@ def _settings_tab(store) -> None:
 
     # Kaydedilecek bir değişiklik var mı? (süreler + ağırlıklar)
     degisti = (
-        int(time_limit) != int(solver.get("time_limit_seconds", 5))
-        or int(season_limit) != int(solver.get("season_time_limit_seconds", 60))
+        int(time_limit) != int(solver.get("time_limit_seconds",
+                       DEFAULT_SETTINGS["solver"]["time_limit_seconds"]))
+        or int(season_limit) != int(solver.get("season_time_limit_seconds",
+                       DEFAULT_SETTINGS["solver"]["season_time_limit_seconds"]))
         or {k: int(v) for k, v in new_weights.items()}
         != {k: int(v) for k, v in weights.items()}
     )
@@ -1258,6 +1248,81 @@ def _settings_tab(store) -> None:
         store.save_settings(settings)
         st.toast("Çözücü ayarları varsayılanlara döndü ✅", icon="↩️")
         st.rerun()
+
+
+# (ay, sezon) saniye çiftleri. Kademeli deneme sayesinde bunlar bir ÜST SINIR
+# değil BAŞLANGIÇ: süre yetmezse çözücü kendiliğinden 2× ve 4× deneyecek.
+# O yüzden "Dengeli" çoğu makinede yeterli — "Sabırlı" yalnız bekleme
+# süresini baştan uzatır.
+_SABIR_SECENEKLERI = {
+    "⚡ Hızlı": (3, 30),
+    "⚖️ Dengeli": (8, 90),
+    "🐢 Sabırlı": (20, 240),
+}
+_SABIR_ACIKLAMA = {
+    "⚡ Hızlı": "Çabuk sonuç. Hızlı bir bilgisayarda ve rahat sezonlarda iyi.",
+    "⚖️ Dengeli": "Önerilen. Eski/yavaş bilgisayarlarda da yeterli olacak "
+                  "şekilde seçildi.",
+    "🐢 Sabırlı": "Zor sezonlar için. Daha uzun bekler, sonuç bulma şansı "
+                 "en yüksek.",
+}
+
+
+def _patience_picker(solver: dict) -> tuple[int, int]:
+    """Saniye kutuları yerine üç hazır seçim.
+
+    "Aylık çözüm süresi (saniye)" gibi bir alan teknik bilgi ister: kullanıcı
+    ne kadar yazacağını bilemez. Üç hazır kademe + gerekirse açılan sayısal
+    ayar. Dönüş: (aylık saniye, sezon saniye).
+    """
+    from rotasyon.models import DEFAULT_SETTINGS
+
+    varsayilan = DEFAULT_SETTINGS["solver"]
+    mevcut = (
+        int(solver.get("time_limit_seconds",
+                       varsayilan["time_limit_seconds"])),
+        int(solver.get("season_time_limit_seconds",
+                       varsayilan["season_time_limit_seconds"])),
+    )
+    eslesen = next(
+        (ad for ad, v in _SABIR_SECENEKLERI.items() if v == mevcut), None
+    )
+    secenekler = list(_SABIR_SECENEKLERI)
+    if eslesen is None:
+        secenekler = secenekler + ["✏️ Kendi ayarım"]
+    secim = st.radio(
+        "Çözücü ne kadar uğraşsın?",
+        secenekler,
+        index=secenekler.index(eslesen or "✏️ Kendi ayarım"),
+        horizontal=True,
+        key="set_patience",
+        label_visibility="collapsed",
+    )
+    st.caption(
+        _SABIR_ACIKLAMA.get(
+            secim,
+            "Sayıları kendiniz belirlediniz; hazır kademelerden birine "
+            "dönmek için yukarıdan seçin.",
+        )
+    )
+    st.caption(
+        "🛈 Süre yetmezse uygulama **kendiliğinden daha uzun deniyor** "
+        "(2 ve 4 katı). Yani bu seçim bir üst sınır değil, başlangıç."
+    )
+    if secim in _SABIR_SECENEKLERI:
+        return _SABIR_SECENEKLERI[secim]
+
+    with st.expander("Sayısal ayar", expanded=True):
+        c1, c2 = st.columns(2)
+        ay = c1.number_input(
+            "Tek ay için başlangıç (saniye)", min_value=1, max_value=120,
+            value=mevcut[0], key="set_time_limit",
+        )
+        sezon = c2.number_input(
+            "Tüm sezon için başlangıç (saniye)", min_value=10, max_value=600,
+            value=mevcut[1], key="set_season_limit",
+        )
+    return int(ay), int(sezon)
 
 
 def _requirements_notice(store, settings) -> None:

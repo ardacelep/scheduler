@@ -221,10 +221,27 @@ _FAQ = [
         "**gerçekten çözmeyi dener** ve “bu sezon tamamlanabilir mi?” "
         "sorusuna kesin cevap verir. Normal denetim hesapla bulunabilecek "
         "tıkanmaları gösterir; bu ise kuralların birlikte tıkanıp "
-        "tıkanmadığını da yakalar. Grup başına bir dakikaya kadar sürebilir ve "
-        "**hiçbir şeyi kaydetmez** — sadece dener. Önemli bir değişiklik "
-        "yaptıktan sonra (kontenjan düşürme, birim kapatma, yeni kural) "
-        "çalıştırmak iyi bir alışkanlıktır.",
+        "tıkanmadığını da yakalar. **Hiçbir şeyi kaydetmez** — sadece dener. "
+        "Önemli bir değişiklik yaptıktan sonra (kontenjan düşürme, birim "
+        "kapatma, yeni kural) çalıştırmak iyi bir alışkanlıktır.\n\n"
+        "Zor bir grupta *“🐢 daha uzun deniyor”* yazarsa endişelenmeyin: "
+        "uygulama süreyi kendiliğinden büyütüp yeniden deniyor, takılmadı.",
+    ),
+    (
+        "“Bu grup bilgisayarın rahat çözebileceğinden daha zor” diyor, ne yapmalıyım?",
+        "Bu, **çözümü olmadığı anlamına gelmez** — kuralların çok sıkı olduğu "
+        "anlamına gelir. Uygulama süreyi zaten kendiliğinden büyütüp denedi, "
+        "yani bir ayarı değiştirmenize gerek yok. Sırayla şunları deneyin:\n\n"
+        "1. **📦 Kapasite Planı**'nda kontenjanlara bir-iki kişilik pay "
+        "bırakın. *“Toplam kontenjan öğrenci sayısına tam eşit”* uyarısı "
+        "varsa neredeyse kesin sebep odur: pay yoksa her birim her ay dolmak "
+        "zorunda kalır.\n"
+        "2. **🎯 Gereksinimler**'de bir zorunluluğu **tercih**'e çevirin; "
+        "tercih karşılanamazsa sezon yine üretilir, yalnız uyarı çıkar.\n"
+        "3. **📅 Yıllık Tablo**'dan ayları tek tek üretin — tek ay çözmek "
+        "bütün sezonu birlikte çözmekten çok daha kolaydır.\n\n"
+        "İsterseniz Ayarlar'dan **🐢 Sabırlı** kademesini seçip daha uzun "
+        "bekletebilirsiniz, ama genelde yukarıdaki üç adım daha etkilidir.",
     ),
     (
         "Bir grubun hangi birimlere kaç kişi verildiğini nasıl görürüm/ayarlarım?",

@@ -325,13 +325,38 @@ ayı çıkmaza sokabilir. Toplu üretim bunu iki aşamayla ele alır:
 Böylece geçerli bir sezon varsa kullanıcı onu mutlaka alır; yumuşak kalite
 hiçbir zaman salt-açgözlüden kötü olmaz.
 
-### Performans (eski makineler için)
+### Performans ve süre (eski makineler için)
 
-- Aylık çözümün süre sınırı varsayılan **5 saniyedir**. Ölçümlere göre en iyi
-  çözüm ilk 1–2 saniyede bulunur; kalan süre yalnız optimallik kanıtına gider.
-  Sonuç bulunamazsa süre otomatik 4 katına çıkarılıp bir kez daha denenir.
-- Ortak sezon çözücüsünün süre sınırı ayrıdır (varsayılan 60 sn); süreye
-  sığmazsa açgözlü yola geri düşülür.
+Uygulama **eski bir bilgisayarda** koşuyor ve CP-SAT'ın süre sınırı duvar
+saatiyle işler — yavaş makine aynı sürede daha az arama yapar. Bu yüzden süreler
+iki katmanlı ele alınır:
+
+**1. Başlangıç süreleri** (ölçülen değerin belirgin üstünde). Ölçüm bu makinede
+en iyi çözümün ilk 1–2 saniyede bulunduğunu gösterdi; varsayılan başlangıç
+**tek ay için 8 sn**, **tüm sezon için 90 sn**. Hızlı makinede zaten erken
+bitip süre harcanmaz.
+
+**2. Kademeli otomatik deneme.** Süre içinde sonuç alınamazsa (`UNKNOWN`)
+çözücü limiti büyütüp **kendiliğinden yeniden dener** — tek ayda 4× ve 8×,
+tüm sezonda 2× ve 4×. Böylece yavaş makine otomatik olarak daha çok süre alır
+ve kullanıcıya asla *"çözüm süresini artırın"* demek gerekmez (teknik bilgi
+ister: ne kadar artıracağını bilemez).
+
+`INFEASIBLE`'da **asla** tekrar denenmez: çözümsüzlük matematiksel bir kanıttır,
+uzatmak sonucu değiştirmez, yalnız kullanıcıyı bekletir.
+
+Kullanıcı arayüzünde saniye kutusu yoktur; *Veri Yönetimi ▸ ⚙️ Ayarlar*'da üç
+hazır kademe var — **⚡ Hızlı** (3/30 sn) · **⚖️ Dengeli** (8/90, önerilen) ·
+**🐢 Sabırlı** (20/240) — ve isteyen sayıyı elle de verebilir. Kademeli deneme
+sayesinde bu seçim bir üst sınır değil **başlangıçtır**.
+
+Derin risk analizi uzatmaya geçtiğinde bunu gösterir
+(*"🐢 Grup 1 zor çıktı — daha uzun deniyor (3/3, 8 sn)"*), böylece kullanıcı
+"hâlâ çalışıyor" ile "takıldı"yı ayırt eder. Süre yine yetmezse mesaj bir
+ayara değil **yapılabilir şeylere** yönlendirir: kontenjana pay bırakmak,
+bir gereksinimi *tercih*e çevirmek, ayları tek tek üretmek.
+
+- Sezon çözücüsü süreye sığmazsa açgözlü ay-bazlı yola geri düşülür.
 - **Tek iş parçacığı** (`num_workers=1`) kullanılır: bu boyuttaki modellerde tek
   worker daha hızlıdır ve macOS'ta pandas/pyarrow ile yaşanan bir kilitlenmeyi
   önler. Bu değerler sezonun ayarlarından değiştirilebilir.
@@ -566,7 +591,7 @@ Tasarım kararları:
 .venv/bin/python -m pytest tests/
 ```
 
-Şu an **398 test** yeşildir; her yerleşik kural, özel kurallar, gereksinimler
+Şu an **415 test** yeşildir; her yerleşik kural, özel kurallar, gereksinimler
 (v2 kural modeli + v1 denkliği), doldurma politikası ve kapasite matematiği, çözücü, ortak sezon çözücüsü, kapasite
 denetimi, cinsiyet tahmini, sezon yönetimi, dinamik değişiklikler, toplu taslak
 kalıcılığı, yedekleme/geri yükleme, başlatıcı yardımcıları ve Excel içe/dışa
