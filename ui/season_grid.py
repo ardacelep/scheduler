@@ -173,7 +173,7 @@ def _grid(
     with st.popover("🔧 Görünüm"):
         col_w = _WIDTHS[
             st.select_slider(
-                "Sütun genişliği", list(_WIDTHS), value="Orta",
+                "Sütun genişliği", list(_WIDTHS), value="Dar",
                 key=f"grid_w_{group}",
             )
         ]

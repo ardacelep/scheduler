@@ -172,7 +172,6 @@ def _list_panel(store, reqs, units, students) -> None:
 
     for req in reqs:
         with st.container(border=True):
-            c1, c2, c3, c4 = st.columns([6, 1, 1, 1])
             baslik = f"**{req.name}**"
             if not req.active:
                 baslik = (
@@ -180,31 +179,40 @@ def _list_panel(store, reqs, units, students) -> None:
                     f"{req.name}</span> <span style='color:#c00;font-size:0.8em'>"
                     "pasif</span>"
                 )
-                c1.markdown(baslik, unsafe_allow_html=True)
+                st.markdown(baslik, unsafe_allow_html=True)
             else:
-                c1.markdown(baslik)
-            c1.caption(describe(req))
+                st.markdown(baslik)
+            st.caption(describe(req))
             if req.active:
                 _coverage_note(req, students, units)
             if req.note:
-                c1.caption(f"📝 {req.note}")
+                st.caption(f"📝 {req.note}")
 
+            # Butonlar SÜTUNA değil yatay kaba konur: sabit oranlı sütunlar
+            # pencere daralınca etiketi sarıyordu ("Pasifleşti / r"). Yatay kap
+            # her butona kendi metnine yetecek genişliği verir, sığmazsa
+            # kelimeyi kırmak yerine butonu alt satıra alır.
             duzenle_key = f"req_edit_{req.id}"
             aciksa = st.session_state.get("req_editing") == req.id
-            if c2.button("✏️ Düzenle" if not aciksa else "✖️ Kapat",
-                         key=duzenle_key):
-                st.session_state["req_editing"] = None if aciksa else req.id
-                st.rerun()
-            etiket = "▶️ Aktifleştir" if not req.active else "⏸️ Pasifleştir"
-            if c3.button(etiket, key=f"req_toggle_{req.id}"):
-                req.active = not req.active
-                store.save_requirements(reqs)
-                st.rerun()
-            if c4.button("🗑️ Sil", key=f"req_del_{req.id}"):
-                store.save_requirements([r for r in reqs if r.id != req.id])
-                st.session_state.pop("req_editing", None)
-                st.toast(f"'{req.name}' silindi", icon="🗑️")
-                st.rerun()
+            with st.container(horizontal=True):
+                if st.button("Düzenle" if not aciksa else "Kapat",
+                             icon="✏️" if not aciksa else "✖️",
+                             key=duzenle_key):
+                    st.session_state["req_editing"] = None if aciksa else req.id
+                    st.rerun()
+                if st.button("Aktifleştir" if not req.active else "Pasifleştir",
+                             icon="▶️" if not req.active else "⏸️",
+                             key=f"req_toggle_{req.id}"):
+                    req.active = not req.active
+                    store.save_requirements(reqs)
+                    st.rerun()
+                if st.button("Sil", icon="🗑️", key=f"req_del_{req.id}"):
+                    store.save_requirements(
+                        [r for r in reqs if r.id != req.id]
+                    )
+                    st.session_state.pop("req_editing", None)
+                    st.toast(f"'{req.name}' silindi", icon="🗑️")
+                    st.rerun()
 
             if aciksa:
                 _inline_edit(store, reqs, req, units, students)
