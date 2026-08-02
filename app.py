@@ -16,7 +16,12 @@ st.set_page_config(
 
 from ui import dashboard, data_management, history, violations  # noqa: E402
 from ui import excel_screen, help as help_screen, season_grid  # noqa: E402
-from ui.v2 import capacity_plan, requirements_screen, setup_wizard  # noqa: E402
+from ui.v2 import (  # noqa: E402
+    capacity_plan,
+    custom_rules,
+    requirements_screen,
+    setup_wizard,
+)
 from ui.common import (  # noqa: E402
     UNITS_CATALOG,
     create_season_with_units,
@@ -128,6 +133,14 @@ def main() -> None:
             st.Page(
                 _page(requirements_screen.render, "gereksinimler"),
                 title="Gereksinimler", icon="🎯", url_path="gereksinimler",
+            ),
+            # Gereksinimler'in hemen altında: ikisi de sezona özgü kural
+            # tanımıdır. Gereksinimler bir öğrenci kümesine ("herkes bir
+            # yoğun bakım görsün"), Özel Kurallar adı geçen kişilere
+            # ("şu ikisi ayrı kalsın") uygulanır.
+            st.Page(
+                _page(custom_rules.render, "ozel-kurallar"),
+                title="Özel Kurallar", icon="📏", url_path="ozel-kurallar",
             ),
         ],
         "Planlama": [

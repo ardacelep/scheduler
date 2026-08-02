@@ -100,8 +100,8 @@ _REASON_LABELS = {
                  "yoğunluğu bu ayda aynı türden birimleri kapatıyor, uygun "
                  "birim kalmıyor olabilir.",
     "locked": "Elle sabitlenen atamalar diğer kurallarla çelişiyor.",
-    "custom": "Özel kurallar (Veri Yönetimi → Kurallar): ayrı/birlikte tutma "
-              "veya sabit atamalar diğer kurallarla çelişiyor olabilir.",
+    "custom": "Özel kurallar: ayrı/birlikte tutma veya sabit atamalar diğer "
+              "kurallarla çelişiyor olabilir (Özel Kurallar ekranı).",
 }
 
 

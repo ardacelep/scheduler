@@ -232,7 +232,7 @@ def fixed_assignment_conflicts(
 ) -> list[str]:
     """Tek bir 'sabit atama' kuralının gelecekte yaratacağı çakışmalar.
 
-    Kural EKLENİRKEN de (Veri Yönetimi ▸ Kurallar) aynı fonksiyon çağrılır;
+    Kural EKLENİRKEN de (Özel Kurallar ekranı) aynı fonksiyon çağrılır;
     kullanıcı sorunu oluşmadan görsün diye ayrı fonksiyon olarak durur.
     Dönüş: Türkçe açıklama listesi (boşsa sorun yok).
     """
@@ -351,7 +351,7 @@ def _risk_fixed_assignments(
 def units_fitting_all(group: list[Student], units: list[Unit]) -> list[Unit]:
     """Verilen öğrencilerin TAMAMINI aynı anda alabilecek birimler.
 
-    'Birlikte tut' kuralının uygulanabilirliği budur; Kurallar sekmesi de
+    'Birlikte tut' kuralının uygulanabilirliği budur; Özel Kurallar ekranı da
     kural eklenirken aynı fonksiyonu çağırır (tek kaynak).
     """
     k = len(group)

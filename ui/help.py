@@ -292,16 +292,16 @@ _FAQ = [
         "olarak sonraki ayları etkiler.",
     ),
     (
-        "Zorunlu branşlar veya çözücünün davranışı değişebilir mi?",
-        "Evet. Veri Yönetimi ▸ ⚙️ Ayarlar sekmesinden hem sezon "
-        "zorunluluklarını (her öğrencinin görmesi gereken branşlar) hem de "
-        "çözücü ağırlıklarını değiştirebilirsiniz. Değişiklik bir sonraki "
-        "rotasyon üretiminden itibaren geçerlidir; kayıtlı geçmiş aylar "
-        "kendiliğinden değişmez.",
+        "Zorunluluklar veya çözücünün davranışı değişebilir mi?",
+        "Evet. Her öğrencinin görmesi gereken birimleri **Gereksinimler** "
+        "ekranından, çözücü ağırlıklarını Veri Yönetimi ▸ ⚙️ Ayarlar "
+        "sekmesinden değiştirebilirsiniz. Değişiklik bir sonraki rotasyon "
+        "üretiminden itibaren geçerlidir; kayıtlı geçmiş aylar kendiliğinden "
+        "değişmez.",
     ),
     (
         "İki öğrenciyi hep ayrı (veya hep birlikte) tutmam gerekiyor.",
-        "Veri Yönetimi ▸ Kurallar sekmesinden kendi kuralınızı ekleyin. "
+        "**Özel Kurallar** ekranından kendi kuralınızı ekleyin. "
         "Kuralın hangi aydan hangi aya geçerli olacağını da seçersiniz — "
         "seçtiğiniz iki ay **dahildir**.",
     ),

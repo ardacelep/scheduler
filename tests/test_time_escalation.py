@@ -227,3 +227,19 @@ def test_escalate_false_returns_quickly_on_unknown():
     )
     assert res.status == "INFEASIBLE"
     assert time.perf_counter() - t < 1.5
+
+
+def test_saved_time_outside_widget_range_does_not_crash_settings():
+    """Aralık dışı kayıtlı süre Veri Yönetimi ekranını ÇÖKERTMEMELİ.
+
+    Gerçek olay: bir sezonun settings.json'ında sezon limiti 2 sn kalmıştı;
+    st.number_input min 10 olduğu için istisna fırlatıyor ve st.tabs tüm
+    panelleri çalıştırdığından Veri Yönetimi'nin TAMAMI açılmıyordu —
+    kullanıcı sayıyı düzeltmek için de oraya giremiyordu.
+    """
+    from ui.data_management import clamp
+
+    assert clamp(2, 10, 600) == 10        # altta kalan kayıt
+    assert clamp(9999, 10, 600) == 600    # üstte kalan kayıt
+    assert clamp(90, 10, 600) == 90       # geçerli değer dokunulmaz
+    assert clamp(0, 1, 120) == 1
