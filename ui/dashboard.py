@@ -6,6 +6,7 @@ import streamlit as st
 
 from .common import (
     collect_risks,
+    group_label,
     groups_in,
     has_data,
     load_seed,
@@ -115,7 +116,8 @@ def render(store) -> None:
     for g in groups_in(students):
         # ayrılan (pasif) öğrenciler ilerleme paydasına girmez
         gids = {s.id for s in students if s.group == g and s.active}
-        row = {"Grup": f"{g}. Grup"}
+        # tablo sütunu dar: gün etiketi eklenmez, yalnız sınıflar
+        row = {"Grup": group_label(students, g)}
         for m in months:
             done = sum(
                 1 for a in assignments if a.month == m and a.student_id in gids

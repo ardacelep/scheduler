@@ -14,8 +14,6 @@ değişimde (otomatik doldurma / kaydet / geri al) yenilenir (gen artar).
 """
 from __future__ import annotations
 
-import html
-
 import pandas as pd
 import streamlit as st
 
@@ -27,6 +25,7 @@ from .common import (
     capacity_findings_panel,
     clear_stale_state,
     data_fingerprint,
+    group_label,
     groups_in,
     partition_violations,
     replace_month_assignments,
@@ -61,7 +60,6 @@ def render(store) -> None:
     months = settings["months"]
     assignments = store.load_assignments()
     custom_rules = [r for r in store.load_custom_rules() if r.active]
-    classes = store.load_classes()
     requirements = season_requirements(store)
 
     clear_stale_state(
@@ -78,7 +76,8 @@ def render(store) -> None:
     )
 
     group = st.selectbox(
-        "Grup", groups_in(students), format_func=lambda g: f"{g}. Grup",
+        "Grup", groups_in(students),
+        format_func=lambda g: group_label(students, g, settings),
         key="grid_group",
     )
     st.caption(
@@ -89,7 +88,7 @@ def render(store) -> None:
     )
     _grid(
         store, settings, months, group, students, units, assignments,
-        custom_rules, classes, requirements,
+        custom_rules, requirements,
     )
 
     st.divider()
@@ -130,7 +129,7 @@ def _bump_gen(group: int) -> None:
 @st.fragment
 def _grid(
     store, settings, months, group, students, units, assignments,
-    custom_rules, classes, requirements=None,
+    custom_rules, requirements=None,
 ):
     group_students = sorted(
         [s for s in students if s.group == group and s.active],
@@ -182,8 +181,8 @@ def _grid(
             key=f"grid_all_{group}",
         )
         st.caption(
-            "Sezonun tamamını tek bakışta görmek için aşağıdaki **renkli "
-            "görünüm**i açıp yakınlaştırmayı küçültün."
+            "Sezonun tamamını renkli ve tek bakışta görmek için "
+            "**Sezon Tablosu** ekranını açın."
         )
 
     # ---- SABİT taban (nesil boyunca değişmez → kaydırma korunur) ----
@@ -362,14 +361,12 @@ def _grid(
         st.session_state["_grid_flash"] = f"{changed_cells} hücre kaydedildi. ✅"
         st.rerun(scope="app")
 
-    # ---- renkli, salt-okunur, YAKINLAŞTIRILABİLİR önizleme ----
-    with st.expander("🎨 Renkli görünüm (salt-okunur, Excel benzeri, yakınlaştırılabilir)"):
-        zoom = st.slider(
-            "Yakınlaştırma", min_value=40, max_value=120, value=100, step=10,
-            format="%d%%", key=f"grid_zoom_{group}",
-            help="Sezonun tamamını tek ekranda görmek için küçültün.",
-        )
-        _colored_preview(group_students, inactive, months, live, saved, classes, zoom)
+    # Buradaki "renkli görünüm" bölümü kaldırıldı: aynı işi **Sezon Tablosu**
+    # ekranı tam belge düzeniyle (yer çizelgesi, cinsiyet/kapalı birim
+    # işaretleri, iki grup birden) yapıyor. Bu ekran DÜZENLEME ekranı olarak
+    # kaldı; iki yerde yarım görünüm tutmak eski "Rotasyon Oluştur / Yıllık
+    # Tablo" örtüşmesinin tekrarı olurdu.
+    _link_board()
 
 
 def _autofill(
@@ -444,37 +441,13 @@ def _save(store, months, group_ids, group_students, live, saved, label_to_id):
             replace_month_assignments(store, group_ids, m, edited_map)
 
 
-def _colored_preview(group_students, inactive, months, live, saved, classes, zoom):
-    """Bütün öğrenciler (pasifler dahil) × aylar, sınıf renkli, HTML tablo.
-
-    HTML tablo (glide canvas değil) olduğu için CSS zoom ile küçültülebilir ve
-    tamamı tek ekrana sığdırılabilir; yazdırmaya da uygundur.
-    """
-    color_of = {c.name: c.color_hex for c in classes if c.color_hex}
-    rows_html = []
-    header = "".join(f"<th>{html.escape(m)}</th>" for m in months)
-    rows_html.append(
-        "<tr><th>Öğrenci</th><th>Sınıf</th>" + header + "</tr>"
-    )
-    all_rows = group_students + sorted(inactive, key=lambda s: s.full_name)
-    for s in all_rows:
-        bg = color_of.get(s.class_name, "")
-        style = f' style="background:{bg};color:#000"' if bg else ""
-        passive = " (ayrıldı)" if not s.active else ""
-        cells = f"<td{style}>{html.escape(s.full_name)}{passive}</td>" \
-                f"<td>{html.escape(s.class_name)}</td>"
-        for m in months:
-            val = live.get((s.id, m)) if s.active else saved.get((s.id, m), BLANK)
-            val = val if val and val != BLANK else ""
-            cells += f"<td>{html.escape(val)}</td>"
-        rows_html.append(f"<tr>{cells}</tr>")
-    table = (
-        f'<div style="zoom:{zoom/100}; overflow-x:auto">'
-        '<table style="border-collapse:collapse;font-size:13px" border="1">'
-        + "".join(rows_html) + "</table></div>"
-    )
-    st.markdown(
-        "<style>table td,table th{padding:2px 6px;border:1px solid #555}</style>"
-        + table,
-        unsafe_allow_html=True,
-    )
+def _link_board() -> None:
+    """Salt okunur tam görünüm ayrı ekranda."""
+    pages = st.session_state.get("_pages", {})
+    if "sezon-tablosu" in pages:
+        st.page_link(
+            pages["sezon-tablosu"],
+            label="Sezonun tamamını renkli, salt okunur görmek için "
+            "Sezon Tablosu'na git",
+            icon="📖",
+        )

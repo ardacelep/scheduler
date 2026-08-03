@@ -19,6 +19,7 @@ from .common import (
     RISK_INTRO,
     collect_risks,
     data_fingerprint,
+    group_label,
     show_risks,
     season_requirements,
     show_violations_scoped,
@@ -190,7 +191,7 @@ def _run_deep_job(job, students, units, months, assignments, custom_rules,
 
 
 @st.fragment(run_every=2.0)
-def _deep_job_watch(key: str) -> None:
+def _deep_job_watch(key: str, students=(), settings=None) -> None:
     """Süren denemeyi 2 sn'de bir yoklar; bitince sayfayı tazeler."""
     job = _RISK_JOBS.get(key)
     if job is None or job.get("done"):
@@ -199,11 +200,12 @@ def _deep_job_watch(key: str) -> None:
     prog = job.get("progress")
     if prog:
         idx, toplam, grup, not_ = prog
+        ad = group_label(list(students), grup, settings)
         if not_:
             simge = "🔎" if "sebep" in not_ else "🐢"
-            metin = f"{simge} Grup {grup} {not_} ({idx}/{toplam})"
+            metin = f"{simge} {ad} {not_} ({idx}/{toplam})"
         else:
-            metin = f"🔄 Grup {grup} çözülüyor… ({idx}/{toplam})"
+            metin = f"🔄 {ad} çözülüyor… ({idx}/{toplam})"
         st.progress((idx - 1) / toplam, text=metin)
     else:
         st.progress(0.0, text="🔄 Çözücü hazırlanıyor…")
@@ -253,7 +255,7 @@ def _deep_panel(students, units, months, assignments, custom_rules,
         st.rerun()
 
     if calisiyor:
-        _deep_job_watch(key)
+        _deep_job_watch(key, students, settings)
         return
     if job is None:
         return
@@ -277,10 +279,10 @@ def _deep_panel(students, units, months, assignments, custom_rules,
     if not results:
         st.info("Denenecek grup bulunamadı.")
         return
-    _deep_results(results)
+    _deep_results(results, students, settings)
 
 
-def _deep_results(results) -> None:
+def _deep_results(results, students=(), settings=None) -> None:
     """Sonuç kartları: üstte özet, altta grup başına neden/öneri."""
     cozulen = sum(1 for r in results if r.ok)
     denenen = [r for r in results if r.status != "ATLANDI"]
@@ -296,7 +298,7 @@ def _deep_results(results) -> None:
         )
 
     for res in results:
-        etiket = f"{res.group}. Grup"
+        etiket = group_label(list(students), res.group, settings)
         with st.container(border=True):
             if res.status == "ATLANDI":
                 st.markdown(f"**{etiket}** — ⏭️ tüm aylar zaten üretilmiş.")

@@ -34,7 +34,7 @@ from rotasyon.models import (
 from rotasyon.normalize import normalize_key
 from rotasyon.requirements import applies_to, compile_for_student, describe
 from rotasyon.requirements import from_legacy_settings
-from ..common import clear_stale_state, data_fingerprint
+from ..common import clear_stale_state, data_fingerprint, group_label
 
 
 def render(store) -> None:
@@ -144,7 +144,7 @@ def _coverage_note(req, students, units) -> None:
         return
     parts = [f"**{n} öğrenciyi** kapsıyor"]
     for g, count in per_group.items():
-        parts.append(f"grup {g}: **{count}** uygun birim")
+        parts.append(f"{group_label(students, g)}: **{count}** uygun birim")
     st.caption(" · ".join(parts))
     if n == 0:
         st.warning("⚠️ Bu gereksinim hiçbir öğrenciyi kapsamıyor.")
@@ -155,14 +155,15 @@ def _coverage_note(req, students, units) -> None:
     for g, count in per_group.items():
         if count == 0:
             st.error(
-                f"❌ Grup {g}: bu gereksinimi karşılayan aktif birim yok — "
-                "bu haliyle o gruptaki öğrenciler için çözüm bulunamaz."
+                f"❌ {group_label(students, g)}: bu gereksinimi karşılayan "
+                "aktif birim yok — bu haliyle o gruptaki öğrenciler için "
+                "çözüm bulunamaz."
             )
         elif count < req.min_count:
             st.error(
-                f"❌ Grup {g}: yalnız {count} uygun birim var ama "
-                f"{req.min_count} ziyaret isteniyor. Aynı bölüme ikinci kez "
-                "gidilemediği için bu karşılanamaz."
+                f"❌ {group_label(students, g)}: yalnız {count} uygun birim "
+                f"var ama {req.min_count} ziyaret isteniyor. Aynı bölüme "
+                "ikinci kez gidilemediği için bu karşılanamaz."
             )
 
 
@@ -245,6 +246,7 @@ def _inline_edit(store, reqs, req, units, students) -> None:
         mevcut = [str(g) for g in gruplar]
         scope_value = str(st.selectbox(
             "Grup", gruplar, key=f"{k}_grup",
+            format_func=lambda g: group_label(students, g),
             index=mevcut.index(req.scope_value)
             if req.scope_value in mevcut else 0,
         ))
@@ -349,7 +351,10 @@ def _editor(store, reqs, units, students) -> None:
     if scope == SCOPE_GROUP:
         gruplar = sorted({s.group for s in students}) or [1, 2]
         scope_value = str(
-            st.selectbox("Grup", gruplar, key="req_new_group")
+            st.selectbox(
+                "Grup", gruplar, key="req_new_group",
+                format_func=lambda g: group_label(students, g),
+            )
         )
     elif scope == SCOPE_CLASS:
         if not classes:

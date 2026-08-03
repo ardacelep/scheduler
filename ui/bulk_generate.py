@@ -21,6 +21,7 @@ from rotasyon.planner import plan_season, remaining_months
 from rotasyon.rules import check_all
 from .common import (
     data_fingerprint,
+    group_label,
     groups_in,
     show_violations_scoped,
     unit_label,
@@ -203,12 +204,15 @@ def _bulk_section(bctx) -> None:
         st.success("🎉 Tüm gruplar için sezonun bütün ayları oluşturulmuş.")
         return
     for g, ms in todo.items():
-        st.caption(f"**{g}. grup** için kalan {len(ms)} ay: {', '.join(ms)}")
+        st.caption(
+            f"**{group_label(students, g, settings)}** için kalan "
+            f"{len(ms)} ay: {', '.join(ms)}"
+        )
     picks = st.multiselect(
         "Hangi gruplar için?",
         list(todo),
         default=list(todo),
-        format_func=lambda g: f"{g}. Grup",
+        format_func=lambda g: group_label(students, g, settings),
         key="bulk_groups",
     )
     total = sum(len(todo[g]) for g in picks)

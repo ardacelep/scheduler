@@ -15,7 +15,8 @@ st.set_page_config(
 )
 
 from ui import dashboard, data_management, history, violations  # noqa: E402
-from ui import excel_screen, help as help_screen, season_grid  # noqa: E402
+from ui import excel_screen, help as help_screen  # noqa: E402
+from ui import season_board, season_grid  # noqa: E402
 from ui.v2 import (  # noqa: E402
     capacity_plan,
     custom_rules,
@@ -151,6 +152,13 @@ def main() -> None:
             st.Page(
                 _page(season_grid.render, "yillik-tablo"),
                 title="Yıllık Tablo", icon="📅", url_path="yillik-tablo",
+            ),
+            # Yıllık Tablo düzenleme, Sezon Tablosu okuma/yazdırma. İkisi
+            # aynı veriyi gösterir ama farklı iş yapar; bu yüzden Yıllık
+            # Tablo'daki yarım kalmış "renkli görünüm" bölümü kaldırıldı.
+            st.Page(
+                _page(season_board.render, "sezon-tablosu"),
+                title="Sezon Tablosu", icon="📖", url_path="sezon-tablosu",
             ),
             st.Page(
                 _page(violations.render, "kural-kontrolu"),

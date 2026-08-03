@@ -27,7 +27,12 @@ from rotasyon.fill_policy import (
     group_capacity_plan,
     policy_of,
 )
-from ..common import clear_stale_state, data_fingerprint, groups_in
+from ..common import (
+    clear_stale_state,
+    data_fingerprint,
+    group_label,
+    groups_in,
+)
 
 
 def render(store) -> None:
@@ -61,10 +66,11 @@ def render(store) -> None:
             "hesaplandığı için önce öğrencileri içe aktarın."
         )
 
+    settings = store.load_settings()
     _legend()
     for g in groups_in(students):
         st.divider()
-        _group_section(store, units, students, g)
+        _group_section(store, units, students, g, settings)
 
 
 def _legend() -> None:
@@ -75,16 +81,19 @@ def _legend() -> None:
             )
 
 
-def _group_section(store, units, students, group) -> None:
+def _group_section(store, units, students, group, settings=None) -> None:
     plan = group_capacity_plan(units, students, group)
-    st.subheader(f"{group}. Grup — {plan.student_count} öğrenci")
+    st.subheader(
+        f"{group_label(students, group, settings)} — "
+        f"{plan.student_count} öğrenci"
+    )
 
     _summary(plan)
     for w in plan.warnings:
         st.warning(f"⚠️ {w}")
 
     _breakdown(plan)
-    with st.expander(f"✏️ Grup {group} birimlerini düzenle", expanded=False):
+    with st.expander(f"✏️ {group}. Grup birimlerini düzenle", expanded=False):
         _unit_editor(store, units, group)
     _repeated_list(units, group)
 
