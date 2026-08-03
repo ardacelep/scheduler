@@ -60,11 +60,9 @@ def test_rule14_yearly_export_has_class_colors(seeded, yearly_wb):
     assert found and found <= class_colors
 
 
-def test_yearly_export_has_class_and_no_columns(seeded, yearly_wb):
-    """Gerçek belge düzeni: sınıf ve föy no sütunları."""
+def test_yearly_export_has_a_class_column(seeded, yearly_wb):
     ws = yearly_wb["1. GRUP"]
     _find_header(ws, "sınıf")
-    _find_header(ws, "föy no")
     header_row, name_col = _find_header(ws, "ADI-SOYADI")
     # ilk öğrenci satırında sınıf dolu
     assert ws.cell(header_row + 1, 1).value  # sınıf metni

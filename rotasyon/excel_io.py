@@ -547,9 +547,13 @@ def export_yearly_workbook(
 ) -> bytes:
     """Yıllık grup görünümü (madde 14).
 
-    Gerçek belgelerdeki düzen izlenir: sınıf | föy no | sıra | ADI-SOYADI |
-    aylar... | BÖLÜMLER VE SAYILARI. Öğrenci adı hücresi sınıf rengiyle dolu,
-    cinsiyet kısıtlı birimler kırmızı + k/e ekli.
+    Düzen: sınıf | ADI-SOYADI | aylar... | BÖLÜMLER VE SAYILARI. Öğrenci adı
+    hücresi sınıf rengiyle dolu, cinsiyet kısıtlı birimler kırmızı + k/e ekli.
+
+    "föy no" ve "sn" (sıra) sütunları KASITLI olarak yok: föy no uygulamada
+    zaten tutulmuyor olabiliyor, sıra no da Excel'in kendi satır numarasının
+    tekrarı. İçe aktarma tarafı bunları hâlâ OKUYOR (kullanıcının elle
+    hazırladığı belgelerde var) — kaldırılan yalnız bizim ürettiğimiz çıktı.
     """
     day_labels = day_labels or {}
     units_by_id = {u.id: u for u in units}
@@ -557,7 +561,7 @@ def export_yearly_workbook(
     cell_map: dict[tuple[str, str], Assignment] = {
         (a.student_id, a.month): a for a in assignments
     }
-    NAME_COL = 4
+    NAME_COL = 2
     first_month_col = NAME_COL + 1
 
     wb = Workbook()
@@ -574,7 +578,7 @@ def export_yearly_workbook(
         if label:
             ws.cell(1, first_month_col, label).font = _BOLD
         header_row = 2
-        for c, title in ((1, "sınıf"), (2, "föy no"), (3, "sn"), (4, "ADI-SOYADI")):
+        for c, title in ((1, "sınıf"), (NAME_COL, "ADI-SOYADI")):
             ws.cell(header_row, c, title).font = _BOLD
         for j, m in enumerate(months, start=first_month_col):
             c = ws.cell(header_row, j, m)
@@ -585,8 +589,6 @@ def export_yearly_workbook(
 
         for i, s in enumerate(group_students, start=header_row + 1):
             ws.cell(i, 1, s.class_name)
-            ws.cell(i, 2, s.student_no)
-            ws.cell(i, 3, i - header_row)  # sıra no
             name_cell = ws.cell(i, NAME_COL, s.full_name)
             color = class_colors.get(s.class_name)
             if color:
@@ -663,25 +665,25 @@ def export_single_month_workbook(
         class_names = "-".join(
             sorted({s.class_name for s in group_students if s.class_name})
         )
-        # düzen: sınıf | no | ADI-SOYADI | AY  (gerçek belgelerdeki gibi)
+        # düzen: sınıf | ADI-SOYADI | AY. "no" sütunu kasıtlı yok — dışa
+        # aktarımda gerekmiyor; içe aktarma tarafı hâlâ okuyor.
         ws.cell(1, col, day_labels.get(str(group), f"{group}. GRUP")).font = _BOLD
         if class_names:
             ws.cell(2, col, class_names).font = _BOLD
-        for j, title in enumerate(("sınıf", "no", "ADI-SOYADI", month)):
+        for j, title in enumerate(("sınıf", "ADI-SOYADI", month)):
             ws.cell(3, col + j, title).font = _BOLD
         for i, s in enumerate(group_students, start=4):
             a = month_assignments[s.id]
             ws.cell(i, col, s.class_name).border = _BORDER
-            ws.cell(i, col + 1, s.student_no).border = _BORDER
-            ws.cell(i, col + 2, s.full_name).border = _BORDER
+            ws.cell(i, col + 1, s.full_name).border = _BORDER
             u = units_by_id.get(a.unit_id)
             cell = ws.cell(
-                i, col + 3, _cell_value_for(u, a.day_note) if u else ""
+                i, col + 2, _cell_value_for(u, a.day_note) if u else ""
             )
             cell.border = _BORDER  # renk yok: madde 15
+        ws.column_dimensions[ws.cell(3, col + 1).column_letter].width = 24
         ws.column_dimensions[ws.cell(3, col + 2).column_letter].width = 24
-        ws.column_dimensions[ws.cell(3, col + 3).column_letter].width = 24
-        col += 5  # aradaki boş sütunla birlikte
+        col += 4  # üç sütun + aradaki boş sütun
 
     buf = BytesIO()
     wb.save(buf)
