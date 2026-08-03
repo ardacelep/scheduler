@@ -91,6 +91,8 @@ def _group_section(store, units, students, group, settings=None) -> None:
     _summary(plan)
     for w in plan.warnings:
         st.warning(f"⚠️ {w}")
+    for n in plan.notes:
+        st.info(f"ℹ️ {n}")
 
     _breakdown(plan)
     with st.expander(f"✏️ {group}. Grup birimlerini düzenle", expanded=False):
@@ -152,7 +154,7 @@ def _summary(plan) -> None:
     elif b == 0:
         st.caption(
             f"Toplam aktif kontenjan **{plan.active_quota_total}** — öğrenci "
-            "sayısına tam eşit."
+            "sayısına **tam oturuyor**."
         )
     else:
         st.caption(

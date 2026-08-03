@@ -92,7 +92,17 @@ def test_groups_step_warns_when_everyone_in_one_group():
 def test_groups_step_done_with_two_groups():
     step = _by_key(_steps(students=[S(0, group=1), S(1, group=2)]))["gruplar"]
     assert step.state == STATE_DONE
-    assert "Grup 1: 1" in step.detail and "Grup 2: 1" in step.detail
+    assert "Grup 1 (A): 1" in step.detail and "Grup 2 (A): 1" in step.detail
+
+
+def test_group_summary_never_starts_a_markdown_list():
+    """Metin "1." ile başlarsa Markdown numarayı yutar ve girinti ekler.
+
+    Sihirbaz bu metni st.markdown ile basıyor; grup adı "1. Grup (A-C)"
+    biçiminde olsaydı kullanıcı hangi gruptan söz edildiğini göremezdi.
+    """
+    step = _by_key(_steps(students=[S(0, group=1), S(1, group=2)]))["gruplar"]
+    assert not step.detail.lstrip().startswith(("1.", "2.", "3."))
 
 
 # ---- adım 3: kapasite ----
@@ -113,6 +123,27 @@ def test_capacity_step_warns_on_plan_problem():
     step = _by_key(_steps(students=[S(0), S(1)], units=units))["kapasite"]
     assert step.state == STATE_WARN
     assert "Tam dolmalı" in step.detail
+
+
+def test_capacity_step_is_done_when_quota_exactly_fits():
+    """Kontenjan öğrenci sayısına tam eşitken adım YEŞİL olmalı.
+
+    Kullanıcı kontenjanları zaten öğrenci sayısına göre ayarlıyor. Tam
+    eşitlik uyarı sayılsaydı sihirbaz hiçbir zaman "tamam" demezdi ve
+    kullanıcı düzeltilecek bir şey ararken boşuna dolaşırdı.
+    """
+    students = [S(i) for i in range(4)]
+    units = [U("a", quota=2, pool=True), U("b", quota=2, pool=True)]
+    step = _by_key(_steps(students=students, units=units))["kapasite"]
+    assert step.state == STATE_DONE
+
+
+def test_capacity_step_warns_when_quota_is_short():
+    """Karşıt kanıt: kontenjan YETMİYORSA adım hâlâ uyarmalı."""
+    students = [S(i) for i in range(4)]
+    units = [U("a", quota=1, pool=True)]
+    step = _by_key(_steps(students=students, units=units))["kapasite"]
+    assert step.state == STATE_WARN
 
 
 def test_capacity_step_done_when_healthy():

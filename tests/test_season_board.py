@@ -212,3 +212,28 @@ def test_group_label_defaults_match_the_real_documents():
     g = DEFAULT_SETTINGS["day_labels"]
     assert "Pazartesi" in g["1"] and "Çarşamba" in g["1"]
     assert "Perşembe" in g["2"] and "Cuma" in g["2"]
+
+
+def test_group_label_md_avoids_the_markdown_list_trap():
+    """Satır başı biçimi rakamla BAŞLAMAMALI.
+
+    "1. Grup …" bir Markdown satırının başındaysa numara sıralı liste madde
+    işareti sanılıp yutuluyor.
+    """
+    from rotasyon.groups import group_label_md
+
+    students = [S("a", sinif="A"), S("b", sinif="C")]
+    md = group_label_md(students, 1)
+    assert md == "Grup 1 (A-C)"
+    assert not md[0].isdigit()
+
+
+def test_both_label_forms_carry_the_same_information():
+    students = [S("a", sinif="A"), S("b", sinif="C")]
+    settings = {"day_labels": {"1": "Pazartesi-Salı-Çarşamba"}}
+    from rotasyon.groups import group_label_md
+
+    duz = group_label(students, 1, settings)
+    md = group_label_md(students, 1, settings)
+    for parca in ("(A-C)", "Pazartesi-Salı-Çarşamba", "1"):
+        assert parca in duz and parca in md

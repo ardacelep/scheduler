@@ -120,6 +120,10 @@ class CapacityPlan:
     buckets: dict[str, PolicyBucket] = field(default_factory=dict)
     active_quota_total: int = 0
     warnings: list[str] = field(default_factory=list)
+    # Uyarı DEĞİL, durum bildirimi: kurulumda bir yanlış yok ama kullanıcının
+    # bilmesi gereken bir sonuç var. Ayrı tutulur çünkü uyarılar kurulum
+    # sihirbazının adım durumunu "sorun var"a çeviriyor.
+    notes: list[str] = field(default_factory=list)
 
     @property
     def must_fill_total(self) -> int:
@@ -173,7 +177,35 @@ def group_capacity_plan(units, students, group) -> CapacityPlan:
         active_quota_total=sum(u.quota for u in g_units),
     )
     plan.warnings = _warnings(plan)
+    plan.notes = _notes(plan)
     return plan
+
+
+def _notes(plan: CapacityPlan) -> list[str]:
+    """Sorun değil ama sonucu olan durumlar.
+
+    "Toplam kontenjan = öğrenci sayısı" bir zamanlar UYARIYDI: uygulama
+    birimleri sabit alıp öğrencileri onlara yerleştirdiği için sıfır boşluk
+    riskli görünüyordu. Yeni modelde kontenjanlar zaten öğrenci sayısına göre
+    belirleniyor — tam oturmak HEDEF, kusur değil. (Kullanıcının elle
+    hazırladığı rotasyonlar da böyle: 36 öğrenci, 36 yer.)
+
+    Sıfır boşluğun gerçek sonucu her birimin her ay dolmak zorunda kalması.
+    Bunun bir yeri tıkayıp tıkamadığı tahminle değil, birim birim
+    hesaplanarak söylenir (capacity.season_capacity_findings): "bu birim
+    kalan 8 ayda 8 farklı uygun öğrenci ister, uygun 5 kişi var".
+    """
+    out: list[str] = []
+    if not plan.student_count:
+        return out
+    if plan.balance == 0:
+        out.append(
+            f"Toplam kontenjan öğrenci sayısına tam eşit ({plan.student_count})"
+            " — her birim her ay dolacak, boş yer kalmayacak. Cinsiyet "
+            "kısıtlı birimler de her ay dolmak zorunda kalır; bir yeri "
+            "tıkıyorsa Kural Kontrolü birimi adıyla söyler."
+        )
+    return out
 
 
 def _warnings(plan: CapacityPlan) -> list[str]:
@@ -201,16 +233,6 @@ def _warnings(plan: CapacityPlan) -> list[str]:
             f"Toplam aktif kontenjan ({plan.active_quota_total}) öğrenci "
             f"sayısının ({n}) altında — {-plan.balance} öğrenciye yer yok. "
             "Kontenjan artırın veya birim aktifleştirin."
-        )
-    elif plan.balance == 0:
-        # capacity.py'nin de yakaladığı klasik tuzak: toplam kontenjan
-        # öğrenci sayısına EŞİTSE her birim tam dolmak zorunda kalır ve
-        # tekrar yasağı (madde 1) sezonu hızla kilitler.
-        out.append(
-            "Toplam kontenjan öğrenci sayısına tam eşit. Bu, politikası ne "
-            "olursa olsun HER birimin her ay dolmasını zorunlu kılar ve "
-            "tekrar yasağıyla birlikte sezonu kilitleyebilir. Biraz pay "
-            "bırakmak (birkaç kontenjan fazlası) daha güvenlidir."
         )
 
     if plan.remaining > 0 and not plan.buckets[POLICY_POOL].unit_count:

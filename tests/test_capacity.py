@@ -18,15 +18,36 @@ def _world(n_students=8, dis_quota=4, headroom=0):
     return students, units
 
 
-def test_exact_fill_trap_warned():
-    """Toplam kontenjan öğrenci sayısına eşitse uyarı üretilir."""
+def test_exact_fill_alone_is_not_a_warning():
+    """Sıfır boşluk TEK BAŞINA uyarı değildir.
+
+    Eski model birimleri sabit alıp öğrencileri onlara yerleştiriyordu; orada
+    "pay bırakın" makul bir tavsiyeydi. Yeni modelde kontenjanlar öğrenci
+    sayısına göre belirleniyor — tam oturmak HEDEF. Kullanıcının elle
+    hazırladığı gerçek rotasyonlar da tam oturuyor (36 öğrenci / 36 yer).
+
+    Burada DİŞ birimi ayrıca gerçek bir darboğaz yaratıyor; onun HATA'sı
+    kalmalı. Yasaklanan şey yalnız genel "tam eşit" uyarısı.
+    """
     students, units = _world()
     f = season_capacity_findings(students, units, DEFAULT_MONTHS, [])
-    assert any(x.level == WARNING and "TAM eşit" in x.message for x in f)
+    assert not [x for x in f if x.level == WARNING]
+    assert not any("pay bırak" in x.message.lower() for x in f)
 
 
-def test_headroom_silences_trap():
-    """Pay bırakılınca tuzak uyarısı ve DİŞ hatası kaybolur."""
+def test_exact_fill_still_drives_the_per_unit_check():
+    """Sıfır boşluk denetimi KAPATMAZ: tıkanan birim adıyla söylenmeli.
+
+    Uyarıyı kaldırırken asıl değerli kontrolü de kaldırmadığımızın kanıtı.
+    """
+    students, units = _world()
+    f = season_capacity_findings(students, units, DEFAULT_MONTHS, [])
+    errs = [x for x in f if x.level == ERROR]
+    assert errs and "DİŞ" in errs[0].message
+
+
+def test_headroom_silences_the_error():
+    """Pay bırakılınca DİŞ hatası da kaybolur (bulgu hiç kalmaz)."""
     students, units = _world(headroom=3)
     f = season_capacity_findings(students, units, DEFAULT_MONTHS, [])
     assert f == []

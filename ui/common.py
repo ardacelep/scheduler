@@ -20,6 +20,7 @@ from rotasyon.models import (
     Unit,
     GENDER_LABELS,
 )
+from rotasyon.groups import group_classes, group_label  # noqa: F401
 from rotasyon.store import SeasonManager, Store
 
 # Veri klasörü. `ROTASYON_DATA_DIR` ortam değişkeni verilirse ona bakar:
@@ -222,35 +223,8 @@ def groups_in(students: list[Student]) -> list[int]:
     return sorted({s.group for s in students}) or [1, 2]
 
 
-def group_classes(students: list[Student], group: int) -> list[str]:
-    """Gruptaki sınıf harfleri, sırayla. Yalnız aktif öğrenciler sayılır."""
-    return sorted(
-        {
-            s.class_name for s in students
-            if s.group == group and s.active and s.class_name
-        }
-    )
-
-
-def group_label(students: list[Student], group: int, settings=None) -> str:
-    """'1. Grup (A-B) · Pazartesi-Salı-Çarşamba'.
-
-    Kullanıcı "1. grup / 2. grup"u tek başına görünce hangi eşleşmeden söz
-    edildiğini çıkaramıyordu; elle yaptığı belgelerde başlık zaten
-    "A-B EŞLEŞMESİ / PAZARTESİ-SALI-ÇARŞAMBA" diye yazıyor.
-
-    Sınıflar öğrencilerden, günler settings["day_labels"]'tan gelir (o alan
-    kullanıcının kendi Excel'inden içe aktarılıyor). İkisi de yoksa sade ada
-    düşer — asla boş etiket üretmez.
-    """
-    ad = f"{group}. Grup"
-    siniflar = group_classes(students, group)
-    if siniflar:
-        ad += f" ({'-'.join(siniflar)})"
-    gunler = (settings or {}).get("day_labels", {}).get(str(group), "")
-    if gunler:
-        ad += f" · {gunler}"
-    return ad
+# Grup adlandırma saf mantıkta (rotasyon.groups): setup_status da aynı adı
+# üretmek zorunda ve rotasyon/ katmanı ui/'yi içe aktaramaz.
 
 
 def replace_month_assignments(

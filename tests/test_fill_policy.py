@@ -184,10 +184,35 @@ def test_warns_when_capacity_below_students():
     assert "yer yok" in _warn_text(plan)
 
 
-def test_warns_on_exact_fill_trap():
+def test_exact_fill_is_a_note_not_a_warning():
+    """Tam oturan kontenjan UYARI değil, bilgi notudur.
+
+    Uyarı olarak kalsaydı kurulum sihirbazının kapasite adımı hiçbir zaman
+    yeşile dönmezdi: kullanıcı kontenjanları zaten öğrenci sayısına göre
+    ayarlıyor, yani tam eşitlik kalıcı durum.
+    """
     units = [U("a", quota=5, pool=True), U("b", quota=5, pool=True)]
     plan = group_capacity_plan(units, [S(i) for i in range(10)], 1)
-    assert "tam eşit" in _warn_text(plan)
+    assert plan.warnings == []
+    assert any("tam eşit" in n for n in plan.notes)
+
+
+def test_notes_are_silent_when_there_is_headroom():
+    units = [U("a", quota=6, pool=True), U("b", quota=6, pool=True)]
+    plan = group_capacity_plan(units, [S(i) for i in range(10)], 1)
+    assert plan.notes == []
+
+
+def test_notes_are_silent_without_students():
+    assert group_capacity_plan([U("a", quota=5, pool=True)], [], 1).notes == []
+
+
+def test_shortage_is_still_a_warning_not_a_note():
+    """Kontenjan YETMİYORSA bu hâlâ uyarıdır — not değil."""
+    units = [U("a", quota=3, pool=True)]
+    plan = group_capacity_plan(units, [S(i) for i in range(10)], 1)
+    assert any("yer yok" in w for w in plan.warnings)
+    assert plan.notes == []
 
 
 def test_warns_when_no_pool_unit_for_remaining_students():

@@ -14,6 +14,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from .fill_policy import group_capacity_plan
+from .groups import group_label_md
 from .models import SEVERITY_REQUIRED
 
 # Adım durumları
@@ -82,9 +83,9 @@ def _groups_step(students, classes) -> SetupStep:
     sizes: dict[int, int] = {}
     for s in active:
         sizes[s.group] = sizes.get(s.group, 0) + 1
-    # NOT: metinler "Grup 1" diye yazılır, "1. grup" diye DEĞİL — Markdown
+    # NOT: metinler "Grup 1" diye yazılır, "1. Grup" diye DEĞİL — Markdown
     # satır başındaki "1." ifadesini sıralı liste madde işareti sanıp numarayı
-    # yutuyor ve girinti ekliyor.
+    # yutuyor ve girinti ekliyor. group_label_md bu biçimi üretir.
     if len(sizes) < 2:
         tek = next(iter(sizes))
         return SetupStep(
@@ -93,7 +94,10 @@ def _groups_step(students, classes) -> SetupStep:
             "gerekiyor.",
             "veri-yonetimi", "Sınıf → grup eşleştirmesi",
         )
-    ozet = " · ".join(f"Grup {g}: {n} öğrenci" for g, n in sorted(sizes.items()))
+    ozet = " · ".join(
+        f"{group_label_md(active, g)}: {n} öğrenci"
+        for g, n in sorted(sizes.items())
+    )
     return SetupStep(
         "gruplar", "Sınıfları gruplara dağıt", STATE_DONE, ozet,
         "veri-yonetimi", "Eşleştirmeyi değiştir",

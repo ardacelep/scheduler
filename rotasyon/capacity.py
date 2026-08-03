@@ -87,23 +87,13 @@ def season_capacity_findings(
             continue
         total_quota = sum(u.quota for u in g_units)
         n = len(g_students)
+        # Kontenjan toplamı öğrenci sayısına eşitse her birim her ay dolmak
+        # ZORUNDA (güvercin yuvası) — bu, aşağıdaki birim birim denetimi
+        # tetikler. Tek başına UYARI DEĞİLDİR: kullanıcı kontenjanları zaten
+        # öğrenci sayısına göre belirliyor, elle hazırladığı rotasyonlar da
+        # tam oturuyor. Genel "pay bırakın" tavsiyesi kaldırıldı; onun yerine
+        # sıfır boşluğun GERÇEKTEN tıkadığı birim varsa aşağıda adıyla söylenir.
         exact_fill = total_quota == n
-        if exact_fill:
-            findings.append(
-                CapacityFinding(
-                    level=WARNING,
-                    group=g,
-                    message=(
-                        f"Grup {g}: toplam kontenjan ({total_quota}) öğrenci "
-                        f"sayısıyla ({n}) TAM eşit. Böyle olunca her birim her "
-                        "ay dolmak zorunda kalır; kimse aynı birime iki kez "
-                        "gidemediği için geniş kontenjanlı birimler birkaç ayda "
-                        "uygun öğrenci bırakmaz. En az birkaç kişilik boşluk "
-                        "bırakın: bir birimin kontenjanını artırın ya da yedek "
-                        "birim ekleyin."
-                    ),
-                )
-            )
 
         # her öğrencinin gördüğü bölüm adları (madde 1 ad bazında işler)
         visited_names: dict[str, set[str]] = {}
