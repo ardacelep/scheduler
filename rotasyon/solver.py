@@ -105,6 +105,35 @@ _REASON_LABELS = {
 }
 
 
+class _Weights:
+    """Ağırlık okuma: eksik anahtar ÇÖKERTMEZ, ölçülmüş varsayılana düşer.
+
+    Dört anahtar `weights["x"]` diye okunuyordu; bir sezon dosyasında o
+    anahtar yoksa çözücü KeyError ile ölüyordu. Uygulama yolunda
+    Store.load_settings DEFAULT_SETTINGS ile birleştirdiği için görünmüyordu
+    — yani tek güvence oradaki birleştirmeydi. Ayarlar ekranındaki ağırlık
+    kutuları kaldırıldığına göre bu dosyaları artık kullanıcı düzeltemez;
+    motorun kendi kendine ayakta kalması gerekir.
+    """
+
+    __slots__ = ("_w",)
+
+    def __init__(self, w: dict | None):
+        self._w = w or {}
+
+    def __getitem__(self, key: str) -> int:
+        return self.get(key)
+
+    def get(self, key: str, default=None) -> int:
+        deger = self._w.get(key)
+        if deger is None:
+            deger = (
+                default if default is not None
+                else DEFAULT_SETTINGS["solver"]["weights"].get(key, 0)
+            )
+        return int(deger)
+
+
 def visited_unit_keys(
     student_id: str, history: list[Assignment], units_by_id: dict[str, Unit]
 ) -> set[str]:
@@ -399,7 +428,7 @@ def solve_month(
     """
     settings = settings or DEFAULT_SETTINGS
     months: list[str] = settings["months"]
-    weights: dict = settings["solver"]["weights"]
+    weights = _Weights(settings["solver"]["weights"])
     locked = dict(locked or {})
     custom_rules = [r for r in (custom_rules or []) if r.active]
 
@@ -811,7 +840,7 @@ def solve_season(
     Dönüş: (öğrenci_id, ay) -> birim_id eşlemesi + durum.
     """
     settings = settings or DEFAULT_SETTINGS
-    weights: dict = settings["solver"]["weights"]
+    weights = _Weights(settings["solver"]["weights"])
     custom_rules = [r for r in (custom_rules or []) if r.active]
     solve_set = set(solve_months)
 

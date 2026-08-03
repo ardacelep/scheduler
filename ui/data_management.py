@@ -793,46 +793,29 @@ def _season_backup(store, season_name: str) -> bytes:
 
 # ======================= AYARLAR =======================
 
-_WEIGHT_LABELS = {
-    # anahtar: (etiket, açıklama) — models.DEFAULT_SETTINGS["solver"]["weights"]
-    "pool_balance": (
-        "Havuz birimlerine eşit dağılım",
-        "Madde 4: kalan öğrenciler havuz birimlerine olabildiğince eşit dağılır.",
-    ),
-    "repeat_pair": (
-        "Tekrar eden ikili cezası",
-        "Madde 19: iki öğrencinin farklı aylarda tekrar aynı birime düşmesi "
-        "cezalandırılır (yüksek = daha az tekrar eden ikili).",
-    ),
-    "ebelik_priority": (
-        "Ebelik önceliği",
-        "Madde 18: ebelik öğrencileri, ebelik öncelikli birimlere önce yerleşir.",
-    ),
-    "core_branch_early": (
-        "Zorunlu branşları erken karşılama",
-        "Sezon zorunluluklarının (cerrahi/dahili/YB/palyatif) erken aylarda "
-        "görülmesine küçük bir bonus verilir.",
-    ),
-    "single_slot_fill": (
-        "Tekli birimler boş kalmasın",
-        "Madde 4: kontenjanı 1 olan birimlerin doldurulması güçlü teşvik edilir.",
-    ),
-    "reserve_use": (
-        "Yedek birimden kaçınma",
-        "Gri/yedek birimlere yalnız gerçekten gerekiyorsa öğrenci verilir "
-        "(yüksek = daha güçlü kaçınma).",
-    ),
-    "gender_balance": (
-        "Kız/erkek dengesi",
-        "Havuz birimlerinde cinsiyet dağılımının dengeli olması teşvik edilir.",
-    ),
-    "intensive_surplus": (
-        "Fazlalık yoğun birime",
-        "Eşit dağılımda tam bölünmeyen fazlalık öğrenciler yoğun etiketli "
-        "birimlere yönlendirilir. Eşit dağılımdan DÜŞÜK kalmalıdır ki dengeyi "
-        "bozmasın, yalnız eşit çözümler arasında tercih yapsın.",
-    ),
-}
+# Çözücünün tercihleri: (simge, ne yapar, NEREDEN ayarlanır).
+# Sayısal ağırlık kutuları kaldırıldı — bkz. _solver_preferences().
+_SOLVER_PREFERENCES = (
+    ("⚖️", "Kalan öğrencileri **havuz** birimlerine olabildiğince eşit dağıtır.",
+     "kapasite-plani", "Kapasite Planı — politika"),
+    ("🎯", "**“Mümkünse dolsun”** birimlerini boş bırakmamaya çalışır.",
+     "kapasite-plani", "Kapasite Planı — politika"),
+    ("🅿️", "**“Yedek”** birimlere yalnız başka çare kalmayınca öğrenci verir.",
+     "kapasite-plani", "Kapasite Planı — politika"),
+    ("🎯", "**Gereksinimleri** mümkün olduğunca erken aylarda karşılar; "
+     "*tercih* gereksinimlerini karşılamaya çalışır ama gerekirse vazgeçer.",
+     "gereksinimler", "Gereksinimler"),
+    ("👥", "Aynı **ikilinin** tekrar tekrar aynı birime düşmesinden kaçınır "
+     "(yerleşik madde 19).",
+     "ozel-kurallar", "Özel Kurallar — kişiye özel istisnalar"),
+    ("🤱", "**Ebelik öncelikli** birimlerde ebelik öğrencilerine öncelik verir.",
+     "veri-yonetimi", "Veri Yönetimi ▸ Birimler"),
+    ("⚧", "Havuz birimlerinde **kız/erkek dengesini** gözetir.",
+     "veri-yonetimi", "Veri Yönetimi ▸ Öğrenciler"),
+    ("🔥", "Eşit dağılımda artan öğrencileri **yoğun** etiketli birimlere "
+     "yönlendirir.",
+     "veri-yonetimi", "Veri Yönetimi ▸ Birimler (yoğunluk)"),
+)
 
 
 def _settings_tab(store) -> None:
@@ -853,64 +836,23 @@ def _settings_tab(store) -> None:
     time_limit, season_limit = _patience_picker(solver)
 
     st.divider()
-    st.subheader("🧮 İnce ayar (ağırlıklar)")
-    st.caption(
-        "Varsayılanlar gerçek sezon verisiyle ölçülüp seçildi; genelde "
-        "dokunmak gerekmez. Ağırlık = kuralın çözüm seçiminde ne kadar söz "
-        "sahibi olduğu (yalnız birbirine GÖRE anlamlıdır)."
-    )
+    _solver_preferences(store, settings, solver)
 
-    weights = dict(solver.get("weights", {}))
-    new_weights = {}
-    cols = st.columns(2)
-    for i, (key, (label, help_text)) in enumerate(_WEIGHT_LABELS.items()):
-        default = DEFAULT_SETTINGS["solver"]["weights"].get(key, 0)
-        new_weights[key] = cols[i % 2].number_input(
-            label,
-            min_value=0, max_value=100,
-            value=int(weights.get(key, default)),
-            help=help_text + f" (Varsayılan: {default})",
-            key=f"set_w_{key}",
-        )
-    # bilinmeyen/eski anahtarlar korunur (ileri sürüm geriye uyum)
-    for key, val in weights.items():
-        new_weights.setdefault(key, val)
-
-    if new_weights.get("intensive_surplus", 0) >= new_weights.get("pool_balance", 1):
-        st.warning(
-            "⚠️ 'Fazlalık yoğun birime' ağırlığı, 'eşit dağılım'dan küçük "
-            "olmalıdır; aksi halde çözücü eşit dağılımı bozup öğrencileri "
-            "yoğun birimlere yığabilir."
-        )
-
-    # Kaydedilecek bir değişiklik var mı? (süreler + ağırlıklar)
     degisti = (
         int(time_limit) != int(solver.get("time_limit_seconds",
                        DEFAULT_SETTINGS["solver"]["time_limit_seconds"]))
         or int(season_limit) != int(solver.get("season_time_limit_seconds",
                        DEFAULT_SETTINGS["solver"]["season_time_limit_seconds"]))
-        or {k: int(v) for k, v in new_weights.items()}
-        != {k: int(v) for k, v in weights.items()}
     )
-
-    c_save, c_reset = st.columns(2)
-    if c_save.button(
+    if st.button(
         "💾 Ayarları kaydet", type="primary", key="save_settings_tab",
         disabled=not degisti,
     ):
         settings.setdefault("solver", {})
         settings["solver"]["time_limit_seconds"] = int(time_limit)
         settings["solver"]["season_time_limit_seconds"] = int(season_limit)
-        settings["solver"]["weights"] = {k: int(v) for k, v in new_weights.items()}
         store.save_settings(settings)
         st.toast("Ayarlar kaydedildi ✅", icon="⚙️")
-        st.rerun()
-    if c_reset.button("↩️ Varsayılanlara dön", key="reset_settings_tab"):
-        # yalnız çözücü ayarları sıfırlanır; sezon zorunlulukları artık
-        # Gereksinimler ekranının alanı, buradan silinmemeli
-        settings["solver"] = json_copy(DEFAULT_SETTINGS["solver"])
-        store.save_settings(settings)
-        st.toast("Çözücü ayarları varsayılanlara döndü ✅", icon="↩️")
         st.rerun()
 
 
@@ -930,6 +872,76 @@ _SABIR_ACIKLAMA = {
     "🐢 Sabırlı": "Zor sezonlar için. Daha uzun bekler, sonuç bulma şansı "
                  "en yüksek.",
 }
+
+
+def _solver_preferences(store, settings, solver) -> None:
+    """Çözücünün tercihleri — SALT OKUNUR, her biri gerçek ayarına bağlı.
+
+    Burada bir zamanlar sekiz sayısal "ağırlık" kutusu vardı. İkisi birden
+    yanlıştı:
+
+    * **Yeri yanlıştı.** Ağırlıkların üçü (havuz dengesi, "mümkünse dolsun",
+      "yedek") artık Kapasite Planı'ndaki POLİTİKA seçiminin gücünden başka
+      bir şey değil; biri (erken karşılama) Gereksinimler'in. Aynı şeyi iki
+      ekrandan ayarlatmak, kullanıcının şikâyet ettiği dağınıklığın ta
+      kendisi.
+    * **Adları eskiydi.** "Zorunlu branşları erken karşılama" hâlâ v1'in
+      sabit branş listesinden söz ediyordu; motor çoktan gereksinimlere
+      geçmişti.
+
+    Sayılar veride duruyor ve çözücü onları okumaya devam ediyor — yalnız
+    düzenleme arayüzü kalktı. Varsayılanlar gerçek sezon verisiyle ölçüldü;
+    kullanıcının bu sayıları elle iyileştirebileceği bir durum yok, yanlış
+    ayarlayabileceği durumlar ise vardı (örn. "fazlalık yoğun birime"
+    ağırlığı eşit dağılımı aşınca öğrenciler yoğun birimlere yığılıyordu).
+    """
+    from rotasyon.models import DEFAULT_SETTINGS
+
+    st.subheader("🧭 Çözücü neye göre karar veriyor?")
+    st.caption(
+        "Aşağıdakiler her zaman geçerlidir. Hiçbiri buradan ayarlanmaz — "
+        "her biri kendi ekranından belirlediğiniz veriden çıkar."
+    )
+    pages = st.session_state.get("_pages", {})
+    for simge, aciklama, sayfa, etiket in _SOLVER_PREFERENCES:
+        st.markdown(f"{simge} {aciklama}")
+        if sayfa in pages:
+            st.page_link(pages[sayfa], label=etiket)
+        else:
+            st.caption(etiket)
+
+    _legacy_weights_notice(store, settings, solver, DEFAULT_SETTINGS)
+
+
+def _legacy_weights_notice(store, settings, solver, defaults) -> None:
+    """Eski sürümde elle değiştirilmiş ağırlık varsa çıkış yolu sun.
+
+    Ağırlık kutuları kaldırıldı ama daha önce kaydedilmiş sayılar veride
+    kalmış olabilir ve çözücüyü hâlâ etkiler. Kullanıcı bunları artık
+    göremediği için düzeltemez de — o yüzden fark varsa söylenir ve tek
+    düğmeyle ölçülmüş varsayılanlara dönülür.
+    """
+    varsayilan = defaults["solver"]["weights"]
+    mevcut = solver.get("weights", {})
+    farkli = {
+        k: v for k, v in mevcut.items()
+        if k in varsayilan and int(v) != int(varsayilan[k])
+    }
+    if not farkli:
+        return
+    st.warning(
+        "⚠️ Bu sezonda eski sürümden kalma **elle değiştirilmiş** çözücü "
+        "ağırlıkları var: "
+        + ", ".join(f"`{k}`={v} (varsayılan {varsayilan[k]})"
+                    for k, v in sorted(farkli.items()))
+        + ". Varsayılanlar gerçek sezon verisiyle ölçüldü; dönmeniz önerilir."
+    )
+    if st.button("↩️ Ölçülmüş varsayılanlara dön", key="reset_weights"):
+        settings.setdefault("solver", {})
+        settings["solver"]["weights"] = json_copy(varsayilan)
+        store.save_settings(settings)
+        st.toast("Ağırlıklar varsayılanlara döndü ✅", icon="↩️")
+        st.rerun()
 
 
 def clamp(value: int, low: int, high: int) -> int:
