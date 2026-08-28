@@ -102,6 +102,39 @@ class Store:
     def save_requirements(self, requirements: list[Requirement]) -> None:
         self._save_list("requirements", requirements)
 
+    # ---- uzaktan destek ----
+    # Destek kodları (öğrenci_id -> "Ö-07") sezonun yanında durur ve BİR KEZ
+    # verilir: kod değişirse geliştirici ile kullanıcı telefonda farklı
+    # kişiden söz eder ve bunu fark etmezler.
+    def load_support_codes(self) -> dict:
+        return self._read("support_codes", {}) or {}
+
+    def save_support_codes(self, codes: dict) -> None:
+        self._write("support_codes", codes)
+
+    # Uygulanmış düzeltmelerin id'leri — aynı paket ikinci kez teklif
+    # edilmesin (yöneticinin dosyayı silmesine bağlı kalmaz).
+    def load_support_applied(self) -> list[str]:
+        return list(self._read("support_applied", []) or [])
+
+    def mark_support_applied(self, fix_id: str) -> None:
+        kayit = self.load_support_applied()
+        if fix_id and fix_id not in kayit:
+            kayit.append(fix_id)
+            self._write("support_applied", kayit)
+
+    def raw_season_payload(self) -> dict:
+        """Sezonun ham JSON içeriği — damga hesabı ve düzeltme uygulaması için."""
+        return {
+            ad: self._read(ad, [] if ad != "settings" else {})
+            for ad in ("units", "requirements", "custom_rules", "assignments",
+                       "settings")
+        }
+
+    def write_raw(self, name: str, payload) -> None:
+        """Ham JSON yazımı (yedek + atomik). Yalnız destek akışı kullanır."""
+        self._write(name, payload)
+
     # ---- toplu taslak (kalıcı) ----
     # Toplu üretim dakikalar sürebilir; sonucu yalnız oturum belleğinde
     # tutmak sayfa yenilemede/uygulama kapanmasında emeği çöpe atar. Taslak

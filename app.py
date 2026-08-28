@@ -16,7 +16,7 @@ st.set_page_config(
 
 from ui import dashboard, data_management, history, violations  # noqa: E402
 from ui import excel_screen, help as help_screen  # noqa: E402
-from ui import season_board, season_grid  # noqa: E402
+from ui import season_board, season_grid, support_screen  # noqa: E402
 from ui.v2 import (  # noqa: E402
     capacity_plan,
     custom_rules,
@@ -173,6 +173,10 @@ def main() -> None:
             st.Page(
                 _page(history.render, "ogrenci-gecmisi"),
                 title="Öğrenci Geçmişi", icon="🕘", url_path="ogrenci-gecmisi",
+            ),
+            st.Page(
+                _page(support_screen.render, "destek"),
+                title="Destek", icon="🆘", url_path="destek",
             ),
             st.Page(
                 _page(help_screen.render, "yardim"),

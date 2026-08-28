@@ -8,8 +8,10 @@ gerektirmeden planlayan masaüstü uygulaması.
 - **Arayüz:** Streamlit — tamamı Türkçe, tarayıcıda açılır
 - **Veri:** `data/` klasöründe JSON; **her sezon kendi klasöründe**. Excel yalnız
   içe/dışa aktarım formatıdır, birincil kaynak JSON'dur.
-- **Kişisel veri makineden çıkmaz:** cinsiyet tahmini dahil her şey çevrimdışıdır,
-  hiçbir öğrenci bilgisi harici servise gönderilmez.
+- **Kişisel veri makineden çıkmaz:** cinsiyet tahmini dahil her şey çevrimdışıdır.
+  Tek istisna, açıkça kurulması gereken [uzaktan destek](#uzaktan-destek)
+  kanalıdır — o da yalnız **kimliksiz** görüntü gönderir: öğrenci adları ve
+  okul numaraları çıkarılır.
 
 İçindekiler: [Ne yapar](#ne-yapar) · [Kurulum](#kurulum-ve-çalıştırma) ·
 [Kullanım senaryoları](#kullanım-senaryoları) · [Ekranlar](#ekranlar) ·
@@ -17,7 +19,8 @@ gerektirmeden planlayan masaüstü uygulaması.
 [Kapasite denetimi](#kapasite-ön-denetimi) ·
 [Dinamik değişiklikler](#sezon-ortası-dinamik-değişiklikler) ·
 [Excel](#excel-içedışa-aktarım) · [Riskler](#i̇leriye-dönük-risk-denetimi) ·
-[Yedekleme](#yedekleme) · [Testler](#testler) ·
+[Yedekleme](#yedekleme) · [Uzaktan destek](#uzaktan-destek) ·
+[Testler](#testler) ·
 [Windows dağıtımı](#windows-dağıtımı) · [Klasör yapısı](#klasör-yapısı)
 
 ---
@@ -584,6 +587,77 @@ Tasarım kararları:
 - Bozuk JSON içeren yedek reddedilir, yarım sezon oluşturulmaz.
 
 ---
+
+## Uzaktan destek
+
+Uygulamayı hastanede eğitim hemşiresi kullanıyor, geliştirici uzakta. Bu kanal
+geliştiricinin **durumu görmesini** ve gerektiğinde **onaylanan** bir düzeltme
+göndermesini sağlar. Varsayılan olarak **kapalıdır**; kurulmadıkça hiçbir şey
+hiçbir yere gitmez.
+
+### Ne gider, ne gitmez
+
+| Gider | Gitmez |
+|---|---|
+| Destek kodu (`Ö-07`), sınıf, grup, cinsiyet, bölüm | **Ad soyad** |
+| Birimler, kontenjanlar, politikalar | **Okul / föy numarası** |
+| Gereksinimler, özel kurallar, ayarlar | **Not metni** (yalnız "not var" bilgisi gider) |
+| Atamalar (id bazlı) | |
+
+Her öğrenciye **kalıcı** bir destek kodu verilir. Kod uygulamada adın yanında
+görünür (Destek ekranı ve Sezon Tablosu), dışarı yalnız kod gider. Telefonda
+"Ö-07" denince iki taraf da aynı kişiden söz eder; Destek ekranındaki arama
+kutusu iki yönde de çalışır (koddan ada, addan koda).
+
+Gönderimden önce **sızıntı denetimi** yapılır: görüntüde herhangi bir öğrenci
+adı veya numarası kalmışsa gönderim hiç yapılmaz. Öğrenci modeline yeni bir
+alan eklenip beyaz liste (`support.STUDENT_PUBLIC`) güncellenmediğinde tek
+koruma budur.
+
+### Düzeltme yönü
+
+Geliştirici yalnız şu dosyaları gönderebilir: `units`, `requirements`,
+`custom_rules`, `settings`, `assignments`. **Öğrenci kayıtları uzaktan
+değiştirilemez** — elinde isim olmadığı için zaten gönderemez; bu, kısıtın
+tesadüfen değil yapısal olarak sağlanması demektir.
+
+Gelen düzeltme **asla sessizce uygulanmaz**:
+
+1. Kullanıcı "yeni düzeltme var mı" der (ya da uygularken görür),
+2. paketin **ne yapacağı** yazılı olarak listelenir,
+3. paket hazırlandıktan sonra veride değişiklik olmuşsa **uyarı** çıkar,
+4. onaylanınca önce **yedek alınır** ve kullanıcıya indirtilir,
+5. sonra yazılır; aynı paket bir daha teklif edilmez.
+
+### Kurulum (bir kez, geliştirici yapar)
+
+1. **Ayrı** bir private depo aç (örn. `rotasyon-destek`). Kod deposuyla aynı
+   olmamalı: kodu klonlayan herkes hasta verisi görmesin.
+2. GitHub'da **fine-grained** bir token üret: yalnız o depo, `Contents: Read
+   and write`. Kod deposunun tokeni salt okunur kalsın.
+3. Uygulamada *Araçlar ▸ 🆘 Destek ▸ Kanal ayarları*'na şu adresi yaz ve
+   "Kanal açık"ı işaretle:
+   `https://x-access-token:TOKEN@github.com/KULLANICI/rotasyon-destek.git`
+
+Adres `data/support.json` dosyasına yazılır; `data/` git dışı olduğu için
+token asla depoya sızmaz.
+
+### Geliştirici tarafı
+
+```
+python scripts/admin_support.py durum  <depo>                    # özet
+python scripts/admin_support.py doku   <depo>                    # ham JSON klasörü
+python scripts/admin_support.py gonder <depo> <sezon> <açıklama> <dosya.json>
+```
+
+`<dosya.json>` yalnız yazılabilir dosyaları içerir, örn.
+`{"units": [ ... ]}`. Açıklama zorunludur — kullanıcının onaylarken göreceği
+metin odur.
+
+> Kanalı açmadan önce uygulamayı kullanan kişiye söyleyin: makinesindeki
+> veriden kimliksiz bir kopyanın size gideceğini ve gönderdiğiniz
+> düzeltmeleri onaylayacağını bilmeli.
+
 
 ## Testler
 

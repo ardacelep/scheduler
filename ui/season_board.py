@@ -65,7 +65,8 @@ def render(store) -> None:
         st.markdown(
             _wrap(
                 board_html(
-                    students, units, months, assignments, classes, group
+                    students, units, months, assignments, classes, group,
+                    labels=_support_labels(store, students),
                 ),
                 zoom,
             ),
@@ -74,6 +75,13 @@ def render(store) -> None:
         _closed_units_note(units, group)
 
     _requirements_note(store)
+
+
+def _support_labels(store, students) -> dict:
+    """Destek kodları (kanal kapalıysa boş)."""
+    from .support_screen import student_labels
+
+    return student_labels(store, students)
 
 
 def _link_grid() -> None:
@@ -168,11 +176,17 @@ def _unit_cell(unit) -> str:
     return ad
 
 
-def board_html(students, units, months, assignments, classes, group) -> str:
+def board_html(students, units, months, assignments, classes, group,
+               labels=None) -> str:
     """Bir grubun tam sezon tablosu (HTML `<table>`).
+
+    labels: öğrenci_id -> ekranda yazılacak ad. Destek kanalı açıkken adın
+    yanına destek kodu ekleniyor ("KAMİL DENEMEOĞLU · Ö-07") — telefonda
+    yöneticiyle aynı kişiden söz edebilmek için.
 
     Saf: Streamlit'e dokunmaz, yalnız dize döner — testten doğrudan çağrılır.
     """
+    labels = labels or {}
     renk = {c.name: c.color_hex for c in classes if c.color_hex}
     birim = {u.id: u for u in units}
     grup_ogrenciler = [s for s in students if s.group == group and s.active]
@@ -206,7 +220,8 @@ def board_html(students, units, months, assignments, classes, group) -> str:
                 f' <span style="color:{_MUTED}">(ayrıldı)</span>'
             )
             hucreler.append(f"<td>{i + 1}</td>")
-            hucreler.append(f"<td{stil}>{html.escape(s.full_name)}{ek}</td>")
+            ad = labels.get(s.id, s.full_name)
+            hucreler.append(f"<td{stil}>{html.escape(ad)}{ek}</td>")
             for m in months:
                 uid = yerlesim.get((s.id, m))
                 u = birim.get(uid) if uid else None
