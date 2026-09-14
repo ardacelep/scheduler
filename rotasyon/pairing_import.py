@@ -212,6 +212,31 @@ def clean_student_name(raw: str) -> tuple[str, str]:
     return s, ""
 
 
+def is_grey(hex_color: str) -> bool:
+    """Hücre dolgusu "iptal" grisi mi (#A6A6A6, #BFBFBF, #808080 …).
+
+    Belgede o grupta kullanılmayacak birim, sağdaki BÖLÜMLER listesinde
+    griye boyanıyor. Beyaza yakın açık griler (#F2F2F2) sayılmaz: tablo
+    zeminlerinde süs olarak da kullanılıyorlar.
+    """
+    if not hex_color or len(hex_color) != 7:
+        return False
+    try:
+        r, g, b = (int(hex_color[i:i + 2], 16) for i in (1, 3, 5))
+    except ValueError:
+        return False
+    return max(r, g, b) - min(r, g, b) <= 8 and 0x40 <= r <= 0xE0
+
+
+def _master_col(ws, header_row: int, quota_col: int):
+    """Yer çizelgesinin sağındaki "BÖLÜMLER" ana listesi (yoksa None)."""
+    for c in range(quota_col + 1, ws.max_column + 1):
+        v = ws.cell(header_row, c).value
+        if isinstance(v, str) and tr_upper(v).strip() == "BÖLÜMLER":
+            return c
+    return None
+
+
 def _is_rules_header(text: str) -> bool:
     """Kural bloğunun başlık satırı mı.
 
@@ -314,6 +339,17 @@ def _read_sheet(ws, theme, group: int, result: PairingResult) -> None:
         if ek:
             yer_cinsiyet[ad] = ek
 
+    # ---- BÖLÜMLER ana listesinde griye boyananlar: bu grupta iptal ----
+    iptal: set[str] = set()
+    ana = _master_col(ws, header_row, quota_col)
+    if ana is not None:
+        for r in range(header_row + 1, ws.max_row + 1):
+            h = ws.cell(r, ana)
+            if isinstance(h.value, str) and h.value.strip() and is_grey(
+                fill_color_hex(h, theme)
+            ):
+                iptal.add(canonical_unit_name(h.value)[0])
+
     if yer and sum(yer.values()) != len(ogrenciler):
         result.warnings.append(
             f"'{ws.title}': yer çizelgesinde {sum(yer.values())} satır var, "
@@ -335,7 +371,17 @@ def _read_sheet(ws, theme, group: int, result: PairingResult) -> None:
                 continue
             kota = quota_from_text(kot_h)
             yerdeki = yer.get(ad)
-            if yer and yerdeki is None and kota:
+            if ad in iptal:
+                # Gri boyama açık bir iptal kararı; blokta sayı unutulmuş
+                # olabilir (belgede bir kez böyle oldu). İptal kazanır.
+                if kota:
+                    result.warnings.append(
+                        f"'{ws.title}' · {ad}: BÖLÜMLER listesinde griye "
+                        f"boyanmış (iptal) ama birim bloğunda hâlâ \"{str(kot_h).strip()}\" "
+                        "yazıyor — bu grupta KAPALI aktarıldı."
+                    )
+                kota = 0
+            elif yer and yerdeki is None and kota:
                 result.warnings.append(
                     f"'{ws.title}' · {ad}: kural bloğunda {kota} kişi yazıyor "
                     "ama yer çizelgesinde hiç yok — kural bloğundaki sayı "
@@ -381,6 +427,15 @@ def _read_sheet(ws, theme, group: int, result: PairingResult) -> None:
 
     # yalnız yer çizelgesinde geçenler (kural bloğu eksikse)
     for ad, adet in yer.items():
+        if ad in iptal and ad not in birimler:
+            birimler[ad] = PairingUnit(name=ad, group=group, quota=0,
+                                       gender=yer_cinsiyet.get(ad, ""),
+                                       from_rules=False)
+            result.warnings.append(
+                f"'{ws.title}' · {ad}: griye boyanmış (iptal) ama yer "
+                "çizelgesinde geçiyor — bu grupta KAPALI aktarıldı."
+            )
+            continue
         if ad not in birimler:
             birimler[ad] = PairingUnit(
                 name=ad, group=group, quota=adet,

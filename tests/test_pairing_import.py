@@ -363,3 +363,78 @@ def test_real_documents(ad):
     assert {c.name: c.count for c in r.classes} == siniflar
     assert not [s for s in r.students if not s.class_name]
     assert {g: sum(1 for u in r.units if u.group == g) for g in (1, 2)} == {1: 28, 2: 28}
+
+
+# ---- BÖLÜMLER listesinde gri = o grupta iptal ----
+
+def _gri_kitap(gri_renk="A6A6A6", blok_kota="1 ERKEK ÖĞRENCİ", yerde=False):
+    """ALÇI ODASI sağdaki BÖLÜMLER listesinde griye boyanmış bir sayfa."""
+    wb = Workbook()
+    wb.remove(wb.active)
+    ws = _sayfa(
+        wb, "ÇPC", "C-D", "ÇARŞAMBA/PERŞEMBE/CUMA",
+        ogrenciler=[("BİR KİŞİ", MAVI), ("İKİ KİŞİ", PEMBE)],
+        yerler=["ACİL", "ALÇI ODASI e"] if yerde else ["ACİL", "ACİL"],
+        kurallar=[
+            ("ACİL", "2 ÖĞRENCİ", ["YOĞUN BÖLÜM"], False),
+            ("ALÇI ODASI e", blok_kota, ["HAFİF BÖLÜM"], True),
+        ],
+    )
+    for i, ad in enumerate(["ACİL", "ALÇI ODASI"], start=4):
+        c = ws.cell(i, 16, ad)
+        if ad == "ALÇI ODASI" and gri_renk:
+            c.fill = _dolgu(gri_renk)
+    buf = BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return read_pairing_workbook(buf)
+
+
+@pytest.mark.parametrize("renk,beklenen", [
+    ("#A6A6A6", True), ("#BFBFBF", True), ("#808080", True), ("#D9D9D9", True),
+    ("#F2F2F2", False),  # zemin süsü, iptal değil
+    ("#FFFFFF", False), ("#000000", False),
+    ("#92D050", False), ("#FFF2CC", False), ("", False),
+])
+def test_grey_detection(renk, beklenen):
+    from rotasyon.pairing_import import is_grey
+
+    assert is_grey(renk) is beklenen
+
+
+def test_grey_in_master_list_closes_the_unit_even_if_the_block_says_one():
+    """Gerçek belgede oldu: birim griye boyanıp yer çizelgesinden çıkarılmış,
+    bloktaki "1 ERKEK ÖĞRENCİ" unutulmuş. Gri, açık bir iptal kararıdır."""
+    r = _gri_kitap()
+    alci = next(u for u in r.units if u.name == "ALÇI ODASI")
+    assert alci.quota == 0
+    assert alci.gender == "E" and alci.intensity == INTENSITY_HAFIF  # kısıtları korunur
+    assert any("griye boyanmış" in w and "KAPALI" in w for w in r.warnings)
+
+
+def test_grey_and_verme_agree_without_a_warning():
+    r = _gri_kitap(blok_kota="BU GRUPTA ÖĞRENCİ VERME")
+    assert next(u for u in r.units if u.name == "ALÇI ODASI").quota == 0
+    assert not any("griye boyanmış" in w for w in r.warnings)
+
+
+def test_no_grey_keeps_the_block_quota():
+    """Karşıt kanıt: boyanmamış birim bloğun dediği gibi açık kalır."""
+    r = _gri_kitap(gri_renk="")
+    assert next(u for u in r.units if u.name == "ALÇI ODASI").quota == 1
+
+
+def test_light_grey_background_is_not_a_cancellation():
+    r = _gri_kitap(gri_renk="F2F2F2")
+    assert next(u for u in r.units if u.name == "ALÇI ODASI").quota == 1
+
+
+def test_grey_wins_even_if_the_slot_list_still_has_it():
+    r = _gri_kitap(yerde=True)
+    assert next(u for u in r.units if u.name == "ALÇI ODASI").quota == 0
+
+
+def test_closed_by_grey_is_inactive_after_catalog_merge():
+    birimler, _ = build_units(_gri_kitap(), [])
+    alci = next(u for u in birimler if u.name == "ALÇI ODASI")
+    assert not alci.active and alci.quota == 1 and alci.gender_restriction == "E"

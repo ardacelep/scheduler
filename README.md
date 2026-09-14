@@ -539,6 +539,7 @@ yanlış okuyordu (alttaki kural bloğunu da öğrenci sanıp 61 kişilik dosyad
 | Kural bloğu: `ALÇI ODASI e` · `1 ERKEK ÖĞRENCİ` · `HAFİF BÖLÜM` | birim, kontenjan, cinsiyet kısıtı, yoğunluk |
 | `CERRAHİ BRANŞ` / `DAHİLİ BRANŞ` | branş |
 | `BU GRUPTA ÖĞRENCİ VERME` | o grupta pasif |
+| Sağdaki BÖLÜMLER listesinde **gri** boyalı birim | o grupta pasif (birim bloğu başka bir sayı yazsa bile; çelişki önizlemede söylenir) |
 | Kontenjan yerine kişi adları | yer çizelgesindeki satır sayısı |
 | `4.KAT DAH.`, `DOĞ.SAL-Y.DOĞ`, `ECZ. SARF` | katalogdaki kanonik ad (gereksinimler adla eşleştiği için şart) |
 
