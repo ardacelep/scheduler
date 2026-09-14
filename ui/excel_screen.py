@@ -1,6 +1,8 @@
 """Excel İçe/Dışa Aktarım ekranı.
 
 İçe aktarım dosya türünü kendisi algılar:
+- Eşleşme rotasyon dosyası ("A-B EŞLEŞMESİ" başlıklı, altında birim bloğu
+  olan sezon başı belgesi) → öğrenciler + birim kataloğu
 - Rotasyon dosyası (ay sütunlu yıllık tablo) → tam veri aktarımı
 - Öğrenci listesi (sezon başı, 'SML ÖĞRENCİ LİSTESİ' benzeri) → yeni sezon
   başlatma / öğrenci aktarımı
@@ -26,12 +28,24 @@ from rotasyon.importer import (
     default_class_group,
     roster_class_names,
 )
-from rotasyon.models import FEMALE, MALE, GENDER_LABELS, PROGRAM_LABELS
+from rotasyon.models import (
+    BRANCH_LABELS,
+    FEMALE,
+    GENDER_LABELS,
+    INTENSITY_LABELS,
+    MALE,
+    PROGRAM_HEMSIRELIK,
+    PROGRAM_LABELS,
+    PROGRAMS,
+    SCOPE_PROGRAM,
+)
 from rotasyon.pdf_io import read_student_list_pdf
 from .common import (
     UNITS_CATALOG,
+    clear_stale_state,
     create_season_with_units,
     get_manager,
+    group_label_md,
     unit_source_options,
 )
 
@@ -62,7 +76,9 @@ def render(store) -> None:
 
 def _import_tab(store) -> None:
     st.caption(
-        "Desteklenen dosyalar ve türleri otomatik algılanır: **rotasyon "
+        "Desteklenen dosyalar ve türleri otomatik algılanır: **eşleşme "
+        "rotasyon dosyası** (\"A-B EŞLEŞMESİ\" başlıklı sezon başı belgesi — "
+        "öğrenciler ve birimler alınır), **rotasyon "
         "dosyası** (aylık sütunlu yıllık tablo, .xlsx), **öğrenci listesi** "
         "(.xlsx — 'SML ÖĞRENCİ LİSTESİ' benzeri ya da 'sıra | ad | şube-kod') "
         "ve **e-okul Sınıf Listesi PDF'i** (.pdf)."
@@ -77,7 +93,14 @@ def _import_tab(store) -> None:
         _pdf_roster_flow(data)
         return
 
+    # Eşleşme dosyası da ay başlığı taşıdığı için genel "rotasyon" türüne
+    # düşerdi; o okuyucu kural bloğunu öğrenci sanıyor. ÖNCE bu format sınanır.
     try:
+        from rotasyon.pairing_import import is_pairing_workbook
+
+        if is_pairing_workbook(BytesIO(data)):
+            _pairing_import_flow(store, data)
+            return
         kind = detect_workbook_kind(BytesIO(data))
     except Exception as exc:
         st.error(f"Dosya okunamadı: {exc}")
@@ -427,3 +450,282 @@ def _export_tab(store) -> None:
         file_name=f"rotasyon_{month}.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
+
+
+# ======================= EŞLEŞME DOSYASI =======================
+
+def _pairing_import_flow(store, data: bytes) -> None:
+    """Sezon başı eşleşme belgesinden öğrenciler + birim kataloğu.
+
+    Belgenin altındaki serbest metin kurallar bilerek ALINMAZ — sistematik
+    ayrıştırılamıyor; kullanıcı onları Gereksinimler / Özel Kurallar
+    ekranlarından kurar.
+    """
+    import hashlib
+
+    from rotasyon.pairing_import import build_students, read_pairing_workbook
+
+    st.subheader("Eşleşme rotasyon dosyası algılandı")
+    st.caption(
+        "Bu dosyadan **öğrenciler** ve **birimler** (kontenjan, cinsiyet "
+        "kısıtı, branş, yoğunluk) alınır. En alttaki elle yazılmış kurallar "
+        "alınmaz — onları Gereksinimler ve Özel Kurallar ekranlarından "
+        "kurarsınız."
+    )
+    # Başka bir dosya yüklenince önceki dosyanın sınıf→bölüm seçimleri
+    # session_state'te kalıp yanlış sınıfa uygulanmasın.
+    clear_stale_state(
+        "_pair_fp", hashlib.md5(data).hexdigest()[:12], ("pair_",)
+    )
+
+    try:
+        result = read_pairing_workbook(BytesIO(data))
+    except Exception as exc:
+        st.error(f"Dosya çözümlenemedi: {exc}")
+        return
+    if not result.students:
+        for w in result.warnings:
+            st.warning(w)
+        st.error("Dosyada öğrenci bulunamadı.")
+        return
+
+    gruplar = sorted({s.group for s in result.students})
+    dosyadan_cinsiyet = sum(1 for s in result.students if s.gender)
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Öğrenci", len(result.students))
+    c2.metric("Sınıf", len({c.name for c in result.classes}))
+    c3.metric("Birim (grup başına)", " / ".join(
+        str(sum(1 for u in result.units if u.group == g)) for g in gruplar
+    ))
+    c4.metric("Cinsiyeti dosyada", dosyadan_cinsiyet)
+
+    if result.warnings:
+        with st.expander(f"⚠️ Dosyada dikkat edilecek {len(result.warnings)} nokta",
+                         expanded=True):
+            for w in result.warnings:
+                st.markdown(f"- {w}")
+    if result.ignored_assignments:
+        st.info(
+            f"{result.ignored_assignments} öğrencinin ay sütunlarında yazı var; "
+            "bu içe aktarım atamaları ALMAZ, yalnız öğrencileri ve birimleri."
+        )
+
+    programlar = _pairing_class_programs(store, result)
+
+    st.markdown("**Birimler**")
+    for g in gruplar:
+        _pairing_unit_table(result, g)
+
+    ogrenciler, siniflar = build_students(result, programlar)
+    with st.expander("👤 Öğrenci listesi"):
+        st.markdown(
+            "| Ad Soyad | Sınıf | Grup | Bölüm | Cinsiyet |\n|---|---|--:|---|---|\n"
+            + "\n".join(
+                f"| {s.full_name} | {s.class_name or '—'} | {s.group} | "
+                f"{PROGRAM_LABELS.get(s.program, s.program)} | "
+                f"{GENDER_LABELS.get(s.gender, '') if s.gender else 'isimden tahmin edilecek'} |"
+                for s in ogrenciler
+            )
+        )
+
+    _pairing_target(store, result, ogrenciler, siniflar, programlar)
+
+
+def _pairing_class_programs(store, result) -> dict:
+    """Sınıf → bölüm (program) seçimi.
+
+    Belge bölüm bilgisi taşımıyor. Bölüm, gereksinimlerin kime uygulanacağını
+    belirliyor ("Ebe Yardımcılığı öğrencileri doğum salonu görsün"); yanlış
+    kalırsa o gereksinim SESSİZCE hiç kimseye uygulanmaz. Bu yüzden tahmin
+    edilmez, sorulur — varsayılan, aktif sezonda aynı sınıftaki öğrencilerin
+    bölümüdür.
+    """
+    from collections import Counter
+
+    mevcut: dict[str, Counter] = {}
+    for s in store.load_students():
+        if s.class_name:
+            mevcut.setdefault(s.class_name, Counter())[s.program] += 1
+
+    st.markdown("**Sınıflar ve bölümleri**")
+    st.caption(
+        "Dosyada bölüm bilgisi yok. Her sınıfın bölümünü seçin — "
+        "gereksinimler (örn. ebelik öğrencilerinin doğum birimleri) buna göre "
+        "uygulanır."
+    )
+    programlar: dict[str, str] = {}
+    siniflar = []
+    for c in result.classes:
+        if c.name not in {x.name for x in siniflar}:
+            siniflar.append(c)
+    kolonlar = st.columns(min(len(siniflar), 4) or 1)
+    for i, c in enumerate(siniflar):
+        varsayilan = (
+            mevcut[c.name].most_common(1)[0][0]
+            if c.name in mevcut else PROGRAM_HEMSIRELIK
+        )
+        with kolonlar[i % len(kolonlar)]:
+            st.markdown(
+                f'<span style="background:{c.color};padding:2px 10px;'
+                f'border:1px solid #999">{c.name}</span>',
+                unsafe_allow_html=True,
+            )
+            # "Grup 1" diye yazılır: "1. grup" satır başına gelirse Markdown
+            # numarayı sıralı liste sanıp yutuyor.
+            st.caption(f"Grup {c.group} · {c.count} öğrenci")
+            programlar[c.name] = st.selectbox(
+                f"{c.name} sınıfının bölümü", PROGRAMS,
+                index=PROGRAMS.index(varsayilan) if varsayilan in PROGRAMS else 0,
+                format_func=lambda p: PROGRAM_LABELS.get(p, p),
+                key=f"pair_prog_{c.name}", label_visibility="collapsed",
+            )
+    return programlar
+
+
+def _pairing_unit_table(result, group: int) -> None:
+    from rotasyon.models import Student
+
+    birimler = sorted(
+        (u for u in result.units if u.group == group), key=lambda u: u.name
+    )
+    ogr = [Student(full_name=s.full_name, gender="", group=s.group,
+                   class_name=s.class_name) for s in result.students]
+    kontenjan = sum(u.quota for u in birimler)
+    kisi = sum(1 for s in result.students if s.group == group)
+    with st.expander(
+        f"{group_label_md(ogr, group)} — {len(birimler)} birim, "
+        f"toplam kontenjan {kontenjan} / {kisi} öğrenci"
+    ):
+        st.markdown(
+            "| Birim | Kontenjan | Cinsiyet | Branş | Yoğunluk | Belgedeki yazım |\n"
+            "|---|--:|---|---|---|---|\n"
+            + "\n".join(
+                f"| {u.name} | "
+                f"{'kapalı' if u.quota == 0 else u.quota} | "
+                f"{GENDER_LABELS.get(u.gender, '—') if u.gender else '—'} | "
+                f"{BRANCH_LABELS.get(u.branch, '—') if u.branch else '—'} | "
+                f"{INTENSITY_LABELS.get(u.intensity, '—') if u.intensity else '—'} | "
+                f"{u.quota_text or '(yalnız yer çizelgesinde)'} |"
+                for u in birimler
+            )
+        )
+
+
+def _pairing_target(store, result, ogrenciler, siniflar, programlar) -> None:
+    from rotasyon.catalog import load_default_units
+    from rotasyon.pairing_import import build_units
+
+    st.divider()
+    manager = get_manager()
+    active = manager.active_season()
+    atamali = bool(active) and bool(store.load_assignments())
+
+    secenekler = ["Yeni sezon oluştur"]
+    if active:
+        secenekler.append(f"Aktif sezona aktar ({active})")
+    hedef = st.radio(
+        "Nereye aktarılsın?", secenekler, key="pair_target",
+        help="Sezon başı belgesi genelde yeni bir dönemin başlangıcıdır.",
+    )
+
+    yeni = hedef == "Yeni sezon oluştur"
+    if yeni:
+        sezon_adi = st.text_input(
+            "Yeni sezon adı", placeholder="örn. 2026-2027", key="pair_season"
+        )
+        st.caption(
+            "Birimler hazır katalogdan başlar ve bu dosyadaki kontenjan, "
+            "cinsiyet, branş ve yoğunlukla güncellenir; dosyada olmayan "
+            "katalog birimleri pasif kalır. Yeni sezona hazır gereksinim seti "
+            "de gelir — Gereksinimler ekranından gözden geçirin."
+        )
+        katalog = load_default_units()
+        hazir = bool(sezon_adi.strip())
+    else:
+        if atamali:
+            st.error(
+                f"**{active}** sezonunda kayıtlı atamalar var. Öğrenci listesini "
+                "değiştirmek o atamaları sahipsiz bırakır — bu dosyayı yeni "
+                "bir sezona aktarın."
+            )
+            return
+        st.warning(
+            f"**{active}** sezonundaki öğrenci, sınıf ve birim listesi bu "
+            "dosyadakiyle DEĞİŞTİRİLİR. Gereksinimler, özel kurallar ve "
+            "ayarlar korunur. Eski dosyaların yedeği `.json.bak` olarak kalır."
+        )
+        # kullanıcının bu sezonda yaptığı politika ayarları korunsun
+        katalog = store.load_units() or load_default_units()
+        hazir = st.checkbox("Anladım, değiştirilsin", key="pair_confirm")
+
+    birimler, notlar = build_units(result, katalog)
+    if notlar:
+        with st.expander(f"ℹ️ Katalogla birleştirme notları ({len(notlar)})"):
+            for n in notlar:
+                st.markdown(f"- {n}")
+
+    _pairing_requirement_check(store if not yeni else None, ogrenciler)
+
+    if not st.button("📥 İçe aktar", type="primary", disabled=not hazir,
+                     key="pair_go"):
+        return
+
+    if yeni:
+        try:
+            hedef_store = create_season_with_units(
+                manager, sezon_adi.strip(), UNITS_CATALOG
+            )
+        except ValueError as exc:
+            st.error(str(exc))
+            return
+    else:
+        hedef_store = store
+
+    dosyadan = sum(1 for s in ogrenciler if s.gender)
+    doldurulan, kalan = fill_missing_genders(ogrenciler)
+    hedef_store.save_students(ogrenciler)
+    hedef_store.save_classes(siniflar)
+    hedef_store.save_units(birimler)
+    if result.day_labels:
+        ayarlar = hedef_store.load_settings()
+        ayarlar["day_labels"] = {
+            str(g): etiket for g, etiket in result.day_labels.items()
+        }
+        hedef_store.save_settings(ayarlar)
+    if yeni:
+        manager.set_active(sezon_adi.strip())
+
+    st.success(
+        f"{len(ogrenciler)} öğrenci, {len(siniflar)} sınıf ve "
+        f"{sum(1 for u in birimler if u.active)} aktif birim aktarıldı. "
+        f"{dosyadan} öğrencinin "
+        f"cinsiyeti dosyadan, {len(doldurulan)} öğrencininki isimden alındı"
+        + (
+            f"; {len(kalan)} öğrenci Veri Yönetimi'nde onayınızı bekliyor."
+            if kalan else "."
+        )
+    )
+    st.balloons()
+
+
+def _pairing_requirement_check(store, ogrenciler) -> None:
+    """Ebelik gereksinimi var ama hiçbir sınıf ebelik seçilmemişse uyar.
+
+    Gereksinim kapsamı bölüme bağlı; eşleşme belgesi bölüm taşımadığı için
+    yanlış seçim, gereksinimin sessizce kimseye uygulanmaması demek.
+    """
+    from rotasyon.catalog import load_default_requirements
+
+    reqs = store.load_requirements() if store is not None else load_default_requirements()
+    istenen = {
+        r.scope_value for r in reqs
+        if r.active and r.scope == SCOPE_PROGRAM
+    }
+    var = {s.program for s in ogrenciler}
+    for p in sorted(istenen - var):
+        st.warning(
+            f"⚠️ **{PROGRAM_LABELS.get(p, p)}** öğrencileri için tanımlı bir "
+            "gereksinim var ama hiçbir sınıfı bu bölüme ayırmadınız — o "
+            "gereksinim kimseye uygulanmaz. Yukarıdan ilgili sınıfın bölümünü "
+            "seçin."
+        )

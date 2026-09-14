@@ -20,7 +20,7 @@ from rotasyon.models import (
     Unit,
     GENDER_LABELS,
 )
-from rotasyon.groups import group_classes, group_label  # noqa: F401
+from rotasyon.groups import group_classes, group_label, group_label_md  # noqa: F401
 from rotasyon.store import SeasonManager, Store
 
 # Veri klasörü. `ROTASYON_DATA_DIR` ortam değişkeni verilirse ona bakar:

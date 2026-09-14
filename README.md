@@ -500,6 +500,10 @@ isim harici servise gönderilmez.
 Dosya türü otomatik algılanır ve **birleştirme yapmaz, açık onaylı topyekûn
 değiştirir**:
 
+- **Eşleşme rotasyon dosyası** (sezon başı belgesi — sayfa başında
+  "A-B EŞLEŞMESİ", altında birim bloğu): **öğrenciler ve birim kataloğu**
+  alınır, elle yazılmış serbest kurallar alınmaz (Gereksinimler / Özel Kurallar
+  ekranlarından kurulur). Ayrıntı aşağıda.
 - **Rotasyon dosyası** (ay sütunlu tablo): aktif sezonun tüm verisini (öğrenci,
   birim, sınıf, atama) dosyadakiyle değiştirir. Dolu aylar sezonun geçmişi olur;
   boş aylar boş kalır (yarım sezon dosyası aktarıp kalanı uygulamada üretmek bu
@@ -517,6 +521,39 @@ Yıllık dosya **tekrar içe aktarılabilir**; tek-ay görünümü yazdırma ama
 
 Birim özellikleri (yoğunluk, branş) içe aktarılan dosyalarda bulunmadığında
 **varsayılan katalog** ile isim eşleşmesinden otomatik zenginleştirilir.
+
+### Eşleşme rotasyon dosyası
+
+Eğitim hemşiresinin sezon başında hazırladığı belge (`AB-CD ROTASYON.xlsx`
+gibi). Her sayfa bir grup eşleşmesidir; genel rotasyon okuyucusu bu belgeyi
+yanlış okuyordu (alttaki kural bloğunu da öğrenci sanıp 61 kişilik dosyadan
+130 öğrenci çıkarıyordu), bu yüzden ayrı bir okuyucusu var
+(`rotasyon/pairing_import.py`).
+
+| Belgede | Uygulamada |
+|---|---|
+| Sayfa sırası (PSÇ, ÇPC) | grup 1, grup 2 |
+| "A-B EŞLEŞMESİ" + ad hücresi renkleri | sınıf harfi ve rengi (renklerin görülme sırası ↔ başlıktaki harf sırası) |
+| "PAZARTESİ/SALI/ÇARŞAMBA" | grubun gün etiketi |
+| Ad sonunda ` k` / ` e` | cinsiyet (kalanlar isimden tahmin edilir) |
+| Kural bloğu: `ALÇI ODASI e` · `1 ERKEK ÖĞRENCİ` · `HAFİF BÖLÜM` | birim, kontenjan, cinsiyet kısıtı, yoğunluk |
+| `CERRAHİ BRANŞ` / `DAHİLİ BRANŞ` | branş |
+| `BU GRUPTA ÖĞRENCİ VERME` | o grupta pasif |
+| Kontenjan yerine kişi adları | yer çizelgesindeki satır sayısı |
+| `4.KAT DAH.`, `DOĞ.SAL-Y.DOĞ`, `ECZ. SARF` | katalogdaki kanonik ad (gereksinimler adla eşleştiği için şart) |
+
+- **Birimler katalog üzerine uygulanır:** belgede olmayan özellikler (doldurma
+  politikası, ebelik önceliği) katalogdan korunur; katalogda olup belgede
+  geçmeyen birimler o grupta pasif olur.
+- **Tutarsızlıklar söylenir:** kural bloğundaki kişi sayısı ile sağdaki yer
+  çizelgesi uyuşmuyorsa, bir birim yalnız birinde geçiyorsa ya da ad renkleri
+  başlıktaki eşleşmeye oturmuyorsa önizlemede uyarı çıkar.
+- **Bölüm (program) sorulur:** belge taşımıyor ve gereksinimler buna göre
+  uygulanıyor. Ebelik öğrencilerine gereksinim tanımlıyken hiçbir sınıf ebelik
+  seçilmemişse önizleme uyarır — yoksa o gereksinim sessizce kimseye
+  uygulanmazdı.
+- **Hedef:** yeni sezon (önerilen) ya da atama kaydı olmayan aktif sezon.
+  Atamalı bir sezonun öğrenci listesi değiştirilmez.
 
 ### Varsayılan birim kataloğu nereden geliyor
 
