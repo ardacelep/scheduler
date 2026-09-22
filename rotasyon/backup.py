@@ -29,14 +29,26 @@ FULL_PREFIX = "seasons/"
 
 # Yedeğe giren veri dosyaları. Türetilmiş/geçici olanlar (.bak, .tmp,
 # draft_bulk, günlük, kilit dosyası) dışarıda kalır.
+#
+# Store'a yeni bir dosya eklendiğinde BURAYA da eklenmeli; yoksa sessizce
+# yedek dışı kalır. Bir kez oldu: v2 gereksinimleri (requirements.json)
+# yedeğe hiç girmiyordu, geri yüklenen sezon gereksinimsiz açılıp eski branş
+# yoluna düşüyordu. tests/test_backup.py bu listeyi Store'la karşılaştırır.
 DATA_FILES = (
     "students.json",
     "units.json",
     "classes.json",
     "assignments.json",
     "rules.json",
+    "requirements.json",
     "settings.json",
+    # destek kodları geri yüklemede DEĞİŞMEMELİ: telefonda "Ö-07" diye
+    # konuşulan öğrenci aynı kalmalı
+    "support_codes.json",
+    "support_applied.json",
 )
+# Bilerek yedek dışı: türetilmiş/geçici olanlar.
+NOT_BACKED_UP = ("draft_bulk.json",)
 
 
 class BackupError(Exception):

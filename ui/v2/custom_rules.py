@@ -22,6 +22,7 @@ from rotasyon.models import (
     RULE_BIRIM_YASAK,
     RULE_BIRLIKTE_TUT,
     RULE_SABIT_ATAMA,
+    pinned_months,
 )
 from ..common import unit_label
 
@@ -43,6 +44,11 @@ gruptaki kız/erkek sayısı zaten dengesizse uyarı üretilmez) •
 Bu kurallar öğrenci/birim tanımlarındaki alanlarla (cinsiyet kısıtı, branş
 kategorisi, yoğunluk, yedeklik, yasaklı birimler...) beslenir ve her zaman
 uygulanır.
+
+**Sabitlenen kazanır:** Sabit atamayla bir öğrenciyi belirli ay(lar)da bir
+birime koyduğunuzda, o aylar için **1** (aynı bölüme ikinci kez gitmeme) ve
+**20** (peş peşe yoğun/hafif) esnetilir. "Ocak'a kadar DİŞ'te kalsın" böyle
+yazılır. Cinsiyet, kontenjan, yasaklı birim ve diş muafiyeti esnemez.
 
 **6 ve 7 artık burada değil:** hangi öğrencinin hangi birimleri görmesi
 gerektiğini **Gereksinimler** ekranından siz belirliyorsunuz. Yukarıdaki
@@ -93,8 +99,13 @@ def _describe_rule(rule, students_by_id, units_by_id, months) -> str:
     who = ", ".join(names) if names else "(öğrenci silinmiş)"
     if rule.type == RULE_SABIT_ATAMA:
         unit = units_by_id.get(rule.unit_id)
+        aylar = pinned_months(rule, months) or [rule.month]
+        ne_zaman = (
+            f"{aylar[0]}–{aylar[-1]} arası ({len(aylar)} ay)"
+            if len(aylar) > 1 else f"{aylar[0]} ayında"
+        )
         return (
-            f"📌 **Sabit atama:** {who} → {rule.month} ayında "
+            f"📌 **Sabit atama:** {who} → {ne_zaman} "
             f"**{unit.name if unit else '(silinmiş birim)'}**"
         )
     if rule.type == RULE_BIRIM_YASAK:
@@ -224,9 +235,22 @@ def _rules_panel(store) -> None:
     }
     note = ""
     if rtype == RULE_SABIT_ATAMA:
-        c1, c2, c3 = st.columns(3)
+        st.info(
+            "📌 **Sabitlenen kazanır.** Sabitlediğiniz aylarda öğrenci o "
+            "birimde olur; **aynı bölüme ikinci kez gitmeme** ve **peş peşe "
+            "yoğun/hafif** kuralları bu aylar için esnetilir. Böylece "
+            "\"Ocak'a kadar DİŞ'te kalsın\" tek kuraldır. Öğrencinin diğer "
+            "aylarında kurallar aynen işler. Cinsiyet, kontenjan ve yasaklı "
+            "birim hiçbir zaman esnemez."
+        )
+        c1, c2, c3, c4 = st.columns([3, 2, 2, 3])
         who = c1.selectbox("Öğrenci", list(student_options), key="rule_student")
-        month = c2.selectbox("Ay", months, key="rule_month")
+        month = c2.selectbox("Başlangıç ayı", months, key="rule_month")
+        bitis_ops = months[months.index(month):] if month in months else months
+        end_month = c3.selectbox(
+            "Bitiş ayı (dahil)", bitis_ops, key="rule_end_sabit",
+            help="Tek ay için başlangıçla aynı bırakın.",
+        )
         sid = student_options[who]
         student = students_by_id[sid]
         unit_opts = {
@@ -234,14 +258,14 @@ def _rules_panel(store) -> None:
             for u in sorted(units, key=lambda u: u.name)
             if u.active and u.quota > 0 and u.group in (0, student.group)
         }
-        unit_pick = c3.selectbox("Birim", list(unit_opts), key="rule_unit")
+        unit_pick = c4.selectbox("Birim", list(unit_opts), key="rule_unit")
         note = st.text_input("Not (isteğe bağlı)", key="rule_note_sabit")
-        # Kural EKLENMEDEN önce gelecekteki çakışmayı söyle: sabit atamanın
-        # klasik tuzağı, öğrencinin o birime başka bir ayda zaten gidiyor
-        # olması — o zaman seçilen ayda madde 1 kesin çiğnenir.
+        # Kural EKLENMEDEN önce gelecekteki çakışmayı söyle (cinsiyet,
+        # kontenjan, yasak, sabitlenen aralıktan AYRI bir ayda aynı birime
+        # dönüş) — kullanıcı eklemeden vazgeçebilsin.
         _fixed_rule_preview(
             store, students_by_id, units, sid, unit_opts.get(unit_pick), month,
-            rules,
+            rules, end_month, months,
         )
         if st.button("Kuralı ekle", type="primary", key="add_rule_sabit"):
             rules.append(
@@ -250,6 +274,7 @@ def _rules_panel(store) -> None:
                     student_ids=[sid],
                     unit_id=unit_opts[unit_pick],
                     month=month,
+                    end_month="" if end_month == month else end_month,
                     note=note.strip(),
                 )
             )
@@ -327,7 +352,7 @@ def _rules_panel(store) -> None:
 
 
 def _fixed_rule_preview(store, students_by_id, units, sid, unit_id, month,
-                        rules) -> None:
+                        rules, end_month="", months=None) -> None:
     """Sabit atama kuralı eklenmeden önce çakışma uyarısı.
 
     Aynı denetim risk panelinde de var; burada göstermenin değeri, sorunun
@@ -339,7 +364,8 @@ def _fixed_rule_preview(store, students_by_id, units, sid, unit_id, month,
     from rotasyon.risk import fixed_assignment_conflicts
 
     taslak = _CR(
-        type=RULE_SABIT_ATAMA, student_ids=[sid], unit_id=unit_id, month=month
+        type=RULE_SABIT_ATAMA, student_ids=[sid], unit_id=unit_id, month=month,
+        end_month="" if end_month == month else end_month,
     )
     sorunlar = fixed_assignment_conflicts(
         taslak,
@@ -347,13 +373,14 @@ def _fixed_rule_preview(store, students_by_id, units, sid, unit_id, month,
         {u.id: u for u in units},
         store.load_assignments(),
         rules + [taslak],
+        months,
     )
     for msg in sorunlar:
         st.warning(f"⚠️ {msg}")
     if sorunlar:
         st.caption(
             "Kuralı yine de ekleyebilirsiniz; bu yalnız uyarıdır. Ancak bu "
-            "haliyle ilgili ayda kural çiğnenecek."
+            "haliyle üretim o ayda duracak."
         )
 
 

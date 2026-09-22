@@ -194,7 +194,7 @@ düzeyinde raporlanır.
 
 ### Özel (kullanıcı tanımlı) kurallar
 
-Veri Yönetimi → Kurallar ekranından eklenir; **zaman kapsamı** taşıyabilir
+**Kurulum ▸ 📏 Özel Kurallar** ekranından eklenir; **zaman kapsamı** taşıyabilir
 ("şu aydan itibaren / şu aya kadar"). Sezon ortasında eklenen bir kural
 **geçmiş, tamamlanmış ayları geriye dönük ihlal saymaz.**
 
@@ -204,7 +204,34 @@ Veri Yönetimi → Kurallar ekranından eklenir; **zaman kapsamı** taşıyabili
   itibaren) gitmesin. Ad bazında çalışır (k/e varyantları dahil). Örn.
   *"Ayşe 3. aydan sonra ameliyathane görmesin."* Kalıcı/tıbbi yasaklar için
   Öğrenciler sekmesindeki "yasaklı birimler" alanı kullanılır.
-- **Sabit atama** — öğrenci belirli ayda belirli birime gitsin.
+- **Sabit atama** — öğrenci belirli ay ya da **ay aralığında** belirli
+  birimde olsun (başlangıç + bitiş ayı, ikisi dahil).
+
+#### Sabitlenen kazanır
+
+Elle hazırlanan tablolarda bir öğrencinin birkaç ay aynı birimde kalması
+olağan (*"Ocak ayına kadar DİŞ'te kalacak"*). Bu iki yerleşik kuralla doğrudan
+çelişir: aynı bölüme ikinci kez gidilmez (madde 1), peş peşe iki ay hafif
+bölüm olmaz (madde 20). Eskiden çözücü sonraki ayı hiç üretemiyor, sebep
+olarak alakasız kuralları sayıyordu.
+
+Öncelik kuralı: **sabitlenen hücre madde 1 ve madde 20'den muaftır.**
+
+| | Sabitlenen ay | Öğrencinin diğer ayları |
+|---|---|---|
+| Aynı bölüme tekrar (madde 1) | muaf — art arda aylar tek kalış sayılır | işler: kalıştan sonra o birime dönülmez |
+| Peş peşe yoğun/hafif (madde 20) | muaf — kalışın içi | işler: Ocak DİŞ (hafif) ise Şubat hafif olmaz; ihlal serbest aya yazılır |
+| Cinsiyet, kontenjan, yasaklı birim, diş muafiyeti | **esnemez** — çelişki öğrenci ve ay adıyla söylenir | işler |
+
+Sabitlenen aylar zorunluluk hesabına da katılır: Ocak'a kadar DİŞ'te kalan
+öğrencinin gereksinimlerini kapatmak için Şubat–Haziran kalır; yetmiyorsa
+ön-denetim bunu adıyla söyler. Sezon çözücüsü sabitlemeyi artık sessizce yok
+saymaz (eskiden tekrar yasağıyla çakışan sabitleme budanıp atlanıyordu).
+
+Neden kuralları topyekûn "esnetilebilir + ağırlıklı" yapmadık: o zaman çözücü
+kolayına geldiğinde **herkes için** kuralı çiğner ve bunu sessizce yapar.
+İstisna, kararı veren kişinin kararı olmalı; sabit atama bunu açıkça ifade
+eder.
 
 ### Gereksinimler (v2 kural modeli)
 

@@ -30,6 +30,8 @@ from .models import (
     RULE_BIRIM_YASAK,
     RULE_BIRLIKTE_TUT,
     RULE_SABIT_ATAMA,
+    pin_map,
+    pinned_months,
     rule_active_in_month,
 )
 from .normalize import normalize_key
@@ -107,13 +109,16 @@ def check_all(
             )
         seen[key] = a
 
-    v += _check_rule1_no_repeat(valid, students_by_id, units_by_id)
+    # "Sabitlenen kazanır" (models.pin_map): sabitlenen hücreler madde 1 ve
+    # madde 20'den muaftır. Muafiyet yalnız o hücreye aittir.
+    pins = pin_map(custom_rules or [], months)
+    v += _check_rule1_no_repeat(valid, students_by_id, units_by_id, pins, months)
     v += _check_rule23_gender(valid, students_by_id, units_by_id)
     v += _check_rule5_group(valid, students_by_id, units_by_id)
     v += _check_rule67_deadlines(
         valid, students_by_id, units_by_id, months, settings, requirements
     )
-    v += _check_rule20_intensity(valid, students_by_id, units_by_id, months)
+    v += _check_rule20_intensity(valid, students_by_id, units_by_id, months, pins)
     v += _check_rule21_gender_balance(valid, students_by_id, units_by_id)
     v += _check_rule8_banned(valid, students_by_id, units_by_id)
     v += _check_rule9_dis(valid, students_by_id, units_by_id)
@@ -257,37 +262,90 @@ def _check_custom_rules(assignments, students_by_id, units_by_id, custom_rules, 
                         )
                     )
         elif rule.type == RULE_SABIT_ATAMA and ids and rule.unit_id:
-            for sid in ids:
-                assigned = by_student_month.get((sid, rule.month))
-                if assigned is not None and assigned != rule.unit_id:
-                    expected = units_by_id.get(rule.unit_id)
-                    out.append(
-                        Violation(
-                            rule_no=CUSTOM_RULE_NO,
-                            severity=ERROR,
-                            message=(
-                                f"{_name(sid)}, {rule.month} ayında "
-                                f"{expected.friendly_name if expected else '?'} "
-                                "biriminde olmalıydı (özel kural: sabit atama)."
-                            ),
-                            student_id=sid,
-                            month=rule.month,
-                            unit_id=rule.unit_id,
+            for ay in pinned_months(rule, months):
+                for sid in ids:
+                    assigned = by_student_month.get((sid, ay))
+                    if assigned is not None and assigned != rule.unit_id:
+                        expected = units_by_id.get(rule.unit_id)
+                        out.append(
+                            Violation(
+                                rule_no=CUSTOM_RULE_NO,
+                                severity=ERROR,
+                                message=(
+                                    f"{_name(sid)}, {ay} ayında "
+                                    f"{expected.friendly_name if expected else '?'} "
+                                    "biriminde olmalıydı (özel kural: sabit atama)."
+                                ),
+                                student_id=sid,
+                                month=ay,
+                                unit_id=rule.unit_id,
+                            )
                         )
-                    )
+    # Aynı hücreye farklı birim diyen iki sabit atama: pin_map ilkini alır,
+    # kullanıcıya diğerinin uygulanmadığı söylenir.
+    hucre: dict[tuple[str, str], set[str]] = defaultdict(set)
+    for rule in custom_rules:
+        if rule.active and rule.type == RULE_SABIT_ATAMA and rule.unit_id:
+            for ay in pinned_months(rule, months):
+                for sid in rule.student_ids:
+                    if sid in students_by_id:
+                        hucre[(sid, ay)].add(rule.unit_id)
+    for (sid, ay), birimler in sorted(hucre.items()):
+        if len(birimler) > 1:
+            adlar = ", ".join(
+                sorted(units_by_id[u].name for u in birimler if u in units_by_id)
+            )
+            out.append(
+                Violation(
+                    rule_no=CUSTOM_RULE_NO,
+                    severity=ERROR,
+                    message=(
+                        f"{_name(sid)} için {ay} ayına birden fazla sabit "
+                        f"atama var ({adlar}) — yalnız ilki uygulanıyor."
+                    ),
+                    student_id=sid,
+                    month=ay,
+                )
+            )
     return out
 
 
-def _check_rule1_no_repeat(assignments, students_by_id, units_by_id):
-    """Madde 1: aynı bölüme (ad bazında) ikinci kez gitmek yasak."""
+def _check_rule1_no_repeat(assignments, students_by_id, units_by_id,
+                           pins=None, months=None):
+    """Madde 1: aynı bölüme (ad bazında) ikinci kez gitmek yasak.
+
+    Sabitleme istisnası: bir öğrencinin aynı birimde ART ARDA geçirdiği ve
+    en az bir ayı sabitlenmiş aylar TEK ziyaret sayılır ("Ocak'a kadar
+    DİŞ'te kalsın"). Kalışın ilk ayı sabitlenmemiş olsa bile (önce elle
+    atanmış, sonra uzatılmış) kalışın parçasıdır. Kalıştan AYRI bir ayda
+    aynı birime dönmek yine ihlaldir.
+    """
+    pins = pins or {}
+    order = {m: i for i, m in enumerate(months or [])}
     out = []
     by_student: dict[str, list] = defaultdict(list)
     for a in assignments:
         by_student[a.student_id].append(a)
     for sid, items in by_student.items():
         seen: dict[str, str] = {}  # normalize ad -> ilk ay
-        for a in sorted(items, key=lambda a: a.month):
+        # sıralama sezon ay sırasıyla (alfabetik değil); bilinmeyen ay sona
+        items = sorted(
+            items, key=lambda a: (order.get(a.month, len(order)), a.month)
+        )
+        kalis: dict[str, tuple[int, bool]] = {}  # anahtar -> (son ay no, sabit var mı)
+        for a in items:
             key = normalize_key(units_by_id[a.unit_id].name)
+            i = order.get(a.month)
+            sabit = pins.get((sid, a.month)) == a.unit_id
+            onceki = kalis.get(key)
+            bitisik = onceki is not None and i is not None and onceki[0] == i - 1
+            if bitisik:
+                # kalış sürüyor; kalışta en az bir sabit ay varsa tek ziyaret
+                kalis[key] = (i, onceki[1] or sabit)
+                if onceki[1] or sabit:
+                    continue
+            elif i is not None:
+                kalis[key] = (i, sabit)
             if key in seen:
                 s = students_by_id[sid]
                 out.append(
@@ -477,9 +535,17 @@ def _check_rule67_deadlines(
     return out
 
 
-def _check_rule20_intensity(assignments, students_by_id, units_by_id, months):
+def _check_rule20_intensity(assignments, students_by_id, units_by_id, months,
+                            pins=None):
     """Madde 20 (BÖLÜMLER VE ÖZELLİKLERİ): bir öğrenci peş peşe iki ay
-    yoğun bölüme ya da peş peşe iki ay hafif bölüme verilmez."""
+    yoğun bölüme ya da peş peşe iki ay hafif bölüme verilmez.
+
+    Sabitleme istisnası: iki ay da sabitlenmişse (kalışın içi) ihlal
+    sayılmaz. Yalnız biri sabitlenmişse kural işler ve ihlal SABİTLENMEMİŞ
+    aya yazılır — değişmesi gereken odur (Ocak'ta DİŞ'e sabitlenen
+    öğrenciye Şubat'ta yine hafif bölüm verilmişse sorun Şubat'tadır).
+    """
+    pins = pins or {}
     out = []
     order = {m: i for i, m in enumerate(months)}
     by_student: dict[str, dict[int, Unit]] = defaultdict(dict)
@@ -493,6 +559,14 @@ def _check_rule20_intensity(assignments, students_by_id, units_by_id, months):
             if u1 is None or u2 is None:
                 continue
             if u1.intensity and u1.intensity == u2.intensity:
+                p1 = (sid, months[i]) in pins
+                p2 = (sid, months[i + 1]) in pins
+                if p1 and p2:
+                    continue  # sabitlenen kalışın içi
+                # ihlal sabitlenmemiş (değişebilecek) aya yazılır
+                ay, birim = (
+                    (months[i], u1) if p2 and not p1 else (months[i + 1], u2)
+                )
                 label = INTENSITY_LABELS.get(u1.intensity, u1.intensity)
                 out.append(
                     Violation(
@@ -502,10 +576,12 @@ def _check_rule20_intensity(assignments, students_by_id, units_by_id, months):
                             f"{s.full_name}: {months[i]} ve {months[i + 1]} "
                             f"aylarında peş peşe {label.lower()} bölüme "
                             f"verilmiş ({u1.name} → {u2.name})."
+                            + (" Sabitlenen ay değişmez; komşu ayı "
+                               "değiştirin." if (p1 or p2) else "")
                         ),
                         student_id=sid,
-                        month=months[i + 1],
-                        unit_id=u2.id,
+                        month=ay,
+                        unit_id=birim.id,
                     )
                 )
     return out

@@ -36,6 +36,8 @@ from .models import (
     RULE_SABIT_ATAMA,
     Student,
     Unit,
+    pin_map,
+    pinned_months,
     rule_active_in_month,
 )
 from .normalize import normalize_key
@@ -163,7 +165,8 @@ def _risk_total_quota(students, units, months, assignments) -> list[Risk]:
 # --------------------------------------------------------------------------
 # R2: öğrencinin gidebileceği farklı birim tükeniyor (madde 1 çıkmazı)
 # --------------------------------------------------------------------------
-def _risk_unit_runway(students, units, months, assignments) -> list[Risk]:
+def _risk_unit_runway(students, units, months, assignments,
+                      custom_rules=None) -> list[Risk]:
     """Kimse aynı bölüme iki kez gidemez (madde 1). Bir öğrencinin daha
     gitmediği uygun birim sayısı, kalan ay sayısından azsa sezon o öğrenci
     için tamamlanamaz.
@@ -173,13 +176,23 @@ def _risk_unit_runway(students, units, months, assignments) -> list[Risk]:
     units_by_id = {u.id: u for u in units}
     visited = _visited_keys(assignments, units_by_id)
     done = _done_months(assignments)
+    # Sabitlenen aylar yeni bir birim gerektirmez (sabitleme kararı verdi);
+    # sabitlenen birim de "görülmüş" sayılır.
+    pins = pin_map(custom_rules or [], months)
     dar: dict[int, list[Student]] = {}
     bitmis: dict[int, list[Student]] = {}
     for s in students:
-        kalan_ay = [m for m in months if m not in done.get(s.id, set())]
+        kalan_ay = [
+            m for m in months
+            if m not in done.get(s.id, set()) and (s.id, m) not in pins
+        ]
         if not kalan_ay:
             continue
-        gorulen = visited.get(s.id, set())
+        gorulen = set(visited.get(s.id, set())) | {
+            normalize_key(units_by_id[uid].name)
+            for (sid, m), uid in pins.items()
+            if sid == s.id and uid in units_by_id
+        }
         secenek = {
             normalize_key(u.name)
             for u in units
@@ -229,6 +242,7 @@ def fixed_assignment_conflicts(
     units_by_id: dict[str, Unit],
     assignments: list[Assignment],
     all_rules: list[CustomRule] | None = None,
+    months: list[str] | None = None,
 ) -> list[str]:
     """Tek bir 'sabit atama' kuralının gelecekte yaratacağı çakışmalar.
 
@@ -240,35 +254,51 @@ def fixed_assignment_conflicts(
     unit = units_by_id.get(rule.unit_id)
     if unit is None:
         return ["Kuralın işaret ettiği birim artık yok."]
+    ay_listesi = months or []
+    aylar = pinned_months(rule, ay_listesi) or [rule.month]
+    aralik = (
+        f"{aylar[0]}–{aylar[-1]}" if len(aylar) > 1 else aylar[0]
+    )
     if not _usable(unit):
         out.append(
-            f"{unit.name} pasif ya da kontenjanı 0 — {rule.month} ayında "
+            f"{unit.name} pasif ya da kontenjanı 0 — {aralik} "
             "buraya atama yapılamaz."
         )
 
-    visited = _visited_keys(assignments, units_by_id)
     key = normalize_key(unit.name)
+    sira = {m: i for i, m in enumerate(ay_listesi)}
+    kapsanan = {sira[m] for m in aylar if m in sira}
     for sid in rule.student_ids:
         s = students_by_id.get(sid)
         if s is None:
             out.append("Kuraldaki öğrencilerden biri artık yok.")
             continue
-        # aynı bölüme başka bir ayda gidilmiş → madde 1 ihlali garanti
-        if key in visited.get(sid, set()):
-            gecmis = [
-                a.month
-                for a in assignments
-                if a.student_id == sid
-                and a.unit_id in units_by_id
-                and normalize_key(units_by_id[a.unit_id].name) == key
-                and a.month != rule.month
-            ]
-            if gecmis:
-                out.append(
-                    f"{s.full_name} {unit.name} birimine zaten "
-                    f"{', '.join(gecmis)} ayında gidiyor — aynı bölüme ikinci "
-                    f"kez gidilemez, {rule.month} ayında kural çiğnenecek."
-                )
+        # Sabitleme madde 1'den muaf: sabitlenen aralığa BİTİŞİK aylarda aynı
+        # birimde olmak kalışın parçasıdır ("Eylül'de DİŞ'teydi, Ocak'a kadar
+        # kalsın"). Ama kalıştan AYRI bir ayda o birime gitmişse bu, birime
+        # geri dönmek demektir — madde 1 o ayda yine çiğnenir.
+        ayri = []
+        for a in assignments:
+            if (
+                a.student_id != sid
+                or a.unit_id not in units_by_id
+                or normalize_key(units_by_id[a.unit_id].name) != key
+                or a.month in aylar
+            ):
+                continue
+            i = sira.get(a.month)
+            if i is None or not kapsanan or (
+                i + 1 not in kapsanan and i - 1 not in kapsanan
+                and not _bitisik_zincir(i, kapsanan, sid, key, assignments,
+                                        units_by_id, sira)
+            ):
+                ayri.append(a.month)
+        if ayri:
+            out.append(
+                f"{s.full_name} {unit.name} birimine {', '.join(ayri)} "
+                "ayında da gidiyor; bu, sabitlenen aralıktan ayrı bir ziyaret "
+                "— aynı bölüme ikinci kez gidilemez (madde 1)."
+            )
         if unit.group not in (0, s.group):
             out.append(
                 f"{s.full_name} {s.group}. grupta ama {unit.name} "
@@ -292,21 +322,49 @@ def fixed_assignment_conflicts(
 
     # aynı ay + aynı birime sabit atanan toplam öğrenci kontenjanı aşıyor mu
     if all_rules:
-        ayni = {
-            sid
-            for r in all_rules
-            if r.active
-            and r.type == RULE_SABIT_ATAMA
-            and r.unit_id == rule.unit_id
-            and r.month == rule.month
-            for sid in r.student_ids
-        }
-        if len(ayni) > unit.quota:
-            out.append(
-                f"{rule.month} ayında {unit.name} birimine sabit atanan "
-                f"{len(ayni)} öğrenci var ama kontenjanı {unit.quota}."
-            )
+        for m in aylar:
+            ayni = {
+                sid
+                for r in all_rules
+                if r.active
+                and r.type == RULE_SABIT_ATAMA
+                and r.unit_id == rule.unit_id
+                and m in (pinned_months(r, ay_listesi) or [r.month])
+                for sid in r.student_ids
+            }
+            if len(ayni) > unit.quota:
+                out.append(
+                    f"{m} ayında {unit.name} birimine sabit atanan "
+                    f"{len(ayni)} öğrenci var ama kontenjanı {unit.quota}."
+                )
     return out
+
+
+def _bitisik_zincir(i, kapsanan, sid, key, assignments, units_by_id, sira):
+    """i. ay, aynı birimdeki kesintisiz bir zincirle sabit aralığa bağlı mı.
+
+    Eylül ve Ekim'de elle DİŞ'e atanmış, Kasım–Ocak sabitlenmiş öğrencinin
+    Eylül'ü de kalışın parçasıdır (Eylül→Ekim→Kasım kesintisiz).
+    """
+    ayni_aylar = {
+        sira[a.month]
+        for a in assignments
+        if a.student_id == sid
+        and a.month in sira
+        and a.unit_id in units_by_id
+        and normalize_key(units_by_id[a.unit_id].name) == key
+    } | set(kapsanan)
+    j = i
+    while j in ayni_aylar:
+        if j in kapsanan:
+            return True
+        j += 1
+    j = i
+    while j in ayni_aylar:
+        if j in kapsanan:
+            return True
+        j -= 1
+    return False
 
 
 def _risk_fixed_assignments(
@@ -320,13 +378,16 @@ def _risk_fixed_assignments(
         if not rule.active or rule.type != RULE_SABIT_ATAMA:
             continue
         # yalnız HENÜZ ÜRETİLMEMİŞ aylar risk; geçmiş ay zaten rules.py'de
-        already = any(
-            rule.month in done.get(sid, set()) for sid in rule.student_ids
-        )
-        if already or rule.month not in months:
+        aylar = pinned_months(rule, months)
+        kalan = [
+            m for m in aylar
+            if not all(m in done.get(sid, set()) for sid in rule.student_ids)
+        ]
+        if not kalan:
             continue
         sorunlar = fixed_assignment_conflicts(
-            rule, students_by_id, units_by_id, assignments, custom_rules
+            rule, students_by_id, units_by_id, assignments, custom_rules,
+            months,
         )
         for msg in sorunlar:
             g = next(
@@ -339,7 +400,11 @@ def _risk_fixed_assignments(
                     level=ERROR,
                     category=CAT_CUSTOM,
                     group=g,
-                    message=f"Sabit atama ({rule.month}): {msg}",
+                    message=(
+                        f"Sabit atama ({aylar[0]}"
+                        + (f"–{aylar[-1]}" if len(aylar) > 1 else "")
+                        + f"): {msg}"
+                    ),
                 )
             )
     return out
@@ -484,7 +549,7 @@ def forward_risks(
                  message=f.message)
         )
     out += _risk_total_quota(active, units, months, assignments)
-    out += _risk_unit_runway(active, units, months, assignments)
+    out += _risk_unit_runway(active, units, months, assignments, rules)
     out += _risk_fixed_assignments(active, units, months, assignments, rules)
     out += _risk_together(active, units, months, assignments, rules)
     out += _risk_contradictions(active, months, rules)

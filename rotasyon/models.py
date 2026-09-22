@@ -206,7 +206,7 @@ CUSTOM_RULE_LABELS = {
     RULE_AYRI_TUT: "Ayrı tut — seçilen öğrenciler aynı birime düşmesin",
     RULE_BIRLIKTE_TUT: "Birlikte tut — seçilen öğrenciler hep aynı birimde olsun",
     RULE_BIRIM_YASAK: "Birim yasağı — öğrenci(ler) belirli birime gitmesin",
-    RULE_SABIT_ATAMA: "Sabit atama — öğrenci belirli ayda belirli birime gitsin",
+    RULE_SABIT_ATAMA: "Sabit atama — öğrenci belirli ay(lar)da belirli birimde olsun",
 }
 
 
@@ -215,7 +215,9 @@ class CustomRule:
     type: str  # CUSTOM_RULE_TYPES
     student_ids: list[str] = field(default_factory=list)  # ayrı/birlikte: ≥2, sabit/yasak: ≥1
     unit_id: str = ""  # sabit_atama / birim_yasak için
-    month: str = ""  # sabit_atama için (o ay)
+    # sabit_atama: başlangıç ayı. `end_month` da doluysa aralık (ikisi dahil):
+    # "Ocak'a kadar DİŞ'te kalsın" tek kuraldır. Bkz. pinned_months().
+    month: str = ""
     # Zaman kapsamı (ayrı/birlikte tut + birim yasağı için). Boş = sınırsız.
     # Sezon ortasında eklenen kural yalnız bu pencereden itibaren geçerli
     # olur; geçmiş (tamamlanmış) aylar etkilenmez ve ihlal sayılmaz.
@@ -231,6 +233,46 @@ class CustomRule:
     @classmethod
     def from_dict(cls, d: dict) -> "CustomRule":
         return cls(**d)
+
+
+def pinned_months(rule: "CustomRule", months: list[str]) -> list[str]:
+    """Bir sabit atamanın kapsadığı aylar (başlangıç ve bitiş dahil).
+
+    Eski kurallarda yalnız `month` doludur → tek ay. `end_month` doluysa
+    `month`'tan `end_month`'a kadar her ay. Sezonda olmayan ay → boş liste.
+    """
+    if rule.type != RULE_SABIT_ATAMA or rule.month not in months:
+        return []
+    bas = months.index(rule.month)
+    son = months.index(rule.end_month) if rule.end_month in months else bas
+    return months[bas:max(bas, son) + 1]
+
+
+def pin_map(custom_rules, months: list[str]) -> dict[tuple[str, str], str]:
+    """(öğrenci_id, ay) → sabitlenen birim_id. Yalnız AKTİF sabit atamalar.
+
+    "Sabitlenen kazanır" ilkesinin tek kaynağı. Elle sabitlenen bir hücre
+    yerleşik iki kuraldan MUAFTIR: aynı bölüme ikinci kez gitmeme (madde 1)
+    ve peş peşe yoğun/hafif yasağı (madde 20). Gerçek hayatta bir öğrencinin
+    birkaç ay aynı birimde kalması ("Ocak'a kadar DİŞ'te") bu iki kuralla
+    doğrudan çelişiyor; insan eliyle yapılan tabloda karar kullanıcınındır.
+
+    Muafiyet YALNIZ sabitlenen hücreye aittir: öğrencinin sabitlenmemiş
+    aylarında kurallar aynen işler (DİŞ'ten çıktıktan sonra bir daha DİŞ'e
+    verilmez; Ocak hafifse Şubat hafif olamaz). Cinsiyet, kontenjan, yasaklı
+    birim ve diş muafiyeti ASLA esnemez — onlarla çelişen sabitleme hatadır.
+
+    Aynı hücreye iki kural farklı birim diyorsa ilk kural kazanır; çakışma
+    denetleyicide ayrıca raporlanır.
+    """
+    out: dict[tuple[str, str], str] = {}
+    for rule in custom_rules or []:
+        if not rule.active or not rule.unit_id:
+            continue
+        for m in pinned_months(rule, months):
+            for sid in rule.student_ids:
+                out.setdefault((sid, m), rule.unit_id)
+    return out
 
 
 def rule_active_in_month(rule: "CustomRule", month: str, months: list[str]) -> bool:

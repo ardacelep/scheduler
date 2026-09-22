@@ -147,3 +147,44 @@ def test_unique_season_name():
     assert unique_season_name([], "A") == "A"
     assert unique_season_name(["A"], "A") == "A (2)"
     assert unique_season_name(["A", "A (2)"], "A") == "A (3)"
+
+
+# ---- Store'un yazdığı her dosya yedekte ----
+
+def test_every_file_the_store_writes_is_backed_up():
+    """Store'a eklenen yeni dosya yedek listesine de eklenmeli.
+
+    Bir kez kaçtı: v2 gereksinimleri (requirements.json) yedeğe hiç
+    girmiyordu. Geri yüklenen sezon gereksinimsiz açılıyor, motor sessizce
+    eski branş yoluna düşüyordu — kullanıcı kurallarının gittiğini görmüyordu.
+    """
+    import re
+    from pathlib import Path
+
+    from rotasyon.backup import DATA_FILES, NOT_BACKED_UP
+
+    kaynak = Path("rotasyon/store.py").read_text(encoding="utf-8")
+    yazilan = {
+        f"{ad}.json"
+        for ad in re.findall(r'_(?:write|save_list)\("([a-z_]+)"', kaynak)
+    }
+    assert yazilan, "Store'da yazım bulunamadı — desen değişmiş olabilir"
+    eksik = yazilan - set(DATA_FILES) - set(NOT_BACKED_UP)
+    assert not eksik, f"yedeğe girmeyen dosyalar: {sorted(eksik)}"
+
+
+def test_requirements_and_support_codes_survive_a_restore(manager):
+    from rotasyon.models import Requirement
+
+    store = manager.store("2026-2027")
+    store.save_requirements(
+        [Requirement(name="Yoğun bakım", scope="tum", unit_keys=["YB/B"])]
+    )
+    store.save_support_codes({"s1": "Ö-01", "s2": "Ö-02"})
+    data = season_backup_bytes(store.data_dir, "2026-2027")
+    geri = manager.store(
+        restore_into(data, manager.root, manager.list_seasons())[0]
+    )
+    assert [r.name for r in geri.load_requirements()] == ["Yoğun bakım"]
+    # telefonda kodla konuşuluyor: geri yüklemede kodlar değişmemeli
+    assert geri.load_support_codes() == {"s1": "Ö-01", "s2": "Ö-02"}

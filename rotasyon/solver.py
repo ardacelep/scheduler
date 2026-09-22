@@ -33,6 +33,7 @@ from .models import (
     RULE_BIRLIKTE_TUT,
     RULE_SABIT_ATAMA,
     DEFAULT_SETTINGS,
+    pin_map,
     rule_active_in_month,
 )
 from .normalize import normalize_key
@@ -291,6 +292,45 @@ def _obligation_debt(items: list[_Obligation]) -> int:
     )
 
 
+def _pin_conflicts(students, units, month, pinned_now) -> list[str]:
+    """Sabitlemenin KENDİSİ imkânsızsa net sebep.
+
+    Sabitlenen hücre madde 1 ve madde 20'den muaftır ama cinsiyet,
+    kontenjan, yasaklı birim ve diş muafiyeti esnemez. Bunlarla çelişen bir
+    sabitlemede unsat core alakasız aileler sayıyordu ("cinsiyet", "FTR");
+    kullanıcıya hangi öğrencinin hangi ayda neden olmadığı söylenir.
+    """
+    by_id = {u.id: u for u in units}
+    st_by_id = {s.id: s for s in students}
+    out: list[str] = []
+    sayac: dict[str, int] = {}
+    for sid, uid in pinned_now.items():
+        s, u = st_by_id.get(sid), by_id.get(uid)
+        if s is None:
+            continue
+        if u is None:
+            out.append(f"{s.full_name}: {month} sabit ataması silinmiş bir birime işaret ediyor.")
+            continue
+        ad = f"{s.full_name} → {month} {u.display_name} (sabit atama)"
+        if not u.active or u.quota <= 0:
+            out.append(f"{ad}: birim pasif ya da kontenjanı 0.")
+        if u.gender_restriction and s.gender and s.gender != u.gender_restriction:
+            out.append(f"{ad}: birim yalnız {'kız' if u.gender_restriction == 'K' else 'erkek'} öğrenci alıyor.")
+        if u.id in s.banned_unit_ids:
+            out.append(f"{ad}: öğrenci için yasaklı birim.")
+        if s.dis_exempt and "DİŞ" in normalize_key(u.name):
+            out.append(f"{ad}: öğrenci diş muafiyetli.")
+        sayac[uid] = sayac.get(uid, 0) + 1
+    for uid, n in sayac.items():
+        u = by_id.get(uid)
+        if u is not None and u.active and n > u.quota:
+            out.append(
+                f"{month}: {u.display_name} birimine {n} öğrenci sabitlenmiş "
+                f"ama kontenjanı {u.quota}."
+            )
+    return out
+
+
 def _prefeasibility_reasons(
     students: list[Student],
     units: list[Unit],
@@ -298,6 +338,7 @@ def _prefeasibility_reasons(
     remaining: int,
     unmet: dict[str, list[_Obligation]],
     blocked_intensity: dict[str, set[str]],
+    pinned_now: dict[str, str] | None = None,
 ) -> list[str]:
     """CP-SAT'tan önce ucuz, kesin çelişki kontrolleri.
 
@@ -309,6 +350,12 @@ def _prefeasibility_reasons(
     (v1 branş zorunlulukları ya da v2 gereksinimleri — ikisi de _Obligation).
     """
     reasons: list[str] = []
+    # `remaining` tek sayı ya da öğrenci başına sözlük olabilir: sabitlenen
+    # gelecek aylar o öğrencinin zorunluluk kapatabileceği ayları azaltır.
+    rem = (
+        remaining if isinstance(remaining, dict)
+        else {s.id: remaining for s in students}
+    )
     total_quota = sum(u.quota for u in units)
     n = len(students)
     if total_quota < n:
@@ -360,23 +407,46 @@ def _prefeasibility_reasons(
 
     # Sezon zorunlulukları: ayda en çok 1 borç kapatılabilir → kalan ay
     # sayısı toplam borcu taşımıyorsa çözüm yoktur.
+    pinned_now = pinned_now or {}
     for s in students:
         debt = _obligation_debt(unmet[s.id])
-        if debt > remaining + 1:
+        if s.id in pinned_now:
+            # bu ay sabitlemeyle dolu: borç yalnız sonraki serbest aylarda
+            if debt > rem[s.id]:
+                labels = ", ".join(o.label for o in unmet[s.id])
+                reasons.append(
+                    f"{s.full_name}: sabit atamalar yüzünden sezonun geri "
+                    f"kalanında yalnız {rem[s.id]} serbest ayı kalıyor ama "
+                    f"karşılanması gereken {debt} zorunluluk var ({labels}). "
+                    "Sabitleme süresini kısaltın ya da bu gereksinimi o "
+                    "öğrenci için tercih yapın."
+                )
+            continue
+        if debt > rem[s.id] + 1:
             labels = ", ".join(o.label for o in unmet[s.id])
+            serbest = rem[s.id] + 1
+            ek = (
+                " (sonraki ayların bir kısmı sabit atamayla dolu)"
+                if isinstance(remaining, dict) and rem[s.id] < max(rem.values())
+                else ""
+            )
             reasons.append(
-                f"{s.full_name}: kalan {remaining + 1} ayda karşılanması "
-                f"gereken {debt} sezon zorunluluğu var ({labels}) "
+                f"{s.full_name}: kalan {serbest} serbest ayda karşılanması "
+                f"gereken {debt} sezon zorunluluğu var ({labels}){ek} "
                 "— ayda en fazla biri karşılanabilir, yetişmez."
             )
 
-    if remaining == 0:
-        # Son ay: aynı borcu taşıyanlar o borcu kapatan birimlerin
-        # kontenjanına sığmalı
+    son_ay = [
+        s for s in students if rem[s.id] == 0 and s.id not in pinned_now
+    ]
+    if son_ay:
+        # Son fırsat: borcunu kapatmak için bu ay dışında ayı kalmayanlar
+        # (sezonun son ayı ya da sonraki ayları sabitlenmiş öğrenciler) o
+        # borcu kapatan birimlerin kontenjanına sığmalı
         quota_by_unit = {u.id: u.quota for u in units}
         need_by_label: dict[str, int] = defaultdict(int)
         uids_by_label: dict[str, set[str]] = defaultdict(set)
-        for s in students:
+        for s in son_ay:
             for o in unmet[s.id]:
                 if not o.hard:
                     continue  # tercih: karşılanmazsa çözümsüzlük değil
@@ -434,10 +504,16 @@ def solve_month(
 
     # Sabit atama kuralları bu ayın kilitli hücreleri gibi işlenir;
     # elle kilitlenen hücre (locked parametresi) öncelik taşır.
-    for rule in custom_rules:
-        if rule.type == RULE_SABIT_ATAMA and rule.month == month:
-            for sid in rule.student_ids:
-                locked.setdefault(sid, rule.unit_id)
+    # "Sabitlenen kazanır": sabitlenen hücre madde 1 ve madde 20'den muaftır
+    # (bkz. models.pin_map). Muafiyet yalnız bu aya ve o birime aittir.
+    group_ids = {s.id for s in students}
+    pins = {
+        k: v for k, v in pin_map(custom_rules, months).items()
+        if k[0] in group_ids
+    }
+    pinned_now = {sid: uid for (sid, m), uid in pins.items() if m == month}
+    for sid, uid in pinned_now.items():
+        locked.setdefault(sid, uid)
 
     catalog_by_id = {u.id: u for u in units}  # geçmiş yorumu için tam katalog
     all_units = units
@@ -466,6 +542,27 @@ def solve_month(
     visited: dict[str, set[str]] = {
         s.id: visited_unit_keys(s.id, history, catalog_by_id) for s in students
     }
+    # Sabitlenen birimler (geçmiş ya da gelecek her ayda) görülmüş sayılır:
+    # sabitlenmemiş bir ayda o birime tekrar verilmez, o birimin kapattığı
+    # zorunluluk da "karşılanmış" sayılır (sabitleme onu zaten karşılayacak).
+    for (sid, m), uid in pins.items():
+        if uid in catalog_by_id:
+            visited[sid].add(normalize_key(catalog_by_id[uid].name))
+    # Uygunluk için ayrı görünüm: bu ay sabitlenen öğrenci, sabitlendiği
+    # birim için madde 1'den muaf.
+    eligible_visited: dict[str, set[str]] = {
+        sid: set(keys) for sid, keys in visited.items()
+    }
+    for sid, uid in pinned_now.items():
+        if sid in eligible_visited and uid in catalog_by_id:
+            eligible_visited[sid].discard(normalize_key(catalog_by_id[uid].name))
+    # Öğrenci başına zorunluluk kapatabileceği kalan ay: sabitlenen gelecek
+    # aylar sayılmaz (o aylar zaten dolu).
+    later = set(months[months.index(month) + 1:]) if month in months else set()
+    remaining_by_student = {
+        s.id: remaining - sum(1 for (sid, m) in pins if sid == s.id and m in later)
+        for s in students
+    }
     # Aynı ayda başka gruba/aya ait çakışan atama olmadığı varsayılır (UI temizler).
 
     # ---- sezon zorunlulukları: her öğrencinin sezon sonuna kadar kapatması
@@ -483,6 +580,10 @@ def solve_month(
                 catalog_by_id[a.unit_id].branch_category
                 for a in history
                 if a.student_id == s.id and a.unit_id in catalog_by_id
+            } | {
+                catalog_by_id[uid].branch_category
+                for (sid, m), uid in pins.items()
+                if sid == s.id and uid in catalog_by_id
             }
         unmet = _obligations_from_branches(
             students, units, settings, seen_branches
@@ -505,12 +606,27 @@ def solve_month(
                 inten = catalog_by_id[a.unit_id].intensity
                 if inten:
                     blocked_intensity[a.student_id].add(inten)
+        # henüz üretilmemiş ama SABİTLENMİŞ komşu ay da sayılır: Kasım'da
+        # DİŞ'e (hafif) sabitlenen öğrenciye Ekim'de hafif bölüm verilmez
+        for (sid, m), uid in pins.items():
+            if (
+                m in neighbors
+                and sid in blocked_intensity
+                and uid in catalog_by_id
+                and catalog_by_id[uid].intensity
+            ):
+                blocked_intensity[sid].add(catalog_by_id[uid].intensity)
+    for sid in pinned_now:
+        if sid in blocked_intensity:
+            blocked_intensity[sid].clear()  # sabitlenen hücre madde 20'den muaf
 
     # CP-SAT'tan önce ucuz kesin kontroller: çelişki buradan yakalanırsa
     # somut Türkçe açıklamayla hemen dönülür (solver'ın kanıt araması gereksiz).
     if not _diagnostic:
-        pre = _prefeasibility_reasons(
-            students, units, visited, remaining, unmet, blocked_intensity
+        pre = _pin_conflicts(students, all_units, month, pinned_now)
+        pre += _prefeasibility_reasons(
+            students, units, eligible_visited, remaining_by_student, unmet,
+            blocked_intensity, pinned_now,
         )
         if pre:
             return SolveResult(status="INFEASIBLE", infeasible_reasons=pre)
@@ -526,7 +642,7 @@ def solve_month(
             var = x[(s.id, u.id)]
             if u.gender_restriction and s.gender and s.gender != u.gender_restriction:
                 model.Add(var == 0).OnlyEnforceIf(assumptions["gender"])
-            if normalize_key(u.name) in visited[s.id]:
+            if normalize_key(u.name) in eligible_visited[s.id]:
                 model.Add(var == 0).OnlyEnforceIf(assumptions["no_repeat"])
             if u.id in s.banned_unit_ids:
                 model.Add(var == 0).OnlyEnforceIf(assumptions["banned"])
@@ -592,7 +708,9 @@ def solve_month(
     # bu ayda mutlaka bir zorunlu branşa gitmeli (sert kısıt); daha erkense
     # objective bonusuyla yönlendirilir.
     for s in students:
-        need_now = _obligation_debt(unmet[s.id]) - remaining
+        if s.id in pinned_now:
+            continue  # bu ayı sabitleme belirliyor
+        need_now = _obligation_debt(unmet[s.id]) - remaining_by_student[s.id]
         if need_now >= 1:
             zorunlu = [o for o in unmet[s.id] if o.hard]
             uids = {uid for o in zorunlu for uid in o.unit_ids}
@@ -847,6 +965,31 @@ def solve_season(
     catalog_by_id = {u.id: u for u in units}
     active_units = [u for u in units if u.active and u.quota > 0]
 
+    # "Sabitlenen kazanır" (bkz. models.pin_map): sabitlenen hücre madde 1 ve
+    # madde 20'den muaftır. Eskiden sabitlenen hücrenin değişkeni tekrar
+    # yasağı yüzünden hiç oluşturulmuyor ve sabitleme SESSİZCE atlanıyordu —
+    # toplu üretim kullanıcının kararını fark ettirmeden yok sayabiliyordu.
+    group_ids = {s.id for s in students}
+    pins = {
+        k: v for k, v in pin_map(custom_rules, months).items()
+        if k[0] in group_ids
+    }
+    pinned_keys: dict[str, set[str]] = {s.id: set() for s in students}
+    for (sid, m), uid in pins.items():
+        if uid in catalog_by_id:
+            pinned_keys[sid].add(normalize_key(catalog_by_id[uid].name))
+
+    def is_pinned_cell(sid, uid, m):
+        return pins.get((sid, m)) == uid
+
+    for m in solve_months:
+        pre = _pin_conflicts(
+            students, units, m,
+            {sid: uid for (sid, mm), uid in pins.items() if mm == m},
+        )
+        if pre:
+            return SeasonSolveResult(status="INFEASIBLE", infeasible_reasons=pre)
+
     # geçmiş yorumu (tekrar yasağı + görülmüş branşlar)
     visited: dict[str, set[str]] = {
         s.id: visited_unit_keys(s.id, history, catalog_by_id) for s in students
@@ -883,8 +1026,14 @@ def solve_season(
             for u in active_units:
                 if u.gender_restriction and s.gender and s.gender != u.gender_restriction:
                     continue
-                if key_of[u.id] in visited[s.id]:
-                    continue  # madde 1: sezon öncesinde görülmüş
+                sabit = is_pinned_cell(s.id, u.id, m)
+                if not sabit and (
+                    key_of[u.id] in visited[s.id]
+                    or key_of[u.id] in pinned_keys[s.id]
+                ):
+                    # madde 1: sezon öncesinde görülmüş ya da başka bir ayda
+                    # oraya sabitlenmiş (sabitleme o ziyaretin kendisi)
+                    continue
                 if u.id in s.banned_unit_ids:
                     continue
                 if s.dis_exempt and "DİŞ" in key_of[u.id]:
@@ -916,7 +1065,7 @@ def solve_season(
     keys = {key_of[u.id] for u in active_units}
     for s in students:
         for k in keys:
-            if k in visited[s.id]:
+            if k in visited[s.id] or k in pinned_keys[s.id]:
                 continue
             same = [
                 x[(s.id, u.id, m)]
@@ -946,6 +1095,9 @@ def solve_season(
     for i in range(len(months) - 1):
         a_m, b_m = months[i], months[i + 1]
         for s in students:
+            a_pin, b_pin = (s.id, a_m) in pins, (s.id, b_m) in pins
+            if a_pin and b_pin:
+                continue  # sabitlenen kalışın içi (DİŞ'te art arda aylar)
             for t in (INTENSITY_YOGUN, INTENSITY_HAFIF):
                 if a_m in solve_set and b_m in solve_set:
                     av = vars_for(s.id, a_m, lambda u: u.intensity == t)
@@ -954,11 +1106,15 @@ def solve_season(
                         model.AddAtMostOne(av + bv)
                 elif a_m in solve_set and b_m not in solve_set:
                     hu = hist_by_student_month.get((s.id, b_m))
+                    if a_pin:
+                        continue  # sabitlenen hücre engellenmez
                     if hu is not None and hu.intensity == t:
                         for v in vars_for(s.id, a_m, lambda u: u.intensity == t):
                             model.Add(v == 0)
                 elif b_m in solve_set and a_m not in solve_set:
                     hu = hist_by_student_month.get((s.id, a_m))
+                    if b_pin:
+                        continue  # sabitlenen hücre engellenmez
                     if hu is not None and hu.intensity == t:
                         for v in vars_for(s.id, b_m, lambda u: u.intensity == t):
                             model.Add(v == 0)
@@ -1010,12 +1166,25 @@ def solve_season(
 
     # özel kurallar (her ay yalnız kuralın zaman penceresi içindeyse)
     student_id_set = {s.id for s in students}
+    st_by_id = {s.id: s for s in students}
+    for (sid, m), uid in pins.items():
+        if m not in solve_set:
+            continue
+        if (sid, uid, m) not in x:
+            # _pin_conflicts cinsiyet/yasak/pasiflik gibi sebepleri zaten
+            # yakaladı; buraya düşmek beklenmez ama sessiz kalmamalı
+            u = catalog_by_id.get(uid)
+            return SeasonSolveResult(
+                status="INFEASIBLE",
+                infeasible_reasons=[
+                    f"{st_by_id[sid].full_name} → {m} "
+                    f"{u.display_name if u else '?'} sabit ataması "
+                    "uygulanamıyor."
+                ],
+            )
+        model.Add(x[(sid, uid, m)] == 1)
     for rule in custom_rules:
         if rule.type == RULE_SABIT_ATAMA:
-            if rule.month in solve_set:
-                for sid in rule.student_ids:
-                    if (sid, rule.unit_id, rule.month) in x:
-                        model.Add(x[(sid, rule.unit_id, rule.month)] == 1)
             continue
         win_months = [m for m in solve_months if rule_active_in_month(rule, m, months)]
         if not win_months:
