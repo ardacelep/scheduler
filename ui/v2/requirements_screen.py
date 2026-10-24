@@ -167,6 +167,44 @@ def _coverage_note(req, students, units) -> None:
             )
 
 
+def _exclusion_picker(students, scope, scope_value, current, key) -> list[str]:
+    """Kapsamdan tek tek öğrenci çıkarma ("tüm öğrenciler, X ve Y hariç").
+
+    Sabit atamayla sezon sonuna kadar bir birime bağlanan öğrenci gereksinimi
+    karşılayamaz. Onu dışarıda bırakmak için kapsamı "Seçili öğrenciler"e
+    çevirip kalan herkesi tek tek seçmek gerekiyordu; burada yalnız istisnalar
+    seçilir. Seçenekler kapsamın (hariç tutma öncesi) kapsadığı öğrencilerdir;
+    kapsam değişince artık kapsanmayan eski seçimler sessizce düşer.
+    """
+    if scope == SCOPE_STUDENTS:
+        return []
+    taban = Requirement(name="", scope=scope, scope_value=scope_value)
+    by_id = {s.id: s for s in students if applies_to(taban, s)}
+    if not by_id:
+        return []
+    secim = st.multiselect(
+        "Hariç tutulacak öğrenciler (isteğe bağlı)", list(by_id),
+        default=[sid for sid in current if sid in by_id],
+        format_func=lambda sid: (
+            f"{by_id[sid].full_name} (grup {by_id[sid].group})"
+        ),
+        key=key,
+        help="Bu gereksinimden muaf tutulacak öğrenciler — örneğin sabit "
+        "atamayla sezon sonuna kadar başka bir birime bağlanmış olanlar. "
+        "Çözücü ve denetleyici bu öğrenciler için gereksinimi aramaz.",
+    )
+    return [sid for sid in secim if sid in by_id]
+
+
+def _excluded_note(req, students) -> None:
+    if not req.excluded_ids or req.scope == SCOPE_STUDENTS:
+        return
+    by_id = {s.id: s for s in students}
+    adlar = [by_id[sid].full_name for sid in req.excluded_ids if sid in by_id]
+    if adlar:
+        st.caption("🚫 Hariç: " + ", ".join(adlar))
+
+
 def _list_panel(store, reqs, units, students) -> None:
     aktif = [r for r in reqs if r.active]
     st.caption(f"{len(aktif)} aktif · {len(reqs) - len(aktif)} pasif gereksinim")
@@ -184,6 +222,7 @@ def _list_panel(store, reqs, units, students) -> None:
             else:
                 st.markdown(baslik)
             st.caption(describe(req))
+            _excluded_note(req, students)
             if req.active:
                 _coverage_note(req, students, units)
             if req.note:
@@ -276,6 +315,9 @@ def _inline_edit(store, reqs, req, units, students) -> None:
             key=f"{k}_ogr",
         )
         student_ids = [sid for sid in secim if sid in by_id]
+    excluded_ids = _exclusion_picker(
+        students, scope, scope_value, req.excluded_ids, f"{k}_haric",
+    )
 
     # kayıttaki anahtarlar normalize; gösterim adlarına çevrilir
     mevcut_adlar = [
@@ -303,6 +345,7 @@ def _inline_edit(store, reqs, req, units, students) -> None:
     yeni = Requirement(
         id=req.id, name=ad.strip() or req.name, scope=scope,
         scope_value=scope_value, student_ids=student_ids,
+        excluded_ids=excluded_ids,
         unit_keys=[normalize_key(n) for n in secili],
         min_count=int(minc), severity=severity, active=req.active,
         note=req.note,
@@ -380,6 +423,9 @@ def _editor(store, reqs, units, students) -> None:
             key="req_new_students",
         )
         student_ids = [sid for sid in secim if sid in by_id]
+    excluded_ids = _exclusion_picker(
+        students, scope, scope_value, [], "req_new_excluded",
+    )
 
     st.markdown("**Hangi birimlerden?**")
     # Bekleyen seçim, artık var olmayan bir birim adı içeriyorsa multiselect
@@ -444,6 +490,7 @@ def _editor(store, reqs, units, students) -> None:
     aday = Requirement(
         name=ad.strip() or "(adsız)",
         scope=scope, scope_value=scope_value, student_ids=student_ids,
+        excluded_ids=excluded_ids,
         unit_keys=[normalize_key(n) for n in secili_birimler],
         min_count=int(min_count), severity=severity,
     )

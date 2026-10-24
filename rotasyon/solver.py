@@ -418,15 +418,16 @@ def _prefeasibility_reasons(
                     f"{s.full_name}: sabit atamalar yüzünden sezonun geri "
                     f"kalanında yalnız {rem[s.id]} serbest ayı kalıyor ama "
                     f"karşılanması gereken {debt} zorunluluk var ({labels}). "
-                    "Sabitleme süresini kısaltın ya da bu gereksinimi o "
-                    "öğrenci için tercih yapın."
+                    "Sabitleme süresini kısaltın ya da Gereksinimler "
+                    "ekranında bu öğrenciyi o gereksinimden hariç tutun."
                 )
             continue
         if debt > rem[s.id] + 1:
             labels = ", ".join(o.label for o in unmet[s.id])
             serbest = rem[s.id] + 1
             ek = (
-                " (sonraki ayların bir kısmı sabit atamayla dolu)"
+                " (sonraki ayların bir kısmı sabit atamayla dolu; gerekiyorsa "
+                "Gereksinimler ekranında öğrenciyi gereksinimden hariç tutun)"
                 if isinstance(remaining, dict) and rem[s.id] < max(rem.values())
                 else ""
             )

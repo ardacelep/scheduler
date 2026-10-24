@@ -347,6 +347,10 @@ class Requirement:
     scope: str = SCOPE_ALL
     scope_value: str = ""  # grup no / sınıf adı / program kodu
     student_ids: list[str] = field(default_factory=list)  # SCOPE_STUDENTS
+    # Kapsamdan tek tek çıkarılanlar ("tüm öğrenciler, X ve Y hariç"). Sabit
+    # atamayla sezon sonuna kadar bir birime bağlanan öğrenci gereksinimi
+    # karşılayamaz; kalan 58 kişiyi tek tek seçmek yerine onu hariç tutmak.
+    excluded_ids: list[str] = field(default_factory=list)
     unit_keys: list[str] = field(default_factory=list)  # normalize edilmiş adlar
     min_count: int = 1  # bu birimlerden en az kaçı görülmeli
     severity: str = SEVERITY_REQUIRED

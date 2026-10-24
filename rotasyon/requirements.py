@@ -67,6 +67,8 @@ def applies_to(req: Requirement, student) -> bool:
         return False
     if not getattr(student, "active", True):
         return False
+    if student.id in req.excluded_ids:
+        return False
     if req.scope == SCOPE_ALL:
         return True
     if req.scope == SCOPE_GROUP:
@@ -167,6 +169,8 @@ def describe(req: Requirement, class_names=None) -> str:
         SCOPE_PROGRAM: PROGRAM_LABELS.get(req.scope_value, req.scope_value),
         SCOPE_STUDENTS: f"Seçili {len(req.student_ids)} öğrenci",
     }.get(req.scope, req.scope)
+    if req.excluded_ids and req.scope != SCOPE_STUDENTS:
+        who += f" ({len(req.excluded_ids)} öğrenci hariç)"
     units_text = ", ".join(req.unit_keys) if req.unit_keys else "(birim seçilmemiş)"
     kind = "zorunlu" if req.severity == SEVERITY_REQUIRED else "tercih"
     return f"{who} — {units_text} birimlerinden en az {req.min_count} — {kind}"

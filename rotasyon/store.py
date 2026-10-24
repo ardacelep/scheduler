@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 from typing import Callable, TypeVar
@@ -283,8 +284,10 @@ class SeasonManager:
             # taşınabilir. Tek istisna: tek tek öğrenci seçilmiş gereksinimler
             # — öğrenciler kopyalanmadığı için o id'ler yeni sezonda karşılıksız
             # kalırdı, bu yüzden atlanır.
+            # Aynı sebeple hariç tutulan öğrenci listesi de boşaltılır.
             carried = [
-                r for r in source.load_requirements() if r.scope != SCOPE_STUDENTS
+                replace(r, excluded_ids=[])
+                for r in source.load_requirements() if r.scope != SCOPE_STUDENTS
             ]
             if carried:
                 store.save_requirements(carried)
