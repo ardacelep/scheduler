@@ -28,7 +28,7 @@ def test_classic_names():
 
 def test_modern_names_supplement():
     """gender_guesser'ın eski sözlüğünde olmayan yeni kuşak isimleri."""
-    assert _g("VOLKAN ÖRNEK").gender == "K"
+    assert _g("SUDE KARACA").gender == "K"
     assert _g("ECRİN ARSLAN").gender == "K"
     assert _g("EYMEN KAYA").gender == "E"
     assert _g("MİRAÇ AKSOY").gender == "E"  # gender_guesser yanlış bilir

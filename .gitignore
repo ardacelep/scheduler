@@ -13,3 +13,11 @@ build/
 
 # Gerçek öğrenci verisi içeren örnek belgeler (T.C. no, isimler) — git dışı
 example/
+
+# Kökte duran Excel belgeleri gerçek veri olabilir — depoya girmez
+/*.xlsx
+/*.xls
+
+# Yerel geliştirme araçları / notlar
+.claude/
+rotasyon_projesi_claude_code_prompt.md

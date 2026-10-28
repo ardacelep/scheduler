@@ -230,7 +230,7 @@ def _read_separate_quota_sheet(wb, group_titles: dict[str, int]) -> list[Importe
 
 
 def read_rotation_workbook(path: str | Path) -> ImportResult:
-    """Referans formattaki (ARDA_ROTASYON.xlsx benzeri) dosyayı okur.
+    """Referans formattaki (ay sütunlu yıllık rotasyon tablosu) dosyayı okur.
 
     Ay başlığı içeren her sayfa bir grup rotasyon tablosu sayılır;
     "ÖRN.TEK AY HALİ" gibi tek ay sayfaları (ay sayısı < 5) atlanır.

@@ -25,9 +25,8 @@ from rotasyon.store import SeasonManager, Store
 
 # Veri klasörü. `ROTASYON_DATA_DIR` ortam değişkeni verilirse ona bakar:
 # geliştirme/deneme sırasında uygulamayı KULLANICININ gerçek `data/` klasörüne
-# dokunmadan çalıştırmak için. (Bir kez gerçek veri klasöründe deneme sezonu
-# kurup kullanıcının açık uygulamasıyla çakıştım; bu kapı o hatayı imkânsız
-# kılıyor.) Son kullanıcı bu değişkeni hiç görmez, varsayılan yine "data".
+# dokunmadan çalıştırmak için (deneme sezonu gerçek veriye karışmasın).
+# Son kullanıcı bu değişkeni hiç görmez, varsayılan yine "data".
 DATA_DIR = Path(os.environ.get("ROTASYON_DATA_DIR") or "data")
 SEED_DIR = Path("seed_data")
 

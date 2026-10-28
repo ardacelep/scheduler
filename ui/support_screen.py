@@ -1,7 +1,7 @@
 """🆘 Destek — uzaktaki geliştiriciyle ortak çalışma ekranı.
 
-Uygulamayı hastanede eğitim hemşiresi kullanıyor, geliştirici uzakta. Bu
-ekran ikisinin aynı şeyden söz edebilmesini ve gerektiğinde uzaktan bir
+Uygulama son kullanıcının bilgisayarında çalışır, bakımını uzaktaki bir
+geliştirici yapar. Bu ekran ikisinin aynı şeyden söz edebilmesini ve gerektiğinde uzaktan bir
 düzeltmenin **onaylanarak** uygulanmasını sağlar.
 
 Gizlilik: dışarı yalnız KİMLİKSİZ görüntü gider — isimler ve okul numaraları

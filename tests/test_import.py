@@ -1,4 +1,9 @@
-"""Referans ARDA_ROTASYON.xlsx üzerinden içe aktarım testleri."""
+"""Referans rotasyon belgesi üzerinden içe aktarım testleri.
+
+Belge gerçek öğrenci verisi içerdiği için depoda değildir (example/, git
+dışı); yoksa testler atlanır. Öğrenciler ADLA değil, belgedeki sıralarıyla
+seçilir: test dosyası kişisel veri taşımamalı.
+"""
 import pytest
 
 from rotasyon.excel_io import read_rotation_workbook
@@ -59,17 +64,17 @@ def test_rule17_ftr_pair_must_fill(dataset):
 
 
 def test_rule9_dis_exemption_from_side_note(dataset):
-    exempt = {s.full_name for s in dataset.students if s.dis_exempt}
-    assert "AYŞE ÖRNEK" in exempt
-    assert "BÜŞRA ÖRNEK" in exempt
+    exempt = [s for s in dataset.students if s.dis_exempt]
+    # ÖRN.1. GRUP'un ilk satırında "diş" yan notu var
+    assert dataset.students[0].dis_exempt
+    assert len(exempt) >= 2
     # "diş-geç" notu hem bayrak hem not olarak korunur
-    sude = next(s for s in dataset.students if s.full_name == "EZGİ DENEME")
-    assert sude.dis_exempt and "geç" in sude.note
+    assert any("geç" in s.note for s in exempt)
 
 
 def test_gender_inferred_from_gendered_cells(dataset):
-    irmak = next(s for s in dataset.students if s.full_name == "AYŞE ÖRNEK")
-    assert irmak.gender == FEMALE  # EYLÜL: "2.KAT DOĞUM k"
+    # ilk öğrencinin EYLÜL hücresi "2.KAT DOĞUM k"
+    assert dataset.students[0].gender == FEMALE
 
 
 def test_unresolved_cells_are_reported_not_dropped(dataset):

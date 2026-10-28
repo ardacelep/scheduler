@@ -76,8 +76,8 @@ class TestRoster:
         assert any("Cinsiyet" in w for w in ds.warnings)
 
     def test_student_no_captured(self, ds):
-        sude = next(s for s in ds.students if s.full_name == "VOLKAN ÖRNEK")
-        assert sude.student_no == "5"
+        assert all(s.student_no for s in ds.students)
+        assert ds.students[0].student_no.isdigit()
 
 
 # ---------- gerçek yıllık rotasyon dosyası (PSÇ/ÇPC formatı) ----------
@@ -104,9 +104,8 @@ class TestRealRotation:
     def test_class_from_text_column(self, ds):
         names = {c.name for c in ds.classes}
         assert {"12/A", "12/B", "12/C", "12/D", "12/E", "12/F"} <= names
-        yaren = next(s for s in ds.students if s.full_name == "YAREN ÖRNEK")
-        assert yaren.class_name == "12/A"
-        assert yaren.student_no == "1"  # föy no
+        ilk = next(s for s in ds.students if s.student_no == "1")  # föy no
+        assert ilk.class_name == "12/A"
 
     def test_gender_word_suffixes_parsed(self, ds):
         """'EFOR kız', 'ÜROLOJİ POL.erkek' gibi ekler kısıt olur."""

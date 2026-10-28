@@ -330,4 +330,5 @@ def test_readme_documents_the_writable_whitelist():
     metin = Path("README.md").read_text(encoding="utf-8")
     for ad in WRITABLE:
         assert f"`{ad}`" in metin, ad
-    assert "Öğrenci kayıtları uzaktan\ndeğiştirilemez" in metin
+    duz = " ".join(metin.split()).casefold()
+    assert "öğrenci kayıtları uzaktan değiştirilemez" in duz

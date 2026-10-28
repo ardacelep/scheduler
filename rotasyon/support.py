@@ -1,8 +1,8 @@
 """Uzaktan destek — kimliksiz anlık görüntü + kod eşleştirme.
 
-Uygulamayı hastanede eğitim hemşiresi kullanıyor, geliştirici uzakta. Bir
-sorun çıktığında geliştiricinin veriyi GÖRMESİ, çoğu zaman da DÜZELTMESİ
-gerekiyor. Ama `data/` klasöründe reşit olmayan öğrencilerin adları ve okul
+Uygulama son kullanıcının bilgisayarında çalışır, bakımını uzaktaki bir
+geliştirici yapar. Bir sorun çıktığında geliştiricinin veriyi GÖRMESİ, çoğu
+zaman da DÜZELTMESİ gerekir. Ama `data/` klasöründe reşit olmayan öğrencilerin adları ve okul
 numaraları var; bunları bir sunucuya taşımak ayrı bir sorumluluk.
 
 Çözüm: giden kopyadan kimlik bilgisi çıkarılır. Her öğrenciye **kalıcı bir

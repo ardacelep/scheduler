@@ -1,59 +1,54 @@
 # Staj Rotasyonu
 
-Hastane eğitim hemşiresi için hemşirelik/ebelik/sağlık-bakım öğrencilerinin
-aylık staj rotasyonlarını **kurallara uygun**, otomatik ve teknik bilgi
-gerektirmeden planlayan masaüstü uygulaması.
+Hemşirelik, ebelik ve sağlık bakım öğrencilerinin hastane birimlerindeki aylık
+staj rotasyonlarını **kurallara uygun** ve otomatik olarak planlayan masaüstü
+uygulaması. Teknik bilgi gerektirmeyecek şekilde tasarlanmıştır; arayüzü
+tamamen Türkçedir.
 
 - **Çözücü:** Google OR-Tools CP-SAT (sert kısıtlar + dengeleme/öncelik cezaları)
-- **Arayüz:** Streamlit — tamamı Türkçe, tarayıcıda açılır
-- **Veri:** `data/` klasöründe JSON; **her sezon kendi klasöründe**. Excel yalnız
-  içe/dışa aktarım formatıdır, birincil kaynak JSON'dur.
-- **Kişisel veri makineden çıkmaz:** cinsiyet tahmini dahil her şey çevrimdışıdır.
-  Tek istisna, açıkça kurulması gereken [uzaktan destek](#uzaktan-destek)
-  kanalıdır — o da yalnız **kimliksiz** görüntü gönderir: öğrenci adları ve
-  okul numaraları çıkarılır.
+- **Arayüz:** Streamlit — tarayıcıda açılır
+- **Veri:** `data/` klasöründe JSON; her sezon kendi klasöründe. Excel yalnız
+  içe/dışa aktarım biçimidir, birincil kaynak JSON'dur.
+- **Gizlilik:** kişisel veri makineden çıkmaz; cinsiyet tahmini dahil her işlem
+  çevrimdışıdır. Tek istisna, açıkça kurulması gereken
+  [uzaktan destek](#uzaktan-destek) kanalıdır ve o da yalnız **kimliksiz**
+  veri gönderir.
 
-İçindekiler: [Ne yapar](#ne-yapar) · [Kurulum](#kurulum-ve-çalıştırma) ·
-[Kullanım senaryoları](#kullanım-senaryoları) · [Ekranlar](#ekranlar) ·
-[Kurallar](#kurallar) · [Çözücü](#çözücü-nasıl-çalışır) ·
-[Kapasite denetimi](#kapasite-ön-denetimi) ·
-[Dinamik değişiklikler](#sezon-ortası-dinamik-değişiklikler) ·
-[Excel](#excel-içedışa-aktarım) · [Riskler](#i̇leriye-dönük-risk-denetimi) ·
-[Yedekleme](#yedekleme) · [Uzaktan destek](#uzaktan-destek) ·
-[Testler](#testler) ·
-[Windows dağıtımı](#windows-dağıtımı) · [Klasör yapısı](#klasör-yapısı)
+**İçindekiler:** [Özellikler](#özellikler) · [Kurulum](#kurulum) ·
+[Kullanım](#kullanım) · [Ekranlar](#ekranlar) · [Kurallar](#kurallar) ·
+[Kapasite planı](#kapasite-planı) · [Çözücü](#çözücü) ·
+[Ön-denetim ve risk analizi](#ön-denetim-ve-risk-analizi) ·
+[Excel](#excel-içedışa-aktarım) · [Yedekleme](#yedekleme) ·
+[Uzaktan destek](#uzaktan-destek) · [Dağıtım](#dağıtım) · [Testler](#testler) ·
+[Klasör yapısı](#klasör-yapısı)
 
 ---
 
-## Ne yapar
+## Özellikler
 
-Öğrenci listesini ve hastane birimlerini (kontenjan, cinsiyet kısıtı, branş,
-yoğunluk gibi özellikleriyle) girer; her ay için, tüm kurallara uyan bir
-öğrenci→birim ataması **otomatik** üretir. Sonuç önce **taslak** olarak
-gösterilir; siz inceleyip elle düzeltebilir, onaylayıp kaydedebilir ya da
-farklı bir dağılım isteyebilirsiniz. Bütün sezonu tek seferde de
-oluşturabilirsiniz.
-
-Uygulama, üretim sırasında değil **öncesinde** verinin sezon sonuna kadar
-matematiksel olarak taşınıp taşınmayacağını denetler (bkz.
-[kapasite denetimi](#kapasite-ön-denetimi)) ve rotasyon oluşturulduktan sonra
-tüm atamaları kurallara karşı bağımsızca doğrular.
+- Öğrenci listesi ve hastane birimleri (kontenjan, cinsiyet kısıtı, branş,
+  yoğunluk) üzerinden her ay için kurallara uyan öğrenci→birim ataması üretir.
+- Sonuç önce **taslak** olarak gösterilir; incelenip elle düzeltilebilir,
+  onaylanıp kaydedilebilir ya da farklı bir dağılım istenebilir.
+- Tek ay ya da kalan sezonun tamamı tek seferde üretilebilir.
+- Üretimden **önce**, verinin sezon sonuna kadar matematiksel olarak taşınıp
+  taşınmayacağını denetler; üretimden sonra tüm atamaları kurallara karşı
+  bağımsız bir denetleyiciyle doğrular.
+- Çözüm bulunamadığında hangi kuralların çeliştiğini somut Türkçe cümlelerle
+  açıklar.
+- Birden çok sezon (öğretim dönemi) yan yana tutulur; her sezonun verisi
+  bağımsızdır.
 
 ---
 
-## Kurulum ve çalıştırma
+## Kurulum
 
-> **Python sürümü önemlidir: 3.11 – 3.13 kullanın.**
-> OR-Tools **Python 3.14'te kuruluyor ve içe aktarılıyor, ama çözüm anında
-> süreci sessizce çökertiyor** (Windows'ta `0xC0000005` erişim ihlali).
-> Python seviyesinde hiçbir hata görünmez: uygulama aniden kapanır,
-> tarayıcıda alakasız bir "Failed to fetch dynamically imported module"
-> hatası çıkar. Sahada bir kez yaşandı; `baslat.bat` artık kurulumdan
-> hemen sonra çözücüyü sınayıp bu durumda net uyarı veriyor.
-> python.org 3.11/3.12 için artık kurulum dosyası yayınlamıyorsa
-> [uv](https://docs.astral.sh/uv/) ile kurun: `uv python install 3.12`.
-
-Geliştirme ortamında (Mac / Linux / Windows), Python 3.11+ ile:
+> **Python 3.11 – 3.13 kullanın.** OR-Tools Python 3.14'te kurulur ve içe
+> aktarılır, ancak çözüm sırasında süreci sessizce sonlandırır (Windows'ta
+> `0xC0000005` erişim ihlali). `baslat.bat` kurulumdan hemen sonra çözücüyü
+> sınar ve bu durumda açık bir uyarı verir. 3.11/3.12 kurulum dosyası
+> bulunamazsa [uv](https://docs.astral.sh/uv/) kullanılabilir:
+> `uv python install 3.12`.
 
 ```bash
 python3 -m venv .venv
@@ -61,653 +56,377 @@ python3 -m venv .venv
 .venv/bin/streamlit run app.py                 # Windows: .venv\Scripts\streamlit
 ```
 
-Tarayıcıda `http://localhost:8501` açılır. Hiç veri yoksa **"Örnek veriyle
-başla"** düğmesi hazır bir başlangıç doldurur; sıfırdan başlamak için doğrudan
-**Veri Yönetimi** veya **Excel İçe/Dışa Aktarım** ekranını kullanın.
+Uygulama `http://localhost:8501` adresinde açılır. Veri yoksa **"Örnek veriyle
+başla"** düğmesi hazır bir başlangıç verisi yükler (adlar uydurmadır). Sıfırdan
+başlamak için **Veri Yönetimi** veya **Excel** ekranı kullanılır.
 
-Alternatif olarak `python run_app.py` de çalışır: son kullanıcı başlatıcısının
-tamamını (boş port bulma, tarayıcı açma, günlük dosyası) kaynaktan da kullanır.
+`python run_app.py` son kullanıcı başlatıcısını (boş port bulma, tarayıcı açma,
+günlük dosyası) kaynaktan çalıştırır.
 
-Son kullanıcı (eğitim hemşiresi) hiçbir şey kurmaz; kendisine zip'lenmiş bir
-Windows paketi verilir — bkz. [Windows dağıtımı](#windows-dağıtımı). Uygulamanın
-içinde ayrıca Türkçe bir **❓ Yardım** ekranı vardır.
+Son kullanıcılar için iki dağıtım yolu vardır: tek klasörlük Windows paketi ya
+da her açılışta kendini güncelleyen kaynak kurulumu — bkz. [Dağıtım](#dağıtım).
+Uygulamanın içinde ayrıca Türkçe bir **❓ Yardım** ekranı bulunur.
 
 ---
 
-## Kullanım senaryoları
+## Kullanım
 
-Uygulama iki tipik akışı da aynı şekilde destekler:
+İki tipik akış desteklenir:
 
-1. **Sezon başından başlama.** Sezon başında gelen öğrenci listesini (SML tarzı
-   Excel) içe aktarırsınız → yeni sezon açılır, öğrenciler + sınıflar yüklenir,
-   cinsiyet isimlerden tahmin edilir. Birimleri önceki sezondan kopyalar veya
-   varsayılan katalogdan alırsınız. Sonra ay ay ya da toplu olarak rotasyon
-   üretirsiniz.
+1. **Sezon başından başlama.** Sezon başı öğrenci listesi (SML biçimi) veya
+   eşleşme rotasyon belgesi içe aktarılır → yeni sezon açılır, öğrenciler ve
+   sınıflar yüklenir, cinsiyet isimden tahmin edilir. Birimler önceki sezondan
+   ya da varsayılan katalogdan alınır. Ardından aylar tek tek ya da toplu
+   üretilir.
+2. **Sezon ortasından devam.** Bazı ayları dolu bir rotasyon dosyası içe
+   aktarılır → dolu aylar **geçmiş** kabul edilir, uygulama ilk boş aydan devam
+   eder. Geçmiş atamalar tekrar yasağı ve sezon zorunlulukları için girdi olur.
 
-2. **Sezon ortasından devam.** Elinizde bazı ayları dolu bir rotasyon Excel'i
-   varsa onu içe aktarırsınız → dolu aylar **geçmiş** kabul edilir, uygulama ilk
-   boş aydan itibaren devam eder. Geçmiş atamalar, tekrar yasağı ve sezon
-   zorunlulukları için girdi olarak kullanılır.
-
-Aylar **sırayla** planlanır (EYLÜL → HAZİRAN); bir ayı atlayıp sonrakine
-geçemezsiniz. Birden çok **sezon** (öğretim dönemi) yan yana tutulur; her
-sezonun verisi tamamen bağımsızdır.
+Aylar sırayla planlanır (EYLÜL → HAZİRAN).
 
 ---
 
 ## Ekranlar
 
-Sol kenar çubuğundan **sezon** seçilir, yeni sezon oluşturulur veya silinir
-(silme kalıcı değildir: sezon `data/trash/` altına taşınır, geri alınabilir).
+Sol kenar çubuğundan sezon seçilir, yeni sezon oluşturulur veya silinir
+(silinen sezon `data/trash/` altına taşınır, geri alınabilir).
 
 | Bölüm | Ekran | İşlev |
 |---|---|---|
-| **Kurulum** | **Kurulum Sihirbazı** | Sezonu kurmanın beş adımı sırayla; her adımın durumu VERİDEN okunur (öğrenciler → sınıf-grup → kapasite → gereksinimler → üretim) ve ilgili ekrana bağlantı verir |
-| | **Veri Yönetimi** | Sezondan sezona taşınan bilgiler: öğrenciler, birimlerin **kalıcı kimliği** (ad, grup, cinsiyet kısıtı, bölüm türü), sınıflar, özel kurallar, çözücü ayarları, **yedekleme/geri yükleme** |
-| | **Kapasite Planı** | Birim başına tek **doldurma politikası** (Tam dolmalı / Mümkünse / Havuz / Yedek / Serbest) + kontenjan; toplamın canlı aritmetiği, çelişki uyarıları ve el tablosunun "tekrarlı liste" hâli (aşağıda ayrıntı) |
-| | **Gereksinimler** | Sezon zorunluluklarını gelen öğrencilere göre tanımlama: **kime — hangi birimlerden — kaç kez** (aşağıda ayrıntı) |
-| **Planlama** | **Ana Sayfa** | Sezon özeti, ay bazında ilerleme tablosu, eksik veri uyarıları, hızlı erişim |
-| | **Yıllık Tablo** | Sezonun tamamı tek tabloda (öğrenci × ay); hücre düzeltme, sıradaki ayı doldurma **ve toplu oluşturma** (aşağıda ayrıntı) |
-| | **Kural Kontrolü** | Tek ekranda iki yandan sağlık kontrolü: kayıtlı atamaların kural denetimi **ve** kalan sezonun ileriye dönük risk analizi (+ deneme çözümü); ikisinin özeti en üstte birlikte |
-| **Araçlar** | **Excel** | İçe/dışa aktarım (tek seçimle ayrılır); rotasyon veya öğrenci listesi okuma, yıllık renkli ve tek-ay renksiz yazma |
-| | **Öğrenci Geçmişi** | Bir öğrencinin sezon boyunca gittiği birimler, ay sırasıyla |
-| | **Yardım** | Uygulama içi Türkçe kılavuz: adım adım başlangıç, ekran rehberi, SSS, sorun giderme |
-
-> Menü üç bölümdür: sezonu **kurma** işleri bir arada, sezonu **yürütme**
-> işleri bir arada, ara sıra kullanılanlar en altta. Eski "Rotasyon Oluştur"
-> ekranı Yıllık Tablo ile, "Grup Dağılımı" Kapasite Planı ile örtüştüğü için
-> kaldırıldı; işlevleri (toplu oluşturma, tekrarlı liste) kalan ekranlara
-> taşındı.
-
-### Toplu oluşturma (Yıllık Tablo'nun altında)
-
-Kalan bütün ayları tek seferde üretir; sonuç grup×ay tablosu + kural
-denetimiyle **taslak** olarak önizlenir, onaylayınca kaydedilir. Çözüm **arka
-planda** çalışır: bu sırada başka sayfalara geçebilir, hatta uygulamayı kapatıp
-açabilirsiniz — biten taslak siz onaylayana/silene kadar diskte saklanır.
-Sezon ortasından da çalışır: dolu aylar geçmiş kabul edilir.
+| **Kurulum** | Kurulum Sihirbazı | Sezonu kurmanın beş adımı (öğrenciler → sınıf-grup → kapasite → gereksinimler → üretim); her adımın durumu veriden okunur |
+| | Veri Yönetimi | Öğrenciler, birimler, sınıflar, çözücü ayarları, yedekleme/geri yükleme |
+| | Kapasite Planı | Birim başına doldurma politikası ve kontenjan; toplamın canlı aritmetiği ve çelişki uyarıları |
+| | Gereksinimler | Sezon zorunlulukları: **kime — hangi birimlerden — kaç kez** |
+| | Özel Kurallar | Ayrı tut, birlikte tut, birim yasağı, sabit atama |
+| **Planlama** | Ana Sayfa | Sezon özeti, ay bazında ilerleme, eksik veri uyarıları |
+| | Yıllık Tablo | Sezonun tamamı tek düzenlenebilir tabloda (öğrenci × ay); sıradaki ayı doldurma ve toplu oluşturma |
+| | Sezon Tablosu | El yapımı rotasyon belgelerinin salt-okunur karşılığı; iki grup alt alta |
+| | Kural Kontrolü | Kayıtlı atamaların kural denetimi ve kalan sezonun risk analizi (+ deneme çözümü) |
+| **Araçlar** | Excel | İçe/dışa aktarım |
+| | Öğrenci Geçmişi | Bir öğrencinin sezon boyunca gittiği birimler |
+| | Destek | Uzaktan destek kanalı (isteğe bağlı) |
+| | Yardım | Uygulama içi kılavuz |
 
 ### Yıllık Tablo
 
-Dışa aktarılan yıllık Excel görünümünün uygulama içi, **canlı ve tek parça
-düzenlenebilir** hâli — gerçek bir Excel tablosu gibi kullanılır. Satırlar
-öğrenci, sütunlar aylar; her hücre bir **açılır menüdür** (o ay gidilen birim).
-Geçmiş aylar da yeni ay taslağı da **aynı tablonun içinde** görünür, ayrı bir
-geçmiş/taslak tablosu yoktur:
+Dışa aktarılan yıllık Excel görünümünün uygulama içi, düzenlenebilir hâli.
+Satırlar öğrenci, sütunlar aydır; her hücre bir açılır menüdür. Geçmiş aylar ve
+yeni ay taslağı aynı tabloda görünür.
 
-- **Sıradaki boş ayı otomatik doldur** düğmesi, çözücünün ürettiği taslağı
-  doğrudan o ay sütununa yerleştirir.
-- Herhangi bir hücreyi (geçmiş dahil) doğrudan değiştirebilirsiniz; her
-  öğrencinin diğer aylardaki birimleri aynı satırda görünür, böylece tekrar
-  yasağına takılmadan, tüm sezon bağlamıyla karar verirsiniz.
+- **Sıradaki boş ayı otomatik doldur** çözücünün taslağını ilgili sütuna yerleştirir.
+- Her hücre (geçmiş dahil) doğrudan değiştirilebilir; öğrencinin diğer
+  aylardaki birimleri aynı satırda göründüğü için karar tüm sezon bağlamıyla
+  verilir.
+- Kaydedilmemiş değişiklikler sütun başlığında 🟡 ile işaretlenir. **Kaydet**
+  yalnız değişen ayları yazar ve tüm sezonu kurallara karşı denetler.
+- Renkli görünüm (salt-okunur) sınıf renkleriyle boyalı bir HTML tablodur;
+  yakınlaştırma ile sezonun tamamı tek ekrana sığdırılabilir.
 
-Kaydedilmemiş hücreler işaretlenir: ilgili ay sütunu başlığında 🟡, altta
-"N hücre kaydedilmedi" göstergesi. **Kaydet**, yalnız değişen ayları veriye
-yazar ve tüm sezonu kurallara karşı denetler (hatalar onay istemeden yazılmaz).
+### Toplu oluşturma
 
-**Görünüm ayarları** (🔧 Görünüm): sütun genişliği ve "tüm satırları göster".
-Ayrıca **renkli görünüm** (salt-okunur), sınıf renkleriyle boyalı, gerçek bir
-HTML tablodur ve **yakınlaştırma** kaydırıcısıyla (%40–%120) küçültülerek
-sezonun tamamı tek ekrana sığdırılabilir (yazdırmaya da uygun).
-
-> Notlar: (1) Streamlit'in düzenlenebilir tablosu tek tek hücreleri
-> renklendiremediği için taslak işareti hücre dolgusuyla değil sütun
-> başlığındaki 🟡 ve değişiklik sayacıyla verilir. (2) Düzenlerken tablo
-> verisi bir "nesil" boyunca sabit tutulur (düzenlemeler yalnız okunur, tabana
-> geri yazılmaz); böylece seçim ilk denemede uygulanır ve kaydırma konumu
-> sıfırlanmaz.
-
+Kalan bütün aylar tek seferde üretilir; sonuç grup × ay tablosu ve kural
+denetimiyle taslak olarak önizlenir, onaylanınca kaydedilir. Çözüm arka planda
+çalışır; bu sırada başka sayfalara geçilebilir, biten taslak onaylanana ya da
+silinene kadar diskte saklanır.
 
 ---
 
 ## Kurallar
 
-### Yerleşik kurallar (her zaman uygulanır)
+### Yerleşik kurallar
 
-Öğrenci ve birim tanımlarındaki alanlardan (cinsiyet, branş, yoğunluk,
-kontenjan, muafiyet…) beslenir; hem üretimde hem denetimde geçerlidir.
+Öğrenci ve birim alanlarından (cinsiyet, branş, yoğunluk, kontenjan,
+muafiyet…) beslenir; hem üretimde hem denetimde geçerlidir.
 
 1. Aynı bölüme ikinci kez gidilmez (ad bazında; "EKG k" = "EKG").
-2–3. Cinsiyet kısıtlı (kırmızı **k/e**) birimlere yalnız o cinsiyet.
+2–3. Cinsiyet kısıtlı (**k/e**) birimlere yalnız o cinsiyet atanır.
 4. Tekli birimler önce dolar; kalanlar havuz birimlerine dengeli dağılır.
 5. Gruplar bağımsızdır; öğrenci başka grubun birimine atanmaz.
-6. Sezon boyunca her öğrenci **bir cerrahi, bir dahili, bir yoğun bakım ve bir
-   palyatif** birim görür (branş bazlı zorunluluklar; o branş grupta yoksa
-   otomatik atlanır).
+6. Sezon boyunca her öğrenci bir cerrahi, bir dahili, bir yoğun bakım ve bir
+   palyatif birim görür (bkz. [Gereksinimler](#gereksinimler)).
 7. Ebelik öğrencileri sezonda doğum salonu görür.
 8. Yasaklı birimler (öğrenciye özel, tüm sezon).
 9. Diş Poliklinik muafiyeti.
 10–11. Serbest not ve gün bazlı görevlendirme notu.
 12. Aylık kontenjanlar düzenlenebilir ve aşılmaz.
-13–15. Sınıflar/renkleri; yıllık renkli ve tek-ay renksiz görünümler.
+13–15. Sınıflar ve renkleri; yıllık renkli ve tek-ay renksiz görünümler.
 16. Öğrenci geçmişi izlenir.
 17. FTR ve 2.KAT ÇOCUK-DOĞUM gibi çiftlere her ay **1 kız + 1 erkek** (tam dolar).
 18. Doğum birimlerinde ebelik öğrencisi önceliklidir.
 19. Aynı ikili birden fazla ay aynı birimde toplanmaz.
-20. Bir öğrenci peş peşe iki ay **yoğun** (veya peş peşe iki ay **hafif**) bölüme
-    verilmez.
+20. Bir öğrenci peş peşe iki ay **yoğun** (veya iki ay **hafif**) bölüme verilmez.
 21. Havuz birimlerinde kız/erkek dağılımı dengeli tutulur.
-- **Yedek (gri) birimlere** yalnız ihtiyaç olduğunda öğrenci verilir.
 
-Sert kurallar "hata", dengeleme/öncelik kuralları (4, 18, 19, 21) "uyarı"
-düzeyinde raporlanır.
+**Yedek** birimlere yalnız ihtiyaç olduğunda öğrenci verilir. Sert kurallar
+"hata", dengeleme/öncelik kuralları (4, 18, 19, 21) "uyarı" düzeyinde raporlanır.
 
-### Özel (kullanıcı tanımlı) kurallar
+### Özel kurallar
 
-**Kurulum ▸ 📏 Özel Kurallar** ekranından eklenir; **zaman kapsamı** taşıyabilir
+**Kurulum ▸ Özel Kurallar** ekranından eklenir ve zaman kapsamı taşıyabilir
 ("şu aydan itibaren / şu aya kadar"). Sezon ortasında eklenen bir kural
-**geçmiş, tamamlanmış ayları geriye dönük ihlal saymaz.**
+tamamlanmış ayları geriye dönük ihlal saymaz.
 
-- **Ayrı tut** — seçilen öğrenciler aynı birime düşmesin.
-- **Birlikte tut** — seçilen öğrenciler hep aynı birimde olsun.
-- **Birim yasağı** — bir/birkaç öğrenci belirli bir birime (belirtilen aydan
-  itibaren) gitmesin. Ad bazında çalışır (k/e varyantları dahil). Örn.
-  *"Ayşe 3. aydan sonra ameliyathane görmesin."* Kalıcı/tıbbi yasaklar için
-  Öğrenciler sekmesindeki "yasaklı birimler" alanı kullanılır.
-- **Sabit atama** — öğrenci belirli ay ya da **ay aralığında** belirli
-  birimde olsun (başlangıç + bitiş ayı, ikisi dahil).
+- **Ayrı tut** — seçilen öğrenciler aynı birime düşmez.
+- **Birlikte tut** — seçilen öğrenciler aynı birimde olur.
+- **Birim yasağı** — öğrenci(ler) belirli bir birime (belirtilen aydan
+  itibaren) gitmez. Kalıcı yasaklar için öğrencinin "yasaklı birimler" alanı
+  kullanılır.
+- **Sabit atama** — öğrenci belirli bir ay ya da **ay aralığında** belirli
+  birimde olur (başlangıç ve bitiş ayı dahil).
 
 #### Sabitlenen kazanır
 
-Elle hazırlanan tablolarda bir öğrencinin birkaç ay aynı birimde kalması
-olağan (*"Ocak ayına kadar DİŞ'te kalacak"*). Bu iki yerleşik kuralla doğrudan
-çelişir: aynı bölüme ikinci kez gidilmez (madde 1), peş peşe iki ay hafif
-bölüm olmaz (madde 20). Eskiden çözücü sonraki ayı hiç üretemiyor, sebep
-olarak alakasız kuralları sayıyordu.
-
-Öncelik kuralı: **sabitlenen hücre madde 1 ve madde 20'den muaftır.**
+Bir öğrencinin birkaç ay aynı birimde kalması (ör. "Ocak'a kadar DİŞ'te") iki
+yerleşik kuralla çelişir: tekrar yasağı (madde 1) ve peş peşe yoğun/hafif
+yasağı (madde 20). Öncelik kuralı: **sabitlenen hücre bu iki kuraldan
+muaftır**; muafiyet yalnız o hücreye aittir.
 
 | | Sabitlenen ay | Öğrencinin diğer ayları |
 |---|---|---|
-| Aynı bölüme tekrar (madde 1) | muaf — art arda aylar tek kalış sayılır | işler: kalıştan sonra o birime dönülmez |
-| Peş peşe yoğun/hafif (madde 20) | muaf — kalışın içi | işler: Ocak DİŞ (hafif) ise Şubat hafif olmaz; ihlal serbest aya yazılır |
-| Cinsiyet, kontenjan, yasaklı birim, diş muafiyeti | **esnemez** — çelişki öğrenci ve ay adıyla söylenir | işler |
+| Tekrar yasağı (madde 1) | muaf — art arda aylar tek kalış sayılır | geçerli: kalıştan sonra o birime dönülmez |
+| Peş peşe yoğun/hafif (madde 20) | muaf — kalışın içi | geçerli: ihlal serbest aya yazılır |
+| Cinsiyet, kontenjan, yasak, diş muafiyeti | **esnemez** — çelişki öğrenci ve ay adıyla bildirilir | geçerli |
 
-Sabitlenen aylar zorunluluk hesabına da katılır: Ocak'a kadar DİŞ'te kalan
-öğrencinin gereksinimlerini kapatmak için Şubat–Haziran kalır; yetmiyorsa
-ön-denetim bunu adıyla söyler. Sezon çözücüsü sabitlemeyi artık sessizce yok
-saymaz (eskiden tekrar yasağıyla çakışan sabitleme budanıp atlanıyordu).
+Sabitlenen aylar zorunluluk hesabına katılır: sabitleme yüzünden bir öğrencinin
+gereksinimlerini karşılayacak serbest ayı kalmıyorsa ön-denetim bunu adıyla
+bildirir ve çözüm yolunu (sabitlemeyi kısaltmak ya da öğrenciyi o gereksinimden
+hariç tutmak) gösterir.
 
-Neden kuralları topyekûn "esnetilebilir + ağırlıklı" yapmadık: o zaman çözücü
-kolayına geldiğinde **herkes için** kuralı çiğner ve bunu sessizce yapar.
-İstisna, kararı veren kişinin kararı olmalı; sabit atama bunu açıkça ifade
-eder.
+Kurallar topluca "esnetilebilir + ağırlıklı" yapılmamıştır: bu durumda çözücü
+kuralı herkes için ve sessizce çiğneyebilirdi. İstisna, kararı veren kişinin
+açık kararı olmalıdır; sabit atama bunu ifade eder.
 
-### Gereksinimler (v2 kural modeli)
+### Gereksinimler
 
-**Neden:** uygulama başta "kurallar sabit, öğrencileri optimal yerleştir"
-varsayımıyla kuruldu. Gerçek akış tersiymiş — **önce öğrenciler gelir,
-kullanıcı o sezonun kurallarını onlara göre belirler, sonra yerleştirme
-yapılır.** Ayrıca "şu öğrenciler şu birimleri görsün" demenin doğrudan yolu
-yoktu: birimlere branş atanıp o branş zorunlu tutuluyordu. Bu dolayım gizliydi,
-zorunluluğu **herkese** uyguluyordu ve tek istisna (ebelik → doğum salonu)
-**koda gömülüydü**.
-
-**Gereksinim** tek bir okunur cümledir: **kime — hangi birimlerden — kaç kez.**
+Gereksinim tek bir okunur cümledir: **kime — hangi birimlerden — kaç kez.**
 
 | Alan | Değerler |
 |---|---|
 | Kapsam (`scope`) | tüm öğrenciler · belirli grup · belirli sınıf · belirli program · seçili öğrenciler |
-| Birimler (`unit_keys`) | Birim **adları** (id değil) |
-| Sayı (`min_count`) | Listeden en az kaçı görülmeli |
+| Hariç tutulanlar (`excluded_ids`) | kapsamdan tek tek çıkarılan öğrenciler (ör. sezon sonuna kadar başka birime sabitlenenler) |
+| Birimler (`unit_keys`) | birim **adları** (id değil) |
+| Sayı (`min_count`) | listeden en az kaçı görülmeli |
 | Tür (`severity`) | zorunlu (sert kısıt) · tercih |
 
-Örnekler: *"Tüm öğrenciler — YB/B, YB/C, YB/D'den en az 1"*, *"D sınıfı —
-DOĞUM SALONU, 2.KAT DOĞUM'dan en az 1"*.
+Örnekler: *"Tüm öğrenciler — YB/B, YB/C, YB/D'den en az 1"*,
+*"Ebelik programı — DOĞUM SALONU, 2.KAT DOĞUM'dan en az 2"*.
 
-Üç tasarım kararı:
+Tasarım kararları:
 
-- **Birimler ada göre tutulur, id'ye göre değil.** Katalogda her birim adı
-  grup-1 ve grup-2 satırı olarak iki kez bulunur; ad üzerinden eşleşince motor
-  öğrencinin **kendi grubundaki** satırı otomatik seçer (kullanıcı 6 satır
-  seçmez, "YB/B" der) ve birimler yeniden içe aktarılıp id'ler değişse de kural
-  bozulmaz. Eşleştirme `normalize_key` ile — madde 1'in kullandığı semantiğin
-  aynısı.
-- **Branş silinmedi, geri plana çekildi.** Artık kural semantiği değil, birim
-  seçerken kullanılan bir hızlı-seçim etiketi.
-- **`ebelik → doğum` artık görünür bir satır** — düzenlenebilir, silinebilir.
+- **Birimler ada göre tutulur.** Katalogda her birim adı grup-1 ve grup-2
+  satırı olarak iki kez bulunur; ad üzerinden eşleşince öğrencinin kendi
+  grubundaki satır seçilir ve birimler yeniden içe aktarılıp id'ler değişse de
+  kural bozulmaz. Eşleştirme `normalize_key` ile yapılır (madde 1 ile aynı).
+- **Kapsam tek yerde hesaplanır** (`requirements.applies_to`): çözücü,
+  denetleyici ve kapasite hesabı aynı kaynaktan okur.
+- **Branş** bir kural değil, birim seçerken kullanılan hızlı seçim etiketidir.
 
-**Motor entegrasyonu:** v1 branş zorunlulukları ve v2 gereksinimleri ortak bir
-iç şekle (`_Obligation`: *etiket + aday birim id'leri + sayı*) derlenir; çözücü
-ve denetleyici yalnız bu şekli tanır, zorunluluğun nereden geldiğini bilmez.
-`solve_month` / `solve_season` / `check_all` / `plan_season` / `forward_risks` /
-`deep_feasibility` / `season_requirement_findings` **opsiyonel** bir
-`requirements` parametresi alır.
+**Motor entegrasyonu:** branş zorunlulukları (eski model) ve gereksinimler ortak
+bir iç şekle (`_Obligation`: etiket + aday birim id'leri + sayı) derlenir;
+çözücü ve denetleyici yalnız bu şekli tanır. Sezonda aktif gereksinim varsa
+motor onu kullanır, yoksa `settings.season_requirements` yolu çalışır
+(`requirements.active_requirements`). `tests/test_requirements_wiring.py` her
+giriş noktasının gereksinimleri taşıdığını doğrular.
 
-**Geçiş kuralı tek yerde** (`requirements.active_requirements`): sezonda tanımlı
-ve aktif gereksinim varsa motor onu kullanır, yoksa `settings.season_requirements`
-branş yolu çalışmaya devam eder. Böylece eski sezonlar hiç bozulmaz. Hangisinin
-geçerli olduğu Veri Yönetimi ▸ Ayarlar'da açıkça yazar.
+---
 
-> ⚠️ Bu parametre bir kez eklenip **hiçbir çağrı yerine geçirilmemişti**:
-> gereksinim ekranı çalışıyor görünüyor ama üretimi hiç etkilemiyordu (testler
-> `solve_season`'ı doğrudan çağırdığı için yakalayamamıştı).
-> `tests/test_requirements_wiring.py` artık motoru **UI'ın kullandığı üst
-> seviye yollardan** çağırır ve her giriş noktasının parametreyi taşıdığını
-> imza denetimiyle doğrular.
+## Kapasite planı
 
-### Doldurma politikası (kapasite planı)
-
-Bir birimin doldurulma davranışı veri modelinde **dört ayrı boolean**'a
-dağılmıştı (`must_fill`, `single_slot`, `pool`, `reserve`). Bunlar mantıken
-birbirini dışlar ama model bunu engellemiyordu; kullanıcı dört kutucuğu tek tek
-işaretliyor ve **toplamı hiçbir yerde göremiyordu**.
-
-`rotasyon/fill_policy.py` aynı veri üzerinde **tek seçimlik** görünüm sunar
-(şema değişmez, v1 ekranları aynı bayrakları görür):
+Birimin doldurma davranışı tek seçimlik bir **politika** ile tanımlanır
+(`rotasyon/fill_policy.py`):
 
 | Politika | Motordaki karşılığı |
 |---|---|
-| 🔒 **Tam dolmalı** | SERT: `doluluk == kontenjan` her ay (madde 17) |
-| 🎯 **Mümkünse dolsun** | YUMUŞAK: boş kalırsa `single_slot_fill` (50) cezası |
-| ⚖️ **Havuz** | YUMUŞAK: havuzlar arası doluluk farkı küçültülür (`pool_balance`, 5) |
-| 🅿️ **Yedek** | YUMUŞAK: her yerleştirme `reserve_use` (15) cezalı |
-| ○ **Serbest** | Tercih yok; yalnız kontenjan sınırı |
+| 🔒 Tam dolmalı | SERT: her ay doluluk = kontenjan |
+| 🎯 Mümkünse dolsun | YUMUŞAK: boş kalırsa ceza |
+| ⚖️ Havuz | YUMUŞAK: havuzlar arası doluluk farkı küçültülür |
+| 🅿️ Yedek | YUMUŞAK: her yerleştirme cezalı |
+| ○ Serbest | yalnız kontenjan sınırı |
 
-`policy_of()` bayraklardan politikayı okur (çakışmada en katı kazanır —
-katalogdaki FTR.ÜNİT hem `must_fill` hem `single_slot` taşır ve motorda zaten
-`must_fill` baskındır); `apply_policy()` dördünü tutarlı yazar.
-
-**Kapasite matematiği** (`group_capacity_plan`) kullanıcının elle tutturmaya
-çalıştığı hesabı otomatikleştirir: *tam dolanlar kaç kişi çekiyor → geriye kaç
-öğrenci kalıyor → havuz birimi başına kaç düşüyor*. Dört çelişkiyi kaydetmeden
-önce uyarır: tam dolanlar grubu aşıyor · tam dolanlar grubun tamamını tüketiyor
-· kontenjan öğrenci sayısının altında · kontenjan öğrenci sayısına tam eşit
-(her birim dolmak zorunda kalır, tekrar yasağıyla sezonu kilitler).
-
-**Bayat widget durumu:** bu ekranın widget'ları veriyi doğrudan yansıtır ve
-Streamlit, bir `key` session_state'te varsa onu `index=`/`value=`'ya **tercih
-eder**. `SeasonManager.create(copy_units_from=...)` birimleri AYNI id'lerle
-kopyaladığı için `cap_pol_{grup}_{birim_id}` anahtarları sezonlar arasında
-çakışıyordu: sezon değiştirince eski sezonun seçimi yeni sezonun verisini
-sessizce ezebiliyordu. Her iki v2 editörü de artık `clear_stale_state` ile
-veri değişiminde widget durumunu atıyor — kaynak her zaman disk
-(`tests/test_v2_stale_state.py`).
-
-Aynı aritmetik çözücünün ön-denetimine de eklendi: "tam dolmalı" toplamı grubu
-aşınca `solve_month` bunu **adıyla** söyler — önceden unsat core alakasız bir
-aile gösterebiliyordu ("elle sabitlenen atamalar", hiç kilitli hücre yokken).
+Kapasite aritmetiği (`group_capacity_plan`) şu hesabı otomatikleştirir: tam
+dolan birimler kaç kişi çekiyor → geriye kaç öğrenci kalıyor → havuz birimi
+başına kaç düşüyor. Kaydetmeden önce çelişkiler bildirilir (tam dolanlar grubu
+aşıyor, toplam kontenjan öğrenci sayısının altında vb.).
 
 ---
 
-## Çözücü nasıl çalışır
+## Çözücü
 
-Model, seçili grubun tek bir ayını çözer: geçmiş aylar **sabit girdidir**, o ay
-için öğrenci→birim ataması bulunur. Sert kısıtlar doğrudan, dengeleme/öncelik
-hedefleri (havuz dengesi, ebelik önceliği, tekrar eden ikili cezası, cinsiyet
-dengesi, yedek birim cezası, zorunlu branşı erkene çekme) ceza fonksiyonuyla
-kurulur. Çözüm bulunamazsa kısıt aileleri işaretlenip **hangi kuralların
-çeliştiği somut Türkçe cümlelerle** raporlanır — sessiz hata yoktur.
+Model seçili grubun tek bir ayını çözer: geçmiş aylar sabit girdidir. Sert
+kısıtlar doğrudan, dengeleme/öncelik hedefleri (havuz dengesi, ebelik önceliği,
+tekrar eden ikili, cinsiyet dengesi, yedek birim kullanımı, zorunlu branşı
+erkene çekme) ceza fonksiyonuyla kurulur. Çözüm yoksa kısıt aileleri
+varsayımlarla işaretlenir ve çelişen kurallar raporlanır.
 
-### Toplu üretim: açgözlü + emniyet ağı
+### Toplu üretim
 
-Ay ay çözüm "açgözlüdür": erken bir ayın tek başına kusursuz çözümü, ileriki bir
-ayı çıkmaza sokabilir. Toplu üretim bunu iki aşamayla ele alır:
+1. **Açgözlü yol** — aylar sırayla çözülür; bir ay tıkanırsa grubun kalanı
+   farklı tohumlarla yeniden denenir.
+2. **Ortak sezon çözücüsü** — açgözlü yol takılırsa bütün aylar tek modelde
+   çözülür: geçerli bir sezon varsa bulunur, yoksa çözümsüzlük kanıtlanır ve
+   neden raporlanır.
 
-1. **Açgözlü birincil yol** — aylar sırayla çözülür; bir ay tıkanırsa grubun
-   kalanı farklı tohumlarla birkaç kez yeniden denenir (hızlı ve yumuşak
-   hedeflerde iyi sonuç verir).
-2. **Ortak sezon çözücüsü (emniyet ağı)** — açgözlü bir ayda takılırsa devreye
-   girer: bütün ayları **tek modelde** çözer; geçerli bir sezon *varsa* onu
-   bulması garantidir (köşeye sıkışma imkânsız), *yoksa* çözümsüzlüğü kanıtlar
-   ve somut nedeni raporlar.
+### Süre yönetimi
 
-Böylece geçerli bir sezon varsa kullanıcı onu mutlaka alır; yumuşak kalite
-hiçbir zaman salt-açgözlüden kötü olmaz.
+CP-SAT'ın süre sınırı duvar saatiyle işler; yavaş makinede aynı sürede daha az
+arama yapılır. Bu nedenle:
 
-### Performans ve süre (eski makineler için)
-
-Uygulama **eski bir bilgisayarda** koşuyor ve CP-SAT'ın süre sınırı duvar
-saatiyle işler — yavaş makine aynı sürede daha az arama yapar. Bu yüzden süreler
-iki katmanlı ele alınır:
-
-**1. Başlangıç süreleri** (ölçülen değerin belirgin üstünde). Ölçüm bu makinede
-en iyi çözümün ilk 1–2 saniyede bulunduğunu gösterdi; varsayılan başlangıç
-**tek ay için 8 sn**, **tüm sezon için 90 sn**. Hızlı makinede zaten erken
-bitip süre harcanmaz.
-
-**2. Kademeli otomatik deneme.** Süre içinde sonuç alınamazsa (`UNKNOWN`)
-çözücü limiti büyütüp **kendiliğinden yeniden dener** — tek ayda 4× ve 8×,
-tüm sezonda 2× ve 4×. Böylece yavaş makine otomatik olarak daha çok süre alır
-ve kullanıcıya asla *"çözüm süresini artırın"* demek gerekmez (teknik bilgi
-ister: ne kadar artıracağını bilemez).
-
-`INFEASIBLE`'da **asla** tekrar denenmez: çözümsüzlük matematiksel bir kanıttır,
-uzatmak sonucu değiştirmez, yalnız kullanıcıyı bekletir.
-
-Kullanıcı arayüzünde saniye kutusu yoktur; *Veri Yönetimi ▸ ⚙️ Ayarlar*'da üç
-hazır kademe var — **⚡ Hızlı** (3/30 sn) · **⚖️ Dengeli** (8/90, önerilen) ·
-**🐢 Sabırlı** (20/240) — ve isteyen sayıyı elle de verebilir. Kademeli deneme
-sayesinde bu seçim bir üst sınır değil **başlangıçtır**.
-
-Derin risk analizi uzatmaya geçtiğinde bunu gösterir
-(*"🐢 Grup 1 zor çıktı — daha uzun deniyor (3/3, 8 sn)"*), böylece kullanıcı
-"hâlâ çalışıyor" ile "takıldı"yı ayırt eder. Süre yine yetmezse mesaj bir
-ayara değil **yapılabilir şeylere** yönlendirir: kontenjana pay bırakmak,
-bir gereksinimi *tercih*e çevirmek, ayları tek tek üretmek.
-
-- Sezon çözücüsü süreye sığmazsa açgözlü ay-bazlı yola geri düşülür.
-- **Tek iş parçacığı** (`num_workers=1`) kullanılır: bu boyuttaki modellerde tek
-  worker daha hızlıdır ve macOS'ta pandas/pyarrow ile yaşanan bir kilitlenmeyi
-  önler. Bu değerler sezonun ayarlarından değiştirilebilir.
-- "Farklı çözüm" düğmesi tohumu değiştirerek eş-değerli başka bir dağılım üretir.
+- Başlangıç süreleri ölçülen değerin belirgin üstündedir (tek ay 8 sn, sezon 90 sn).
+- Süre içinde sonuç alınamazsa (`UNKNOWN`) limit büyütülerek otomatik yeniden
+  denenir (tek ayda 4× ve 8×, sezonda 2× ve 4×). `INFEASIBLE` sonuç tekrar
+  denenmez; çözümsüzlük kesindir.
+- Ayarlarda üç hazır kademe vardır: Hızlı (3/30 sn), Dengeli (8/90 sn,
+  önerilen), Sabırlı (20/240 sn).
+- Tek iş parçacığı (`num_workers=1`) kullanılır: bu boyuttaki modellerde daha
+  hızlıdır ve macOS'ta pandas/pyarrow ile bilinen bir kilitlenmeyi önler.
+- "Farklı çözüm" düğmesi tohumu değiştirerek eşdeğer başka bir dağılım üretir.
 
 ---
 
-## Kapasite ön-denetimi
+## Ön-denetim ve risk analizi
 
-Rotasyon sayfasının üstündeki **Sezon Kapasite Denetimi**, üretime başlamadan
-önce verinin sezon **sonuna** kadar taşıyıp taşımayacağını ucuz aritmetikle
-hesaplar. Kritik bulgular giderilmezse rotasyon bir noktada matematiksel olarak
-tıkanır — bunu hiçbir çözücü aşamaz, o yüzden erkenden söylenir.
-
-Tipik tuzak: **toplam kontenjan öğrenci sayısına tam eşitse** her birim her ay
-dolmak *zorunda* kalır. Kontenjanı 4 olan DİŞ, tekrar yasağı gereği sezonda
-4 × ay = düzinelerce **farklı** öğrenci ister; uygun öğrenci bu kadar değilse
-sezon taşınamaz. Denetim bunu net bir öneriyle bildirir (örn. *"DİŞ: kalan 5 ay
-için 20 farklı öğrenci gerekir ama uygun yalnız 8 kişi var; kontenjanı en fazla
-1 yapın"*). Çözüm veri düzeyindedir: kontenjanı düşürmek veya toplam kontenjana
-birkaç kişilik **pay** bırakmak.
-
----
-
-## İleriye dönük risk denetimi
-
-`rules.py` bir kuralın **çiğnendiğini** yakalar. Ama bu projede asıl tehlike
-başka: bazı durumlar fark edildiğinde **telafisi kalmamış** olur — bir
-öğrencinin palyatif görmediği HAZİRAN'da anlaşılırsa yapılacak bir şey yoktur.
-`rotasyon/risk.py` aynı soruları **kalan aylara** bakarak sorar.
-
-İki kademe:
+`rules.py` bir kuralın çiğnendiğini yakalar. `capacity.py` ve `risk.py` ise aynı
+soruları **kalan aylara** bakarak sorar: bazı sorunlar fark edildiğinde
+telafisi kalmamış olur (ör. palyatif görmemiş bir öğrencinin Haziran'da fark
+edilmesi).
 
 | | `forward_risks` | `deep_feasibility` |
 |---|---|---|
-| Ne yapar | Saf aritmetik; kesin çelişkileri bulur | Kalan sezonu **gerçekten çözmeyi dener** |
-| Hız | Milisaniye | Grup başına dakikaya kadar |
-| Ne zaman | Her sayfa açılışında | Yalnız butonla |
-| Kapsam | Aşağıdaki R1–R5 + kapasite | Kombinatorik çıkmazlar dahil **her şey** |
-
-### Denetlenen riskler
+| Yöntem | Aritmetik; kesin çelişkileri bulur | Kalan sezonu gerçekten çözmeyi dener |
+| Süre | Milisaniye | Grup başına dakikaya kadar |
+| Ne zaman | Her sayfa açılışında | İstek üzerine, arka planda |
 
 | # | Risk | Düzey |
 |---|---|---|
-| — | Zorunlu branş yetişmiyor / o branşta gidilebilecek birim kalmamış | ❌ / ⚠️ |
-| — | `must_fill` birim kalan aylarda dolamaz; toplam kontenjan öğrenci sayısına tam eşit | ❌ / ⚠️ |
-| R1 | Grubun erişebildiği toplam kontenjan < gruptaki aktif öğrenci sayısı | ❌ |
-| R2 | Öğrencinin daha gitmediği **farklı** birim sayısı < kalan ay (madde 1 çıkmazı, ad bazında sayılır) | ❌ |
-| R3 | Sabit atama ileride çakışacak: birim pasif, öğrenci o bölüme başka ayda gidiyor, kontenjan aşımı, cinsiyet/grup/yasak uyuşmazlığı | ❌ |
-| R4 | "Birlikte tut": bu kişileri aynı anda alabilecek birim yok | ❌ |
-| R5 | Aynı ikili için hem "ayrı tut" hem "birlikte tut" tanımlı (pencereler kesişiyor) | ❌ |
+| — | Zorunluluk yetişmiyor / karşılayan birim kalmamış | ❌ / ⚠️ |
+| — | Tam dolmalı birim kalan aylarda dolamaz; toplam kontenjan öğrenci sayısına eşit | ❌ / ⚠️ |
+| R1 | Grubun toplam kontenjanı < aktif öğrenci sayısı | ❌ |
+| R2 | Öğrencinin gitmediği farklı birim sayısı < kalan ay | ❌ |
+| R3 | Sabit atama ileride çakışacak (pasif birim, kontenjan, cinsiyet, yasak…) | ❌ |
+| R4 | "Birlikte tut" grubunu alabilecek birim yok | ❌ |
+| R5 | Aynı ikili için hem "ayrı tut" hem "birlikte tut" | ❌ |
 
-Mesajlar öğrenci bazında değil **toplu** üretilir (ilk birkaç ad + *"ve N kişi
-daha"*), 64 kişilik sezonda panel okunabilir kalsın diye.
+Deneme çözümü bir grubu çözemediğinde somut **neden** ve **ne yapmalı**
+üretir (`risk.explain_infeasible_group`). Riskler kaydı engellemez; kararı
+kullanıcı verir.
 
-### Kullanıcı bunları nerede görür
+### Sezon ortası değişiklikler
 
-- **Ana Sayfa** — risk varsa kırmızı/sarı özet + Kural Kontrolü'ne bağlantı
-- **Yıllık Tablo** — üstte *🔎 Sezon ön-denetimi* paneli
-- **Kural Kontrolü** *(🔮 Kalan sezon bölümü)* — tam liste + **deneme çözümü**
-- **Veri Yönetimi ▸ Kurallar** — sabit atama / birlikte tut **eklenirken**
-  anlık uyarı (`fixed_assignment_conflicts`, `units_fitting_all`); uyarı
-  engellemez, sorunun oluşmasını önler
-
-### "Çözülemiyor" değil, "neden ve ne yapmalı"
-
-Deneme çözümü bir grubu çözemediğinde yalnız kırmızı bir "olmuyor" demez;
-`risk.explain_infeasible_group` ile **somut sebep + öneri** üretir. İki kaynak
-birleşir: (1) o gruba scope'lanmış `forward_risks` — mesajlar zaten
-"FTR.ÜNİT uygun 7 < gereken 10" gibi somut ve içinde `Çözüm: …` taşıyor,
-`_split_reason` bunu **Neden** ve **Ne yapmalı** diye ayırır; (2) aritmetik
-bir sebep yoksa (saf kombinatorik çıkmaz) aylar sırayla `solve_month` ile
-çözülüp ilk tıkanan ay teşhis edilir (her çözülen ay geçmişe eklenir; sezon
-çözümsüzse ilerlemeli çözüm bir ayda mutlaka tıkanır). Sonuç ekranı grup
-başına kart: **✅ tamamlanabilir** / **❌ Neden + Ne yapmalı** / **⏳ süre
-yetmedi**.
-
-### İki tasarım kararı
-
-**`risk.py` ortools'u modül düzeyinde import etmez.** Panel her sayfa
-açılışında render edilir; çözücünün bozuk olduğu bir kurulumda (bkz. Python
-3.14 uyarısı) panelin uygulamayı düşürmemesi gerekir. `solve_season` yalnız
-`deep_feasibility` içinde, tembel yüklenir.
-
-**Deneme çözümü arka plan thread'inde çalışır.** Önce senkron yazılmıştı;
-ölçümde Streamlit'in tüm sunucusunu bloke ettiği ve tarayıcının *"Is Streamlit
-still running?"* hatası bastığı görüldü — kullanıcı uygulamanın çöktüğünü
-sanar. Artık `ui/violations.py:_RISK_JOBS` + `st.fragment(run_every=2.0)`
-deseniyle (toplu üretimdeki `_BULK_JOBS` ile aynı mantık) arka planda koşar,
-canlı ilerleme çubuğu gösterir (`deep_feasibility(on_group=…)`) ve bu sırada
-uygulama tamamen kullanılabilir kalır. Thread hiçbir `st.*` çağrısı yapmaz.
-Sonuç, çalıştırıldığı andaki `data_fingerprint` ile mühürlenir; veri sonradan
-değişirse sonuç **"güncel değil"** damgasıyla gösterilir (sessizce eski sonucu
-göstermez).
-
-Riskler kaydı **engellemez** — bilgilendirmedir, kararı kullanıcı verir.
-
-> **Kaydet butonları:** düzenleme tabloları (Öğrenciler/Birimler), Ayarlar ve
-> yasaklı-birim kaydı, **gerçek bir değişiklik yoksa pasiftir**
-> (`edited.equals(df)` / mevcut ayarla kıyas) — Yıllık Tablo'daki
-> `disabled=changed_cells == 0` deseninin genele yayılmış hâli.
-
----
-
-## Sezon ortası dinamik değişiklikler
-
-Her ay çözümü güncel kuralları ve birim tanımlarını **taze** okuduğu, geçmişi
-sabit tuttuğu için değişiklikler ileriye dönük uygulanır:
-
-- **Kontenjan / kısıt değişikliği** (Veri Yönetimi) sonraki ay çözümlerine
-  otomatik yansır; geçmiş yeniden yazılmaz.
-- **Öğrenci ayrılması:** öğrenci *silinmez*, Öğrenciler tablosundaki **"Aktif"**
-  işareti kaldırılır. Böylece geçmiş atamaları ve denetim referansları korunur,
-  yalnız yeni aylara atanmaz. (Silmek geçmişi bozar; ayrılma için "Aktif"i
-  kaldırmak doğrudur.) Sezon ortasında **katılan** öğrenci bir sonraki aydan
-  itibaren otomatik planlanır.
-- **Zaman kapsamlı özel kurallar** yalnız pencereleri içindeki ayları etkiler;
-  tamamlanmış geçmişi ihlal saymaz.
-- Bir birimin **kontenjanı/kısıtı sonradan değişirse**, o yüzden artık geçerli
-  görünmeyen *tamamlanmış* aylar kural denetiminde "hata" değil açıklamalı
-  "uyarı" olarak gösterilir — geçmiş yeniden yazılmaz, yeni kayıt da bloklanmaz.
+- Kontenjan / kısıt değişiklikleri sonraki aylara yansır; geçmiş yeniden yazılmaz.
+- Ayrılan öğrenci silinmez, **pasif** yapılır; geçmişi korunur.
+- Sonradan değişen kontenjan/kısıt yüzünden geçersiz görünen tamamlanmış aylar
+  "hata" değil açıklamalı "uyarı" olarak gösterilir.
 
 ---
 
 ## Cinsiyet tahmini
 
-Öğrenci listelerinde cinsiyet çoğu zaman yoktur. Uygulama isimden **çevrimdışı**
-tahmin eder: ~750 isimlik Türkçe sözlük + `gender_guesser` + bileşik ad
-ayrıştırması (ör. `-nur/-naz → K`, `-han/-alp → E`). Kesinliği yüksek (≥%80)
-olanlar otomatik doldurulur; belirsiz/çift cinsiyetli isimler (Deniz, Ömür,
-İlkay…) kullanıcı onayına bırakılır ve kesinlik yüzdesiyle listelenir. Hiçbir
-isim harici servise gönderilmez.
+Öğrenci listelerinde cinsiyet çoğu zaman bulunmaz. Uygulama isimden
+**çevrimdışı** tahmin eder: Türkçe isim sözlüğü + `gender_guesser` + bileşik ad
+ayrıştırması (ör. `-nur/-naz → K`, `-han/-alp → E`). Kesinliği yüksek olanlar
+otomatik doldurulur; belirsiz isimler kullanıcı onayına bırakılır. Hiçbir isim
+harici bir servise gönderilmez.
 
 ---
 
 ## Excel içe/dışa aktarım
 
-Dosya türü otomatik algılanır ve **birleştirme yapmaz, açık onaylı topyekûn
-değiştirir**:
+Dosya türü otomatik algılanır. İçe aktarım birleştirme yapmaz; açık onayla
+ilgili veriyi değiştirir, eski veri `.json.bak` dosyalarında tutulur.
 
-- **Eşleşme rotasyon dosyası** (sezon başı belgesi — sayfa başında
-  "A-B EŞLEŞMESİ", altında birim bloğu): **öğrenciler ve birim kataloğu**
-  alınır, elle yazılmış serbest kurallar alınmaz (Gereksinimler / Özel Kurallar
-  ekranlarından kurulur). Ayrıntı aşağıda.
-- **Rotasyon dosyası** (ay sütunlu tablo): aktif sezonun tüm verisini (öğrenci,
-  birim, sınıf, atama) dosyadakiyle değiştirir. Dolu aylar sezonun geçmişi olur;
-  boş aylar boş kalır (yarım sezon dosyası aktarıp kalanı uygulamada üretmek bu
-  sayede çalışır).
-- **Öğrenci listesi** (SML tarzı): ya yeni sezon açar ya da aktif sezona aktarır;
-  ikinci durumda öğrenci/sınıf değişir ve o sezonun atamaları silinir, birimler
-  korunur.
+- **Eşleşme rotasyon belgesi** (sayfa başında "A-B EŞLEŞMESİ", altında birim
+  bloğu): öğrenciler ve birim kataloğu alınır; serbest metin kurallar
+  Gereksinimler / Özel Kurallar ekranlarından kurulur.
+- **Rotasyon dosyası** (ay sütunlu tablo): sezonun tüm verisi (öğrenci, birim,
+  sınıf, atama) dosyadakiyle değiştirilir; dolu aylar geçmiş olur.
+- **Öğrenci listesi** (SML biçimi): yeni sezon açar ya da aktif sezona aktarır.
 
-Her ikisi de kırmızı uyarı + onay kutusu ister; eski veri `.json.bak`
-dosyalarında tutulur.
+**Dışa aktarım:** yıllık renkli grup görünümü (sınıf renkleri, cinsiyet kısıtlı
+birimlerde `(Kız)`/`(Erkek)` eki) ve yazdırmaya uygun tek-ay renksiz görünüm.
+Yıllık dosya tekrar içe aktarılabilir.
 
-**Dışa aktarım:** yıllık renkli grup görünümü (sınıf renkleri + cinsiyet
-kısıtlı birimlerde kırmızı `(Kız)`/`(Erkek)` eki) ve tek-ay renksiz görünüm.
-Yıllık dosya **tekrar içe aktarılabilir**; tek-ay görünümü yazdırma amaçlıdır.
+### Eşleşme rotasyon belgesi
 
-Birim özellikleri (yoğunluk, branş) içe aktarılan dosyalarda bulunmadığında
-**varsayılan katalog** ile isim eşleşmesinden otomatik zenginleştirilir.
-
-### Eşleşme rotasyon dosyası
-
-Eğitim hemşiresinin sezon başında hazırladığı belge (`AB-CD ROTASYON.xlsx`
-gibi). Her sayfa bir grup eşleşmesidir; genel rotasyon okuyucusu bu belgeyi
-yanlış okuyordu (alttaki kural bloğunu da öğrenci sanıp 61 kişilik dosyadan
-130 öğrenci çıkarıyordu), bu yüzden ayrı bir okuyucusu var
-(`rotasyon/pairing_import.py`).
+Her sayfa bir grup eşleşmesidir ve ayrı bir okuyucuyla işlenir
+(`rotasyon/pairing_import.py`):
 
 | Belgede | Uygulamada |
 |---|---|
-| Sayfa sırası (PSÇ, ÇPC) | grup 1, grup 2 |
-| "A-B EŞLEŞMESİ" + ad hücresi renkleri | sınıf harfi ve rengi (renklerin görülme sırası ↔ başlıktaki harf sırası) |
+| Sayfa sırası | grup 1, grup 2 |
+| "A-B EŞLEŞMESİ" + ad hücresi renkleri | sınıf harfi ve rengi |
 | "PAZARTESİ/SALI/ÇARŞAMBA" | grubun gün etiketi |
 | Ad sonunda ` k` / ` e` | cinsiyet (kalanlar isimden tahmin edilir) |
-| Kural bloğu: `ALÇI ODASI e` · `1 ERKEK ÖĞRENCİ` · `HAFİF BÖLÜM` | birim, kontenjan, cinsiyet kısıtı, yoğunluk |
+| Birim bloğu: `ALÇI ODASI e` · `1 ERKEK ÖĞRENCİ` · `HAFİF BÖLÜM` | birim, kontenjan, cinsiyet kısıtı, yoğunluk |
 | `CERRAHİ BRANŞ` / `DAHİLİ BRANŞ` | branş |
-| `BU GRUPTA ÖĞRENCİ VERME` | o grupta pasif |
-| Sağdaki BÖLÜMLER listesinde **gri** boyalı birim | o grupta pasif (birim bloğu başka bir sayı yazsa bile; çelişki önizlemede söylenir) |
-| Kontenjan yerine kişi adları | yer çizelgesindeki satır sayısı |
-| `4.KAT DAH.`, `DOĞ.SAL-Y.DOĞ`, `ECZ. SARF` | katalogdaki kanonik ad (gereksinimler adla eşleştiği için şart) |
+| `BU GRUPTA ÖĞRENCİ VERME` ya da BÖLÜMLER listesinde gri birim | o grupta pasif |
+| `4.KAT DAH.`, `DOĞ.SAL-Y.DOĞ` gibi kısaltmalar | katalogdaki kanonik ad |
 
-- **Birimler katalog üzerine uygulanır:** belgede olmayan özellikler (doldurma
-  politikası, ebelik önceliği) katalogdan korunur; katalogda olup belgede
-  geçmeyen birimler o grupta pasif olur.
-- **Tutarsızlıklar söylenir:** kural bloğundaki kişi sayısı ile sağdaki yer
-  çizelgesi uyuşmuyorsa, bir birim yalnız birinde geçiyorsa ya da ad renkleri
-  başlıktaki eşleşmeye oturmuyorsa önizlemede uyarı çıkar.
-- **Bölüm (program) sorulur:** belge taşımıyor ve gereksinimler buna göre
-  uygulanıyor. Ebelik öğrencilerine gereksinim tanımlıyken hiçbir sınıf ebelik
-  seçilmemişse önizleme uyarır — yoksa o gereksinim sessizce kimseye
-  uygulanmazdı.
-- **Hedef:** yeni sezon (önerilen) ya da atama kaydı olmayan aktif sezon.
-  Atamalı bir sezonun öğrenci listesi değiştirilmez.
+Birimler katalog üzerine uygulanır; belgede olmayan özellikler katalogdan
+korunur. Belge içi tutarsızlıklar (kontenjan ile yer çizelgesi uyuşmazlığı,
+renk/başlık uyuşmazlığı) önizlemede bildirilir. Öğrencilerin programı belgede
+bulunmadığı için içe aktarım sırasında sınıf bazında sorulur.
 
-### Varsayılan birim kataloğu nereden geliyor
+### Varsayılan katalog
 
-`rotasyon/data/default_units.json` — yeni sezon açılırken kopyalanacak bir
-önceki sezon yoksa başlangıç noktası. Kişisel veri içermez, depoda izlenir.
-
-Yanında **`rotasyon/data/default_requirements.json`** durur: belgelerde yazılı
-sezon kuralları hazır **gereksinim** olarak gelir. Varsayılan katalogdan sezon
-açtığınızda birimlerle birlikte bu kurallar da kurulur (`create_season_with_units`),
-kullanıcı her sezon aynı beş-altı kuralı elle tanımlamak zorunda kalmaz:
+`rotasyon/data/default_units.json` (birimler) ve
+`rotasyon/data/default_requirements.json` (gereksinimler), önceki sezonu
+olmayan yeni sezonların başlangıç noktasıdır; kişisel veri içermez.
 
 | Gereksinim | Kime | Birimler | En az |
-|---|---|--:|--:|
+|---|---|---|--:|
 | Cerrahi branş | tüm öğrenciler | 1.KAT CERR, 6.KAT CERR | 1 |
 | Dahili branş | tüm öğrenciler | 3.KAT NOR, 4.KAT DAHİLİYE, ZEMİN ENF+DAH | 1 |
 | Yoğun bölüm | tüm öğrenciler | 5/7.KAT PALYATİF, 6.KAT CERR, ACİL, YB/B-C-D | 1 |
 | Yoğun bakım | tüm öğrenciler | YB/B, YB/C, YB/D | 1 |
 | Palyatif | tüm öğrenciler | 5.KAT PALYATİF, 7.KAT PALYATİF | 1 |
-| Ebelik → doğum | program = ebelik | DOĞUM SALONU-YENİ DOĞAN, 2.KAT DOĞUM | **2** |
+| Ebelik → doğum | program = ebelik | DOĞUM SALONU-YENİ DOĞAN, 2.KAT DOĞUM | 2 |
 
-İki ayrıntı belgelerin dilinden geliyor: YB kuralı *"YB/B, YB/C, YB/D"* üçünden
-**birini** ister (kullanıcı doğruladı), doğum kuralı ise *"DOĞ.SAL'ı **VE**
-2.KAT DOĞUM'u"* — **ikisini de** (`min_count=2`). Belgeler "pembe D sınıfı"
-diyor; uygulamada bu **program = ebelik** olarak yazılır (D sınıfı = ebelik
-öğrencileri, gerçek veride birebir örtüşüyor) çünkü program kapsamı sınıf
-ADINA bağımlı değildir ve sonraki sezonlarda da geçerli kalır.
-
-Belgelerdeki dördüncü kural (*peş peşe yoğun/hafif bölüm yasağı*) gereksinim
-değil, birim **yoğunluğu** ile uygulanır (madde 20).
-
-Kaynak: **`scripts/catalog_from_rotations.py`**, eğitim hemşiresinin elle
-hazırladığı üç sınıf-eşleştirme senaryosunu okur
-(`example/{AB-CD,AC-BD,AD-BC} ROTASYON.xlsx`). Her sayfanın öğrenci listesinin
-altında yetkili bir blok var: *birim adı (k/e ekli) · kontenjan (yazıyla) ·
-`CERRAHİ/DAHİLİ BRANŞ` · `YOĞUN/HAFİF BÖLÜM`*, ve `BU GRUPTA ÖĞRENCİ VERME`
-satırı o grupta pasif demek.
-
-Bu script eski `build_catalog.py`'nin yerini aldı. Eski kaynak
-(`BÖLÜMLER VE ÖZELLİKLERİ.xlsx`) **kontenjan vermiyordu**, bu yüzden havuz
-birimlerine `POOL_QUOTA_DEFAULT = 3` diye tahmin yazılıyordu; gerçek
-rotasyonlar kat servislerinin **1-2 kişi** aldığını gösterdi. Katalog gerçeğin
-iki-üç katıydı ve bu, sezonlarda büyük yapay fazlalık üretiyordu.
-
-Kontenjan kararı **senaryolar arası maksimum**: sekiz birim (kat servisleri +
-ACİL + FTR) grup büyüklüğüne göre 1↔2 oynuyor. Kontenjan bir ÜST SINIR
-olduğundan maksimum yazmak büyük grubu tam karşılar, küçük grupta ise çözücü
-hepsini doldurmaz (havuz politikası kalanı dengeli dağıtır). Tersi büyük grubu
-kapasitesiz bırakırdı.
+Katalog `scripts/catalog_from_rotations.py` ile örnek rotasyon belgelerinden
+üretilir. Kontenjanlar senaryolar arası maksimumdur: kontenjan bir üst sınır
+olduğundan büyük grup tam karşılanır, küçük grupta havuz politikası kalanı
+dengeli dağıtır.
 
 ---
 
 ## Yedekleme
 
-*Veri Yönetimi ▸ 💾 Yedekleme* sekmesi, kullanıcıyı dosya sistemine hiç
-sokmadan yedek aldırır: tek sezon veya tüm sezonlar tek `.zip` olarak indirilir,
-aynı sekmeden geri yüklenir. Mantık `rotasyon/backup.py` içinde saftır ve
-testlidir.
+*Veri Yönetimi ▸ 💾 Yedekleme* tek sezonu veya tüm sezonları `.zip` olarak
+indirir ve aynı yerden geri yükler (`rotasyon/backup.py`).
 
-Tasarım kararları:
-
-- **Geri yükleme asla üzerine yazmaz.** Yedek her zaman **yeni sezon** açar; ad
-  çakışırsa sonuna `(2)` eklenir. Yanlış dosyayı yüklemek mevcut veriyi bozamaz.
-- Zip'e yalnız gerçek veri dosyaları girer; türetilmişler (`.bak`, `.tmp`,
-  `draft_bulk`, günlükler, kilit dosyası) dışarıda kalır.
-- Zip içinde `yedek.json` künyesi bulunur (tür, sezon, tarih). Künyesi olmayan,
-  kullanıcının elle zip'lediği sezon klasörü de kabul edilir.
-- Geri yüklemeden önce içerik özeti gösterilir (kaç öğrenci / birim / atama).
-- Bozuk JSON içeren yedek reddedilir, yarım sezon oluşturulmaz.
+- Geri yükleme hiçbir zaman üzerine yazmaz; her zaman **yeni sezon** açar.
+- Zip'e yalnız gerçek veri dosyaları girer; türetilmiş dosyalar (`.bak`,
+  `.tmp`, taslaklar, günlükler) dışarıda kalır.
+- Geri yüklemeden önce içerik özeti gösterilir; bozuk JSON içeren yedek reddedilir.
 
 ---
 
 ## Uzaktan destek
 
-Uygulamayı hastanede eğitim hemşiresi kullanıyor, geliştirici uzakta. Bu kanal
-geliştiricinin **durumu görmesini** ve gerektiğinde **onaylanan** bir düzeltme
-göndermesini sağlar. Varsayılan olarak **kapalıdır**; kurulmadıkça hiçbir şey
-hiçbir yere gitmez.
+Uygulama son kullanıcının bilgisayarında çalışırken bakımı uzaktan yapabilmek
+için isteğe bağlı bir kanal. Varsayılan olarak **kapalıdır**.
 
-### Ne gider, ne gitmez
-
-| Gider | Gitmez |
+| Gönderilir | Gönderilmez |
 |---|---|
-| Destek kodu (`Ö-07`), sınıf, grup, cinsiyet, bölüm | **Ad soyad** |
-| Birimler, kontenjanlar, politikalar | **Okul / föy numarası** |
-| Gereksinimler, özel kurallar, ayarlar | **Not metni** (yalnız "not var" bilgisi gider) |
+| Destek kodu (`Ö-07`), sınıf, grup, cinsiyet, program | Ad soyad |
+| Birimler, kontenjanlar, politikalar | Okul / föy numarası |
+| Gereksinimler, özel kurallar, ayarlar | Not metni (yalnız "not var" bilgisi) |
 | Atamalar (id bazlı) | |
 
-Her öğrenciye **kalıcı** bir destek kodu verilir. Kod uygulamada adın yanında
-görünür (Destek ekranı ve Sezon Tablosu), dışarı yalnız kod gider. Telefonda
-"Ö-07" denince iki taraf da aynı kişiden söz eder; Destek ekranındaki arama
-kutusu iki yönde de çalışır (koddan ada, addan koda).
+- Her öğrenciye kalıcı bir destek kodu verilir; kod uygulamada adın yanında
+  görünür, dışarı yalnız kod gider.
+- Gönderimden önce **sızıntı denetimi** yapılır: görüntüde bir öğrenci adı veya
+  numarası kalmışsa gönderim yapılmaz.
+- Geliştirici yalnız `units`, `requirements`, `custom_rules`, `settings`,
+  `assignments` dosyalarını gönderebilir; öğrenci kayıtları uzaktan
+  değiştirilemez.
+- Gelen düzeltme **asla sessizce uygulanmaz**: ne yapacağı listelenir, veri
+  sonradan değiştiyse uyarılır, onaylanınca önce yedek alınır, sonra yazılır.
 
-Gönderimden önce **sızıntı denetimi** yapılır: görüntüde herhangi bir öğrenci
-adı veya numarası kalmışsa gönderim hiç yapılmaz. Öğrenci modeline yeni bir
-alan eklenip beyaz liste (`support.STUDENT_PUBLIC`) güncellenmediğinde tek
-koruma budur.
-
-### Düzeltme yönü
-
-Geliştirici yalnız şu dosyaları gönderebilir: `units`, `requirements`,
-`custom_rules`, `settings`, `assignments`. **Öğrenci kayıtları uzaktan
-değiştirilemez** — elinde isim olmadığı için zaten gönderemez; bu, kısıtın
-tesadüfen değil yapısal olarak sağlanması demektir.
-
-Gelen düzeltme **asla sessizce uygulanmaz**:
-
-1. Kullanıcı "yeni düzeltme var mı" der (ya da uygularken görür),
-2. paketin **ne yapacağı** yazılı olarak listelenir,
-3. paket hazırlandıktan sonra veride değişiklik olmuşsa **uyarı** çıkar,
-4. onaylanınca önce **yedek alınır** ve kullanıcıya indirtilir,
-5. sonra yazılır; aynı paket bir daha teklif edilmez.
-
-### Kurulum (bir kez, geliştirici yapar)
-
-1. **Ayrı** bir private depo aç (örn. `rotasyon-destek`). Kod deposuyla aynı
-   olmamalı: kodu klonlayan herkes hasta verisi görmesin.
-2. GitHub'da **fine-grained** bir token üret: yalnız o depo, `Contents: Read
-   and write`. Kod deposunun tokeni salt okunur kalsın.
-3. Uygulamada *Araçlar ▸ 🆘 Destek ▸ Kanal ayarları*'na şu adresi yaz ve
-   "Kanal açık"ı işaretle:
-   `https://x-access-token:TOKEN@github.com/KULLANICI/rotasyon-destek.git`
-
-Adres `data/support.json` dosyasına yazılır; `data/` git dışı olduğu için
-token asla depoya sızmaz.
-
-### Geliştirici tarafı
+**Kurulum:** kod deposundan **ayrı, private** bir veri deposu açılır; yalnız o
+depoya `Contents: Read and write` izni olan fine-grained bir token üretilir ve
+*Araçlar ▸ 🆘 Destek ▸ Kanal ayarları*'na
+`https://x-access-token:TOKEN@github.com/KULLANICI/DEPO.git` biçiminde yazılır.
+Adres `data/support.json` dosyasında durur; `data/` git dışıdır.
 
 ```
 python scripts/admin_support.py durum  <depo>                    # özet
@@ -715,14 +434,60 @@ python scripts/admin_support.py doku   <depo>                    # ham JSON klas
 python scripts/admin_support.py gonder <depo> <sezon> <açıklama> <dosya.json>
 ```
 
-`<dosya.json>` yalnız yazılabilir dosyaları içerir, örn.
-`{"units": [ ... ]}`. Açıklama zorunludur — kullanıcının onaylarken göreceği
-metin odur.
+Kanal açılmadan önce uygulamayı kullanan kişi, kimliksiz bir kopyanın
+paylaşılacağı ve düzeltmelerin onayına sunulacağı konusunda bilgilendirilmelidir.
 
-> Kanalı açmadan önce uygulamayı kullanan kişiye söyleyin: makinesindeki
-> veriden kimliksiz bir kopyanın size gideceğini ve gönderdiğiniz
-> düzeltmeleri onaylayacağını bilmeli.
+---
 
+## Dağıtım
+
+### Windows paketi (exe)
+
+Kullanıcıya zip'lenmiş bir klasör verilir; `Staj Rotasyonu.exe`'ye çift
+tıklanınca uygulama tarayıcıda açılır. Pakette `OKU-BENI.txt` ve masaüstü
+kısayolu oluşturan bir `.bat` bulunur.
+
+- **GitHub Actions:** `.github/workflows/windows-build.yml` elle ya da `v*`
+  etiketiyle çalışır: testleri koşar, exe'yi üretir, exe'yi çalıştırıp sağlık
+  ucunu doğrular ve zip'i artefakt (etiketliyse Release) olarak yayımlar.
+- **Yerel:** Windows'ta `packaging\build_windows.bat` (PyInstaller çapraz
+  derleme yapmaz).
+
+| Karar | Gerekçe |
+|---|---|
+| onedir (tek dosya değil) | Tek dosya her açılışta geçici klasöre açılır ve başlangıç çok uzar |
+| Konsol açık | Uygulamanın çalıştığının görünür işareti ve kapatma yolu; QuickEdit kapatılır |
+| `127.0.0.1`'e bağlanma | Windows güvenlik duvarı izin penceresi çıkmaz |
+| Yazılabilirlik denetimi | Klasöre yazılamıyorsa veri `%LOCALAPPDATA%\StajRotasyonu` altına düşer |
+| Tek örnek | İkinci açılışta yeni sunucu başlatılmaz, mevcut sekme açılır |
+| Günlük dosyası | `data\gunluk\uygulama.log`; çökmede yeri kullanıcıya bildirilir |
+
+Exe imzasız olduğu için SmartScreen ilk açılışta uyarır (*Daha fazla bilgi ▸
+Yine de çalıştır*).
+
+### Kendini güncelleyen kaynak kurulumu (önerilen)
+
+Hedef bilgisayara Python ve git kurulur, uygulama kaynaktan çalışır ve **her
+açılışta GitHub'dan güncellemeleri alır**.
+
+| Dosya | Görev |
+|---|---|
+| `packaging/kur.bat` | Bir kez çalıştırılır: depoyu klonlar, ortamı kurar, masaüstüne kısayol koyar |
+| `baslat.bat` | Kısayolun hedefi: güncelle + başlat |
+| `guncelle.bat` | Yalnız güncelleme |
+| `scripts/updater.py` | fetch → karşılaştır → `reset --hard origin/<dal>` → gerekirse pip → başlat |
+| `tanila.bat` | Teşhis raporu: Python/paket sürümleri, OR-Tools'un gerçekten çözüp çözemediği, günlüğün son satırları |
+
+Güvenlik ağları (`tests/test_updater.py`):
+
+- `data/` git dışıdır; `reset --hard` ona dokunmaz, `git clean` hiç çalıştırılmaz.
+- Çevrimdışıysa fetch zaman aşımıyla kesilir, mevcut sürümle açılır.
+- `requirements.txt` değiştiyse pip denenir; başarısızsa kod eski sürüme geri alınır.
+- Uygulama açıkken güncelleme atlanır.
+- Güncelleme mantığı Python'dadır: çalışan bir `.bat` dosyasının üzerine yazmak
+  cmd'de tanımsız davranıştır, `baslat.bat` bu yüzden ince bir köprüdür.
+
+---
 
 ## Testler
 
@@ -730,172 +495,48 @@ metin odur.
 .venv/bin/python -m pytest tests/
 ```
 
-Şu an **415 test** yeşildir; her yerleşik kural, özel kurallar, gereksinimler
-(v2 kural modeli + v1 denkliği), doldurma politikası ve kapasite matematiği, çözücü, ortak sezon çözücüsü, kapasite
-denetimi, cinsiyet tahmini, sezon yönetimi, dinamik değişiklikler, toplu taslak
-kalıcılığı, yedekleme/geri yükleme, başlatıcı yardımcıları ve Excel içe/dışa
-aktarımı kapsanır. `tests/test_e2e.py` referans
-veriyle gerçek bir ayı çözüp kural denetiminden geçirir;
-`tests/test_real_docs.py` gerçek belge formatlarını okur.
+Test paketi (600+ test) yerleşik ve özel kuralları, gereksinimleri, doldurma
+politikasını, kapasite ve risk aritmetiğini, aylık ve sezonluk çözücüyü, Excel
+içe/dışa aktarımı, yedeklemeyi, uzaktan desteği ve güncelleyiciyi kapsar.
 
----
-
-## Windows dağıtımı
-
-Son kullanıcı (eğitim hemşiresi) hiçbir şey kurmaz: kendisine bir **zip**
-verilir, klasörü çıkarır, `Staj Rotasyonu.exe`'ye çift tıklar, uygulama
-tarayıcıda açılır. Zip'in içinde ayrıca `OKU-BENI.txt` (Türkçe kurulum/kullanım
-notu) ve `Masaustune kisayol olustur.bat` bulunur.
-
-### Paketi üretmenin iki yolu
-
-**1) GitHub Actions (önerilen, Windows makinesi gerekmez).**
-`.github/workflows/windows-build.yml` elle (*Actions ▸ Windows .exe ▸ Run
-workflow*) veya `v1.0.0` gibi bir etiket gönderilince çalışır: testleri koşar,
-exe'yi üretir, **exe'yi gerçekten çalıştırıp** sağlık ucundan yanıt aldığını
-doğrular, sonra `StajRotasyonu-windows.zip`'i artefakt (etiketliyse Release)
-olarak yayımlar.
-
-```bash
-git tag v1.0.0 && git push origin v1.0.0
-```
-
-**2) Windows'ta yerel derleme.** Depoyu Windows'a kopyalayıp
-`packaging\build_windows.bat` dosyasına çift tıklamak yeterlidir: sanal ortamı
-kurar, testleri koşar, exe'yi üretir ve zip'i hazırlar. Elle yapmak isterseniz:
-
-```bat
-python -m venv .venv-build
-.venv-build\Scripts\pip install -r requirements-build.txt
-.venv-build\Scripts\pyinstaller --noconfirm packaging\rotasyon.spec
-```
-
-> PyInstaller çapraz derleme yapmaz — exe mutlaka Windows'ta üretilir.
-
-### Paketleme kararları (neden böyle)
-
-| Karar | Gerekçe |
-|---|---|
-| **onedir** (tek dosya değil) | OR-Tools + Streamlit ile tek dosya her açılışta geçici klasöre açılır, başlangıç yarım dakikayı aşar. Klasör sürümü saniyeler içinde açılır. |
-| **Konsol açık** (`console=True`) | Uygulamanın çalıştığının görünür işareti ve kapatma yolu. `run_app.py` konsola Türkçe yönerge basar, başlığı ayarlar ve **QuickEdit**'i kapatır (pencereye tıklayınca donma tuzağı). |
-| **`127.0.0.1`'e bağlanma** | Windows güvenlik duvarı izin penceresi çıkmaz. |
-| **Yazılabilirlik denetimi** | Exe'nin yanındaki klasöre yazılamıyorsa (Program Files, salt-okunur konum) veri sessizce kaybolmaz, `%LOCALAPPDATA%\StajRotasyonu` altına düşer ve kullanıcıya konsolda söylenir. |
-| **Tek örnek (single instance)** | İkinci kez çift tıklanınca ikinci sunucu açılmaz; çalışan örneğin sekmesi açılır (`data\calisiyor.txt`). |
-| **Günlük dosyası** | Her çalışma `data\gunluk\uygulama.log`'a yazılır, bir öncekisi saklanır. Çökmede Türkçe mesaj kutusu günlüğün yerini söyler. |
-
-İmzasız exe olduğu için Windows SmartScreen ilk açılışta uyarır
-(*Daha fazla bilgi ▸ Yine de çalıştır*); bu `OKU-BENI.txt`'de anlatılır. Kod
-imzalama sertifikası alınırsa uyarı tamamen kalkar.
-
-### Sürüm güncelleme (zip/exe yolu)
-
-Yeni zip çıkarılır, **eski klasördeki `data\` klasörü yeni klasöre kopyalanır**.
-Kullanıcı bunu yapmak zorunda kalmasın diye asıl yol uygulama içi yedektir:
-*Veri Yönetimi ▸ 💾 Yedekleme* sekmesinden zip indirilir, yeni sürümde aynı
-sekmeden geri yüklenir (geri yükleme mevcut sezonların üzerine **yazmaz**,
-yeni sezon açar).
-
----
-
-## Uzaktan güncellenebilir kurulum (kaynaktan, önerilen)
-
-Geliştirici uzaktayken uygulamayı güncellemenin exe'den daha iyi bir yolu:
-hedef bilgisayara **Python + git** kurup uygulamayı **kaynaktan** çalıştırmak.
-Kullanıcı yine tek kısayola çift tıklar; fark, uygulamanın **her açılışta
-GitHub'dan güncellemeleri kendi almasıdır**. Geliştirici `main`'e push'lar,
-kullanıcı uygulamayı bir sonraki açışında yeni sürümü kullanır — kimse kimseyi
-aramaz.
-
-| Dosya | Kim, ne zaman |
-|---|---|
-| `packaging/kur.bat` | Geliştirici, hedef makinede **bir kez**: depoyu `%USERPROFILE%\StajRotasyonu`'a klonlar, ortamı kurar, masaüstüne kısayol koyar |
-| `baslat.bat` | Kullanıcının çift tıkladığı şey (kısayolun hedefi): güncelle + başlat |
-| `guncelle.bat` | Yalnız güncelle, başlatma — telefonla "şuna çift tıkla" demek için |
-| `scripts/updater.py` | Asıl iş: fetch → karşılaştır → `reset --hard origin/main` → gerekirse pip → uygulamayı başlat |
-| `tanila.bat` | **Uzaktan destek aracı:** sorun çıktığında kullanıcı buna çift tıklar, çıkan metni gönderir |
-
-### Uzaktan teşhis (`tanila.bat` → `scripts/tanila.py`)
-
-Uzaktaki bir makinede "açılmıyor / kapanıyor" durumunu telefonla kovalamak
-yerine tek çalıştırmada rapor alır: Python sürümü ve konumu, her paketin
-sürümü, **OR-Tools'un gerçekten bir model çözüp çözemediği**, uygulamanın
-kendi çözücüsüyle küçük bir deneme, sezon listesi ve günlüğün son satırları.
-
-Özellikle şu tuzağı yakalamak için: paket içe aktarılabildiği hâlde native
-kütüphane uyumsuzluğu yüzünden CP-SAT çözüm sırasında **süreci Python hatası
-vermeden komple çökertebilir**. Bu durumda tarayıcıda "Failed to fetch
-dynamically imported module" gibi alakasız görünen bir hata çıkar (sunucu
-öldüğü için sonraki JS parçası indirilemez) — asıl sebep çözücüdür.
-Python 3.13+ ile bu riskin arttığı `tanila.py` çıktısında ayrıca uyarılır.
-
-### Güvenlik ağları (`scripts/updater.py`, testli: `tests/test_updater.py`)
-
-- **Kullanıcı verisine dokunulmaz:** `data/` git dışıdır; `reset --hard` onu
-  görmez ve `git clean` **hiçbir zaman** çalıştırılmaz.
-- **Çevrimdışıysa** fetch zaman aşımıyla kesilir, mevcut sürümle açılır.
-- **`git pull` değil `reset --hard origin/main`:** sahada kod düzenlenmediği
-  için çakışma diye bir durum olamaz; depo her açılışta GitHub'daki hâle
-  birebir eşitlenir (bozulan dosya bile kendini onarır).
-- **requirements.txt değiştiyse** pip kurulumu denenir; **başarısızsa kod eski
-  sürüme geri alınır** — "kod yeni ama paket eksik, uygulama hiç açılmıyor"
-  durumu oluşamaz.
-- **Uygulama açıkken güncelleme atlanır** (dosyalar kullanımdayken yazılmaz).
-- Güncelleme mantığı .bat'ta değil Python'dadır: çalışan bir .bat'ın üzerine
-  yazmak cmd'de tanımsız davranıştır (bayt ofsetinden okumaya devam eder);
-  Python dosyayı baştan belleğe yükler, kendi üzerine yazılması güvenlidir.
-  `baslat.bat` bu yüzden bilerek incecik bir köprüdür.
-
-### Özel (private) depo erişimi
-
-Depo private olduğu için hedef makinenin salt-okunur erişimi olmalı. Önerilen:
-GitHub **fine-grained personal access token** — yalnız bu depo, yalnız
-*Contents: Read* izni, istenirse süreli. `kur.bat` depo adresini sorar; token
-adrese gömülü verilir ve yalnız o makinenin `.git\config`'inde durur:
-
-```text
-https://x-access-token:TOKEN@github.com/KULLANICI/scheduler.git
-```
-
-Token süresi dolarsa güncelleme sessizce "çevrimdışı" durumuna düşer —
-uygulama çalışmaya devam eder, yalnız yeni sürüm alamaz (yenisini uzaktan
-söyleyip `.git\config`'i telefonla düzelttirmek yerine kısa süreliğine repoyu
-public yapıp `guncelle.bat` da çalıştırtabilirsiniz).
+Gerçek rotasyon belgeleriyle çalışan testler (`test_import.py`,
+`test_real_docs.py`, `test_pairing_import.py`'nin bir kısmı) belgeleri
+`example/` klasöründe arar; bu klasör kişisel veri içerdiği için depoda
+değildir ve belgeler yoksa ilgili testler atlanır.
 
 ---
 
 ## Klasör yapısı
 
 ```
-app.py                Streamlit girişi (sayfa navigasyonu + sezon kenar çubuğu)
-run_app.py            PyInstaller başlatıcısı
+app.py                 Streamlit girişi (sayfa navigasyonu + sezon kenar çubuğu)
+run_app.py             Son kullanıcı başlatıcısı (PyInstaller giriş noktası)
 
-rotasyon/             çekirdek mantık (arayüzden bağımsız)
-  models.py           veri modeli + varsayılan ayarlar/kurallar
-  store.py            JSON kalıcılık + SeasonManager (çoklu sezon, çöp kutusu)
-  solver.py           CP-SAT: aylık çözüm (solve_month) + ortak sezon (solve_season)
-  planner.py          toplu üretim (açgözlü + ortak model emniyet ağı)
-  rules.py            atamaları kurallara karşı denetleyen bağımsız motor
-  capacity.py         üretim öncesi sezon kapasite aritmetiği
-  risk.py             ileriye dönük risk denetimi + deneme çözümü
-  catalog.py          varsayılan birim kataloğu (data/default_units.json)
-  gender_guess.py     isimden çevrimdışı cinsiyet tahmini
-  excel_io.py         Excel okuma/yazma (renk/font dahil)
-  importer.py         Excel sonucunu veri modeline dönüştürme
-  normalize.py        birim adı normalizasyonu / Türkçe küçük harf
-  backup.py           yedek zip üretme / yedekten sezon geri yükleme
-  queries.py          salt-okunur yardımcı sorgular
+rotasyon/              çekirdek mantık (arayüzden bağımsız)
+  models.py            veri modeli, varsayılan ayarlar
+  store.py             JSON kalıcılık, çoklu sezon yönetimi
+  solver.py            CP-SAT: aylık (solve_month) ve sezonluk (solve_season) çözüm
+  planner.py           toplu üretim
+  rules.py             bağımsız kural denetleyicisi
+  requirements.py      gereksinim derleme
+  capacity.py          kapasite aritmetiği
+  risk.py              ileriye dönük risk analizi, deneme çözümü
+  fill_policy.py       doldurma politikası
+  excel_io.py          Excel okuma/yazma
+  importer.py          içe aktarım → veri modeli
+  pairing_import.py    eşleşme rotasyon belgesi okuyucusu
+  gender_guess.py      çevrimdışı cinsiyet tahmini
+  backup.py            yedekleme / geri yükleme
+  support.py           kimliksiz destek görüntüsü, düzeltme paketleri
+  support_sync.py      destek kanalı (git) taşıması
+  data/                varsayılan birim kataloğu ve gereksinimler
 
-ui/                   ekran modülleri (dashboard, rotation, season_grid,
-                      violations, data_management, history, excel_screen,
-                      help, common)
-
-data/                 çalışma verisi — sezon bazında (gitignore)
-seed_data/            "Örnek veriyle başla" için hazır veri
-scripts/              catalog_from_rotations.py, build_seed.py, make_icon.py
-packaging/            PyInstaller spec, ikon, OKU-BENI.txt, derleme .bat'ları
-.github/workflows/    Windows .exe derleme iş akışı
-tests/                pytest paketi
+ui/                    ekran modülleri (ui/v2: kurulum ekranları)
+seed_data/             "Örnek veriyle başla" verisi (uydurma adlar)
+scripts/               katalog/örnek veri üretimi, güncelleyici, teşhis, destek aracı
+packaging/             PyInstaller spec, ikon, OKU-BENI.txt, kurulum betikleri
+.github/workflows/     Windows derleme iş akışı
+tests/                 pytest paketi
+data/                  çalışma verisi (git dışı)
+example/               gerçek belgeler (git dışı — kişisel veri)
 ```
-
-Uyarı: `example/` klasörü gerçek öğrenci adları ve T.C. kimlik numaraları
-içerdiğinden **gitignore'dadır ve depoya eklenmemelidir.**
