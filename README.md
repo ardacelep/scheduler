@@ -20,7 +20,7 @@ tamamen Türkçedir.
 [Ön-denetim ve risk analizi](#ön-denetim-ve-risk-analizi) ·
 [Excel](#excel-içedışa-aktarım) · [Yedekleme](#yedekleme) ·
 [Uzaktan destek](#uzaktan-destek) · [Dağıtım](#dağıtım) · [Testler](#testler) ·
-[Klasör yapısı](#klasör-yapısı)
+[Klasör yapısı](#klasör-yapısı) · [Lisans](#lisans)
 
 ---
 
@@ -540,3 +540,9 @@ tests/                 pytest paketi
 data/                  çalışma verisi (git dışı)
 example/               gerçek belgeler (git dışı — kişisel veri)
 ```
+
+---
+
+## Lisans
+
+[MIT](LICENSE)
